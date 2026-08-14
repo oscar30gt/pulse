@@ -157,6 +157,23 @@ namespace Pulse
         /// @return True if TTL expired somewhere in the propagation, false otherwise.
         virtual bool notify(ttl_t ttl = TTL_DEFAULT) override;
     };
+
+    // --------------------------------------------------------------------------------------------
+
+    /// A constant emmitter that always outputs the same logic state.
+    class Constant : public ISignalEmitter
+    {
+        /// Constant state 
+        const LogicVector m_state;
+
+    public:
+        explicit Constant(LogicVector state, bitWidth_t bitWidth = BITWIDTH_DEFAULT);
+        virtual ~Constant() override;
+
+        /// Returns the logic state of this constant.
+        [[nodiscard]]
+        virtual LogicVector read() const override;
+    };
 }
 
 #endif // PULSE_SIGNALS_H

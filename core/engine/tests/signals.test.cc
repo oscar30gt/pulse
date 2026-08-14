@@ -813,3 +813,214 @@ TEST(SignalNetworkTest, RingOscillatorLoopTerminatesGracefully)
     bool expired = feedbackWire.notify(8);
     EXPECT_TRUE(expired);
 }
+
+// ============================================================================
+// 8. Constant Signal Emitter
+// ============================================================================
+
+TEST(ConstantTest, ReadReturnsConfiguredState)
+{
+    Constant cZero(LogicVector::Zero());
+    EXPECT_EQ(cZero.read(), LogicVector::Zero());
+
+    Constant cOnes(LogicVector::Ones());
+    EXPECT_EQ(cOnes.read(), LogicVector::Ones());
+
+    Constant cUnknown(LogicVector::Unknown());
+    EXPECT_EQ(cUnknown.read(), LogicVector::Unknown());
+
+    Constant cHighZ(LogicVector::HighZ());
+    EXPECT_EQ(cHighZ.read(), LogicVector::HighZ());
+
+    Constant cValue(LogicVector::FromInt(0xDEADBEEFCAFEBABEULL));
+    EXPECT_EQ(cValue.read(), LogicVector::FromInt(0xDEADBEEFCAFEBABEULL));
+}
+
+TEST(ConstantTest, WidthReporting)
+{
+    Constant c64(LogicVector::Zero(), 64);
+    Constant c32(LogicVector::Zero(), 32);
+    Constant c16(LogicVector::Zero(), 16);
+    Constant c8(LogicVector::Zero(), 8);
+    Constant c1(LogicVector::FromBool(true), 1);
+
+    EXPECT_EQ(c64.width(), 64);
+    EXPECT_EQ(c32.width(), 32);
+    EXPECT_EQ(c16.width(), 16);
+    EXPECT_EQ(c8.width(), 8);
+    EXPECT_EQ(c1.width(), 1);
+}
+
+TEST(ConstantTest, BidirectionalWiring)
+{
+    Constant c(LogicVector::FromInt(0x1234));
+    MockSink sink;
+
+    EXPECT_FALSE(c.hasTarget(&sink));
+    EXPECT_FALSE(sink.hasSource(&c));
+
+    c.addTarget(&sink);
+    EXPECT_TRUE(c.hasTarget(&sink));
+    EXPECT_TRUE(sink.hasSource(&c));
+
+    c.removeTarget(&sink);
+    EXPECT_FALSE(c.hasTarget(&sink));
+    EXPECT_FALSE(sink.hasSource(&c));
+
+    // Connect via sink.addSource
+    sink.addSource(&c);
+    EXPECT_TRUE(sink.hasSource(&c));
+    EXPECT_TRUE(c.hasTarget(&sink));
+
+    sink.removeSource(&c);
+    EXPECT_FALSE(sink.hasSource(&c));
+    EXPECT_FALSE(c.hasTarget(&sink));
+}
+
+TEST(ConstantTest, MismatchedBitWidthThrows)
+{
+    Constant c8(LogicVector::FromInt(0xFF), 8);
+    MockSink sink16(16);
+    Signal wire32(32);
+
+    EXPECT_THROW(c8.addTarget(&sink16), std::invalid_argument);
+    EXPECT_THROW(sink16.addSource(&c8), std::invalid_argument);
+    EXPECT_THROW(wire32.addSource(&c8), std::invalid_argument);
+}
+
+TEST(ConstantTest, DestructionUnlinksFromReceivers)
+{
+    MockSink sink;
+    Signal wire;
+
+    {
+        Constant scopedConst(LogicVector::FromInt(0xABCD));
+        scopedConst.addTarget(&sink);
+        wire.addSource(&scopedConst);
+
+        EXPECT_TRUE(sink.hasSource(&scopedConst));
+        EXPECT_TRUE(wire.hasSource(&scopedConst));
+    } // scopedConst destroyed here
+
+    EXPECT_FALSE(sink.hasSource(nullptr));
+    EXPECT_FALSE(wire.hasSource(nullptr));
+    EXPECT_EQ(sink.resolve(), LogicVector::HighZ());
+    EXPECT_EQ(wire.resolve(), LogicVector::HighZ());
+}
+
+TEST(ConstantTest, DirectDriverToSink)
+{
+    Constant constHigh(LogicVector::FromInt(0x5555));
+    MockSink sink;
+
+    sink.addSource(&constHigh);
+    EXPECT_EQ(sink.resolve(), LogicVector::FromInt(0x5555));
+}
+
+TEST(ConstantTest, DrivingSignalWire)
+{
+    Constant vcc(LogicVector::Ones());
+    Signal wire;
+    MockSink sink;
+
+    wire.addSource(&vcc);
+    wire.addTarget(&sink);
+
+    EXPECT_EQ(wire.read(), LogicVector::HighZ());
+    EXPECT_EQ(sink.notifyCount, 0);
+
+    bool expired = wire.notify();
+    EXPECT_FALSE(expired);
+    EXPECT_EQ(wire.read(), LogicVector::Ones());
+    EXPECT_EQ(sink.notifyCount, 1);
+    EXPECT_EQ(sink.lastResolvedState, LogicVector::Ones());
+}
+
+TEST(ConstantTest, FanOutToMultipleWiresAndSinks)
+{
+    Constant gnd(LogicVector::Zero());
+    Signal wire1;
+    Signal wire2;
+    MockSink sink1;
+    MockSink sink2;
+
+    wire1.addSource(&gnd);
+    wire2.addSource(&gnd);
+    wire1.addTarget(&sink1);
+    wire2.addTarget(&sink2);
+
+    wire1.notify();
+    wire2.notify();
+
+    EXPECT_EQ(wire1.read(), LogicVector::Zero());
+    EXPECT_EQ(wire2.read(), LogicVector::Zero());
+    EXPECT_EQ(sink1.lastResolvedState, LogicVector::Zero());
+    EXPECT_EQ(sink2.lastResolvedState, LogicVector::Zero());
+}
+
+TEST(ConstantTest, ConstantInLogicGateCircuit)
+{
+    // Tie one input of AND gate to Constant 0x00FF (acting as low-byte pass-through mask)
+    Constant maskConst(LogicVector::FromInt(0x00FF00FFULL));
+    MockSource dynamicDriver(LogicVector::FromInt(0x12345678ULL));
+    MockAndGate andGate;
+    Signal wireOut;
+    MockSink sink;
+
+    andGate.inA.addSource(&maskConst);
+    andGate.inB.addSource(&dynamicDriver);
+    wireOut.addSource(&andGate);
+    wireOut.addTarget(&sink);
+
+    andGate.inA.notify();
+    andGate.inB.notify();
+
+    // 0x12345678 & 0x00FF00FF = 0x00340078
+    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(0x00340078ULL));
+    EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x00340078ULL));
+
+    // Dynamic driver changes value
+    dynamicDriver.state = LogicVector::FromInt(0xAABBCCDDULL);
+    andGate.inB.notify();
+    // 0xAABBCCDD & 0x00FF00FF = 0x00BB00DD
+    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(0x00BB00DDULL));
+    EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x00BB00DDULL));
+}
+
+TEST(ConstantTest, ConstantInArithmeticAdderCircuit)
+{
+    // Fixed bias of +100 added to input value
+    Constant bias(LogicVector::FromInt(100));
+    MockSource inputVal(LogicVector::FromInt(25));
+    MockAdder adder;
+    Signal wireOut;
+    MockSink sink;
+
+    bias.addTarget(&adder.inA);
+    inputVal.addTarget(&adder.inB);
+    wireOut.addSource(&adder);
+    wireOut.addTarget(&sink);
+
+    adder.inA.notify();
+    adder.inB.notify();
+
+    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(125));
+    EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(125));
+}
+
+TEST(ConstantTest, ConstantWithTriStateBusResolution)
+{
+    // Shared bus with a Constant HighZ driver and a controllable MockSource
+    Constant inactiveConst(LogicVector::HighZ());
+    MockSource activeSource(LogicVector::FromInt(0xCAFE));
+    Signal bus;
+    MockSink sink;
+
+    bus.addSource(&inactiveConst);
+    bus.addSource(&activeSource);
+    bus.addTarget(&sink);
+
+    bus.notify();
+    EXPECT_EQ(bus.read(), LogicVector::FromInt(0xCAFE));
+    EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0xCAFE));
+}

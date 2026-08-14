@@ -138,4 +138,17 @@ namespace Pulse
 
         return ttlExpiredSomewhere;
     }
+
+
+    // -------- Constant --------------------------------------------------------------------------
+
+    
+    Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalElement(bitWidth), ISignalEmitter(bitWidth), m_state(state) { }
+
+    Constant::~Constant() { }
+
+    LogicVector Constant::read() const
+    {
+        return m_state;
+    }
 }
