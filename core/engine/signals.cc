@@ -1,11 +1,24 @@
 #include "signals.h"
 
-namespace Pulse::Engine
+#include <stdexcept>
+
+namespace Pulse
 {
-    // -------- OutputPort ------------------------------------------------------------------------
+    // --------------------------------------------------------------------------------------------
+
+    ISignalElement::ISignalElement(bitWidth_t bitWidth) : m_bitWidth(bitWidth) { }
+
+    ISignalElement::~ISignalElement() { }
+
+    bitWidth_t ISignalElement::width() const
+    {
+        return m_bitWidth;
+    }
+
+    // --------------------------------------------------------------------------------------------
 
 
-    ISignalReceiver::ISignalReceiver() { }
+    ISignalReceiver::ISignalReceiver(bitWidth_t bitWidth) : ISignalElement(bitWidth) { }
 
     ISignalReceiver::~ISignalReceiver()
     {
@@ -30,35 +43,24 @@ namespace Pulse::Engine
 
     void ISignalReceiver::addSource(ISignalEmitter* source)
     {
+        if (source && source->m_bitWidth != m_bitWidth)
+            throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
+
         if (m_sources.insert(source))
             source->addTargetInternal(this);
     }
 
     void ISignalReceiver::removeSource(ISignalEmitter* source)
     {
-        if (m_sources.erase(source))
+        if (source && m_sources.erase(source))
             source->removeTargetInternal(this);
     }
 
-    LogicState ISignalReceiver::resolve() const
+    LogicVector ISignalReceiver::resolve() const
     {
-        LogicState resolvedState = LogicState::HighZ;
+        LogicVector resolvedState;
         for (auto source : m_sources)
-        {
-            LogicState sourceState = source->read();
-
-            if (sourceState == LogicState::HighZ)
-                continue; // High Impedance are just open connections that don't affect the resolved state.
-
-            if (resolvedState == LogicState::HighZ)
-            {
-                resolvedState = sourceState;
-                continue;
-            }
-
-            if (sourceState != resolvedState)
-                return LogicState::Unknown; // Conflict between sources.
-        }
+            resolvedState = resolvedState.resolve(source->read());
 
         return resolvedState;
     }
@@ -67,7 +69,7 @@ namespace Pulse::Engine
     // -------- InputPort -------------------------------------------------------------------------
 
 
-    ISignalEmitter::ISignalEmitter() { }
+    ISignalEmitter::ISignalEmitter(bitWidth_t bitWidth) : ISignalElement(bitWidth) { }
 
     ISignalEmitter::~ISignalEmitter()
     {
@@ -92,6 +94,9 @@ namespace Pulse::Engine
 
     void ISignalEmitter::addTarget(ISignalReceiver* target)
     {
+        if (target && target->m_bitWidth != m_bitWidth)
+            throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
+
         if (m_targets.insert(target))
             target->addSourceInternal(this);
     }
@@ -106,11 +111,11 @@ namespace Pulse::Engine
     // -------- Signal ----------------------------------------------------------------------------
 
 
-    Signal::Signal() : ISignalReceiver(), ISignalEmitter() { }
+    Signal::Signal(bitWidth_t bitWidth) : ISignalElement(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth) { }
 
     Signal::~Signal() { }
 
-    LogicState Signal::read() const
+    LogicVector Signal::read() const
     {
         return m_state;
     }
@@ -119,7 +124,7 @@ namespace Pulse::Engine
     {
         if (ttl == 0) return true; // TTL expired, stop propagation
 
-        LogicState newState = resolve(); // Update the signal state based on connected sources
+        LogicVector newState = resolve(); // Update the signal state based on connected sources
         if (newState == m_state) return false;
         m_state = newState;
 
