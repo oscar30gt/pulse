@@ -4,21 +4,23 @@
 
 namespace Pulse
 {
-    // --------------------------------------------------------------------------------------------
+    // -------- Base ------------------------------------------------------------------------------
 
-    ISignalElement::ISignalElement(bitWidth_t bitWidth) : m_bitWidth(bitWidth) { }
 
-    ISignalElement::~ISignalElement() { }
+    ISignalBase::ISignalBase(bitWidth_t bitWidth) : m_bitWidth(bitWidth) { }
 
-    bitWidth_t ISignalElement::width() const
+    ISignalBase::~ISignalBase() { }
+
+    bitWidth_t ISignalBase::width() const
     {
         return m_bitWidth;
     }
 
-    // --------------------------------------------------------------------------------------------
+
+    // -------- Receiver --------------------------------------------------------------------------
 
 
-    ISignalReceiver::ISignalReceiver(bitWidth_t bitWidth) : ISignalElement(bitWidth) { }
+    ISignalReceiver::ISignalReceiver(bitWidth_t bitWidth) : ISignalBase(bitWidth) { }
 
     ISignalReceiver::~ISignalReceiver()
     {
@@ -66,10 +68,10 @@ namespace Pulse
     }
 
 
-    // -------- InputPort -------------------------------------------------------------------------
+    // -------- Emitter ---------------------------------------------------------------------------
 
 
-    ISignalEmitter::ISignalEmitter(bitWidth_t bitWidth) : ISignalElement(bitWidth) { }
+    ISignalEmitter::ISignalEmitter(bitWidth_t bitWidth) : ISignalBase(bitWidth) { }
 
     ISignalEmitter::~ISignalEmitter()
     {
@@ -111,7 +113,7 @@ namespace Pulse
     // -------- Signal ----------------------------------------------------------------------------
 
 
-    Signal::Signal(bitWidth_t bitWidth) : ISignalElement(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth) { }
+    Signal::Signal(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth) { }
 
     Signal::~Signal() { }
 
@@ -143,7 +145,7 @@ namespace Pulse
     // -------- Constant --------------------------------------------------------------------------
 
     
-    Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalElement(bitWidth), ISignalEmitter(bitWidth), m_state(state) { }
+    Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(state) { }
 
     Constant::~Constant() { }
 

@@ -22,7 +22,7 @@ namespace Pulse
     // --------------------------------------------------------------------------------------------
 
     /// Base interface for all signal elements.
-    class ISignalElement
+    class ISignalBase
     {
     protected:
 
@@ -32,8 +32,8 @@ namespace Pulse
 
     public:
 
-        explicit ISignalElement(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~ISignalElement();
+        explicit ISignalBase(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
+        virtual ~ISignalBase();
 
         /// Bit width of the element.
         [[nodiscard]]
@@ -43,7 +43,7 @@ namespace Pulse
     // --------------------------------------------------------------------------------------------
 
     /// Interface for elements that can receive a logic state from a signal.
-    class ISignalReceiver : virtual public ISignalElement
+    class ISignalReceiver : virtual public ISignalBase
     {
         friend class ISignalEmitter;
 
@@ -92,7 +92,7 @@ namespace Pulse
     // --------------------------------------------------------------------------------------------
 
     /// Interface for elements that can emit a logic state to a signal.
-    class ISignalEmitter : virtual public ISignalElement
+    class ISignalEmitter : virtual public ISignalBase
     {
         friend class ISignalReceiver;
 

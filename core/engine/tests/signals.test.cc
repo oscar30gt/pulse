@@ -19,7 +19,7 @@ public:
     LogicVector state;
 
     explicit MockSource(LogicVector initial = LogicVector::HighZ(), bitWidth_t bitWidth = BITWIDTH_DEFAULT)
-        : ISignalElement(bitWidth), ISignalEmitter(bitWidth), state(initial)
+        : ISignalBase(bitWidth), ISignalEmitter(bitWidth), state(initial)
     {
     }
 
@@ -38,7 +38,7 @@ public:
     ttl_t lastTtl = 0;
 
     explicit MockSink(bitWidth_t bitWidth = BITWIDTH_DEFAULT)
-        : ISignalElement(bitWidth), ISignalReceiver(bitWidth)
+        : ISignalBase(bitWidth), ISignalReceiver(bitWidth)
     {
     }
 
@@ -58,7 +58,7 @@ public:
     LogicVector outputState = LogicVector::HighZ();
 
     explicit MockInverter(bitWidth_t bitWidth = BITWIDTH_DEFAULT)
-        : ISignalElement(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth)
+        : ISignalBase(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth)
     {
     }
 
@@ -93,7 +93,7 @@ public:
         MockAndGate* m_parent;
     public:
         InputPin(MockAndGate* parent, bitWidth_t bitWidth)
-            : ISignalElement(bitWidth), ISignalReceiver(bitWidth), m_parent(parent)
+            : ISignalBase(bitWidth), ISignalReceiver(bitWidth), m_parent(parent)
         {
         }
 
@@ -108,7 +108,7 @@ public:
     LogicVector outputState = LogicVector::HighZ();
 
     explicit MockAndGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT)
-        : ISignalElement(bitWidth), ISignalEmitter(bitWidth), inA(this, bitWidth), inB(this, bitWidth)
+        : ISignalBase(bitWidth), ISignalEmitter(bitWidth), inA(this, bitWidth), inB(this, bitWidth)
     {
     }
 
@@ -144,7 +144,7 @@ public:
         MockAdder* m_parent;
     public:
         InputPin(MockAdder* parent, bitWidth_t bitWidth)
-            : ISignalElement(bitWidth), ISignalReceiver(bitWidth), m_parent(parent)
+            : ISignalBase(bitWidth), ISignalReceiver(bitWidth), m_parent(parent)
         {
         }
 
@@ -159,7 +159,7 @@ public:
     LogicVector outputState = LogicVector::HighZ();
 
     explicit MockAdder(bitWidth_t bitWidth = BITWIDTH_DEFAULT)
-        : ISignalElement(bitWidth), ISignalEmitter(bitWidth), inA(this, bitWidth), inB(this, bitWidth)
+        : ISignalBase(bitWidth), ISignalEmitter(bitWidth), inA(this, bitWidth), inB(this, bitWidth)
     {
     }
 
