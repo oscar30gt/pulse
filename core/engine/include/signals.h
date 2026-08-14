@@ -1,11 +1,21 @@
+#ifndef PULSE_ENGINE_SIGNALS_H
+#define PULSE_ENGINE_SIGNALS_H
+
 #include <cstdint>
-#include <vector>
-#include <functional>
+#include "miniSet.h"
+
+/// Wires and signals for connecting components and ports in a circuit simulation.
+/// Elements DO NOT manage memory. Pointers are just used for referencing other elements.
+/// Higher level objects are responsible for providing those elements and deleting them when
+/// actually needed.
 
 namespace Pulse::Engine
 {
+    typedef uint16_t ttl_t;                     /// Time-to-live (TTL) type for signal propagation.
+    static constexpr ttl_t TTL_DEFAULT = 512;   /// Default TTL value for signal propagation.
+
     /// Logic state of a signal.
-    enum class State : uint8_t
+    enum class LogicState : uint8_t
     {
         Low             = '0',  /// Logic 0 (0V)
         High            = '1',  /// Logic 1 (Vdd)
@@ -16,101 +26,116 @@ namespace Pulse::Engine
 
     // --------------------------------------------------------------------------------------------
 
-    /// Input ports receive state from a signal.
-    class InputPort
+    /// Interface for elements that can receive a logic state from a signal.
+    class ISignalReceiver
     {
-        Signal* m_source = nullptr; /// Source signal connected to the input port.
+        friend class ISignalEmitter;
+
+        // Internal functions to add and remove sources without triggering the source port.
+        void addSourceInternal(ISignalEmitter* source);
+        void removeSourceInternal(ISignalEmitter* source);
+
+    protected:
+        /// Source ports connected to the signal.
+        MiniSet<ISignalEmitter*> m_sources;
 
     public:
-        InputPort();
-        virtual ~InputPort();
+        ISignalReceiver();
+        virtual ~ISignalReceiver();
 
-        /// Connects a signal to this port to receive state from.
-        /// If already connected to a signal, it will be disconnected first.
-        /// @param source Signal to connect to the port.
-        void connectSource(Signal* source);
+        /// Checks if a certain source is connected to this receiver.
+        /// @param source The signal emitter to check.
+        /// @returns True if the source is connected, false otherwise.
+        [[nodiscard]]
+        bool hasSource(ISignalEmitter* source) const;
 
-        /// Disconnects from the currently connected source signal, if any.
-        void disconnectSource();
+        /// Adds a source (if not already connected) to this receiver.
+        /// @param source The signal emitter to add.
+        /// @note Establishes a bidirectional connection so it is not 
+        /// necessary to call addTarget on the source.
+        void addSource(ISignalEmitter* source);
 
-        /// Writes a new state to the port.
-        /// @param newState New state for the port.
-        /// @note This method should only be used if the component's internal
-        /// logic does not depend on a signal. If a signal is already connected,
-        /// it is recommended not to use this method as the port is already
-        /// receiving state from the connected signal.
-        virtual void write(State newState) = 0;
+        /// Removes a source (if any) from this receiver.
+        /// @param source The signal emitter to remove.
+        /// @note Connection is broken in both directions, so it is not 
+        /// necessary to call removeTarget on the source.
+        void removeSource(ISignalEmitter* source);
+
+        /// Resolves the logic state of the signal based on all connected sources.
+        /// @returns The resolved logic state.
+        [[nodiscard]]
+        LogicState resolve() const;
+
+        /// Notifies the receiver of a change is some of its sources.
+        /// @param ttl Optional time-to-live (TTL) value for signal propagation.
+        /// As it is common for signals to recursively notify each other, 
+        //// this prevents infinite loops and allows for controlled propagation.
+        /// @return True if TTL expired somewhere in the propagation, false otherwise.
+        virtual bool notify(ttl_t ttl = TTL_DEFAULT) = 0;
     };
 
-    /// Output ports send state to a signal.
-    class OutputPort
+    /// Interface for elements that can emit a logic state to a signal.
+    class ISignalEmitter
     {
-        Signal* m_target = nullptr; /// Target signal connected to the output port.
+        friend class ISignalReceiver;
+
+        // Internal functions to add and remove targets without triggering the target port.
+        void addTargetInternal(ISignalReceiver* target);
+        void removeTargetInternal(ISignalReceiver* target);
+
+    protected:
+        /// Target ports connected to the signal.
+        MiniSet<ISignalReceiver*> m_targets;
 
     public:
-        OutputPort();
-        virtual ~OutputPort();
+        ISignalEmitter();
+        virtual ~ISignalEmitter();
 
-        /// Connects a signal to this port to send state to.
-        /// If already connected to a signal, it will be disconnected first.
-        /// @param target Signal to connect to the port.
-        void connectTarget(Signal* target);
+        /// Checks if a certain target is connected to this emitter.
+        /// @param target The signal receiver to check.
+        /// @return True if the target is connected, false otherwise.
+        [[nodiscard]]
+        bool hasTarget(ISignalReceiver* target) const;
+        
+        /// Adds a target (if not already connected) to this emitter.
+        /// @param target The signal receiver to add.
+        /// @note Establishes a bidirectional connection so it is not
+        /// necessary to call addSource on the target.
+        void addTarget(ISignalReceiver* target);
 
-        /// Disconnects from the currently connected target signal, if any.
-        void disconnectTarget();
+        /// Removes a target (if any) from this emitter.
+        /// @param target The signal receiver to remove.
+        /// @note Connection is broken in both directions, so it is not
+        /// necessary to call removeSource on the target.
+        void removeTarget(ISignalReceiver* target);
 
-        /// Reads the current state from the port.
-        /// @returns State of the port.
-        virtual State read() const = 0;
-    };
-
-    class Port final : public InputPort, public OutputPort
-    {
-        State m_state = State::HighZ;  /// Current state of the port.
-
-    public:
-        Port();
-        ~Port() override;
-
-        void write(State newState) override;
-        State read() const override;
+        /// Reads the current logic state of the emitted signal.
+        /// @return Logic state of the signal emitter.
+        [[nodiscard]]
+        virtual LogicState read() const = 0;
     };
 
     // --------------------------------------------------------------------------------------------
 
     /// Intermediate node or bus wire connecting components and ports.
-    class Signal
+    class Signal : public ISignalReceiver, public ISignalEmitter
     {
-    private:
-        State m_state = State::HighZ;           /// Current state of the signal.
-        std::vector<SignalSource*> m_sources;   /// Source elements connected to the signal.
-        std::vector<SignalTarget*> m_targets;   /// Target elements connected to the signal.
+        LogicState m_state = LogicState::HighZ; /// Current state of the signal.
 
     public:
-        Signal() = default;
-        ~Signal() = default;
+        Signal();
+        virtual ~Signal();
 
-        State read() const;
-        bool update(uint16_t);
-
-        /// Connects a source to the signal. If the source is already connected,
-        /// it will not be added again.
-        /// @param source Source to connect to the signal.
-        void connectSource(SignalSource* source);
-
-        /// Disconnects a source from the signal. If the source is not connected,
-        /// it will do nothing.
-        /// @param source Source to disconnect from the signal.
-        void disconnectSource(SignalSource* source);
-
-        /// Connects a target to the signal. If the target is already connected,
-        /// it will not be added again.
-        /// @param target Target to connect to the signal.
-        void connectTarget(SignalTarget* target);
-
-        /// Disconnects a target from the signal. If the target is not connected,
-        /// it will do nothing.
-        /// @param target Target to disconnect from the signal.
-        void disconnectTarget(SignalTarget* target);
+        /// Returns the logic state of this signal. 
+        [[nodiscard]]
+        virtual LogicState read() const override;
+        
+        /// Notifies this signal of a change in some of its sources, 
+        /// updating its state and propagating the change if any.
+        /// @param ttl Optional time-to-live (TTL) value for signal propagation.
+        /// @return True if TTL expired somewhere in the propagation, false otherwise.
+        virtual bool notify(ttl_t ttl = TTL_DEFAULT) override;
     };
 }
+
+#endif // PULSE_ENGINE_SIGNALS_H
