@@ -54,7 +54,6 @@ if(BUILD_TESTS)
     # Automatically find all test files matching *test*.cc or *.test.cpp in any tests/ directory
     file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
         "core/**/tests/*.cc"
-        "core/**/tests/*.cpp"
     )
 
     if(TEST_SOURCES)

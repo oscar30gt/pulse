@@ -1,7 +1,7 @@
-#include "signals.h"
+#include "signalInterface.h"
 
 #include <stdexcept>
-
+#include <iostream> // For debug output
 namespace Pulse
 {
     // -------- Base ------------------------------------------------------------------------------
@@ -48,14 +48,18 @@ namespace Pulse
         if (source && source->width() != m_bitWidth)
             throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
 
-        if (m_sources.insert(source))
+        if (m_sources.insert(source)) {
             source->addTargetInternal(this);
+            this->notify();
+        }
     }
 
     void ISignalReceiver::removeSource(ISignalEmitter* source)
     {
-        if (source && m_sources.erase(source))
+        if (source && m_sources.erase(source)) {
             source->removeTargetInternal(this);
+            this->notify();
+        }
     }
 
     LogicVector ISignalReceiver::resolve() const
@@ -65,6 +69,12 @@ namespace Pulse
             resolvedState = resolvedState.resolve(source->peek());
 
         return resolvedState;
+    }
+
+    bool ISignalReceiver::notify(ttl_t ttl)
+    {
+        if (ttl == 0) return false; // TTL expired, stop propagation
+        return onNotify(ttl - 1);
     }
 
 
@@ -99,57 +109,17 @@ namespace Pulse
         if (target->width() != m_bitWidth)
             throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
 
-        if (m_targets.insert(target))
+        if (m_targets.insert(target)) {
             target->addSourceInternal(this);
+            target->notify();
+        }
     }
 
     void ISignalEmitter::removeTarget(ISignalReceiver* target)
     {
-        if (m_targets.erase(target))
+        if (m_targets.erase(target)) {
             target->removeSourceInternal(this);
-    }
-
-
-    // -------- Signal ----------------------------------------------------------------------------
-
-
-    Signal::Signal(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth) { }
-
-    Signal::~Signal() { }
-
-    LogicVector Signal::peek() const
-    {
-        return m_state;
-    }
-
-    bool Signal::notify(ttl_t ttl)
-    {
-        if (ttl == 0) return false; // TTL expired, stop propagation
-
-        LogicVector newState = resolve(); // Update the signal state based on connected sources
-        if (newState == m_state) return true;
-        m_state = newState;
-
-        // Notify all target ports connected to this signal
-        bool allOk = true;
-        for (ISignalReceiver* target : m_targets)
-        {
-            allOk &= target->notify(ttl - 1);
+            target->notify();
         }
-
-        return allOk;
-    }
-
-
-    // -------- Constant --------------------------------------------------------------------------
-
-    
-    Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(state) { }
-
-    Constant::~Constant() { }
-
-    LogicVector Constant::peek() const
-    {
-        return m_state;
     }
 }

@@ -1,0 +1,176 @@
+#include <gtest/gtest.h>
+#include "../include/component.h"
+#include "../include/wire.h"
+#include "../include/gates.h"
+#include "../include/signalDrain.h"
+#include "../include/signalSource.h"
+
+using namespace Pulse;
+
+TEST(PropagationTest, SimpleWirePropagation) {
+    const bitWidth_t bw = 8;
+    SignalSource src(bw);
+    SignalDrain drain(bw);
+    Wire wire(bw);
+    src.addTarget(&wire);
+    drain.addSource(&wire);
+    LogicVector val = LogicVector::FromInt(0xAA);
+    EXPECT_TRUE(src.drive(val));
+    EXPECT_EQ(drain.pull(), val);
+}
+
+TEST(PropagationTest, TTLExpiration) {
+    const bitWidth_t bw = 4;
+    SignalSource src(bw);
+    Wire wire(bw);
+    src.addTarget(&wire);
+    LogicVector val = LogicVector::FromInt(0x5);
+    // Use zero TTL to force immediate expiration
+    EXPECT_FALSE(src.drive(val, 0));
+}
+
+TEST(PropagationTest, SelfChainedWire) {
+    const bitWidth_t bw = 4;
+    SignalSource src(bw);
+    Wire wire(bw);
+    src.addTarget(&wire); // Self-loop
+    wire.addTarget(&wire);
+    LogicVector val = LogicVector::FromInt(0x3333);
+    // Should not cause infinite recursion.
+    // ttl not even expires because the value doesnt change after the first propagation.
+    EXPECT_TRUE(src.drive(val));
+}
+
+TEST(PropagationTest, SelfChainedAND) {
+    const bitWidth_t bw = 4;
+    ANDGate gate(bw);
+    Wire wIn(bw), wOut(bw);
+    // Connect output back to one input to create a loop
+    gate.connect("in0", wIn);
+    gate.connect("out", wOut);
+    gate.connect("in1", wOut); // feedback loop via wire's target list
+    // Drive input
+    SignalSource src(bw);
+    src.addTarget(&wIn);
+    LogicVector val = LogicVector::FromInt(0xF);
+    src.drive(val);
+    // Should not cause infinite recursion; drive returns true
+    EXPECT_TRUE(src.drive(val));
+}
+
+TEST(PropagationTest, AndGatePropagation) {
+    const bitWidth_t bw = 8;
+    SignalSource src0(bw);
+    SignalSource src1(bw);
+    Wire w0(bw), w1(bw), wOut(bw);
+    src0.addTarget(&w0);
+    src1.addTarget(&w1);
+    ANDGate andGate(bw);
+    // Connect wires to gate ports
+    andGate.connect("in0", w0);
+    andGate.connect("in1", w1);
+    andGate.connect("out", wOut);
+    SignalDrain drain(bw);
+    drain.addSource(&wOut);
+    LogicVector a = LogicVector::FromInt(0x0F);
+    LogicVector b = LogicVector::FromInt(0xF0);
+    src0.drive(a);
+    src1.drive(b);
+    LogicVector expected = a & b;
+    EXPECT_EQ(drain.pull(), expected);
+}
+
+TEST(PropagationTest, LoopPrevention) {
+    const bitWidth_t bw = 8;
+    ANDGate gate(bw);
+    Wire wIn(bw), wOut(bw);
+    // Connect output back to one input to create a loop
+    gate.connect("in0", wIn);
+    gate.connect("out", wOut);
+    gate.connect("in1", wOut); // feedback loop via wire's target list
+    // Drive input
+    SignalSource src(bw);
+    src.addTarget(&wIn);
+    LogicVector val = LogicVector::FromInt(0xFF);
+    src.drive(val);
+    // Should not cause infinite recursion; drive returns true
+    EXPECT_TRUE(src.drive(val));
+}
+ 
+// Additional complex propagation tests
+
+TEST(PropagationTest, ChainedAndGates) {
+    const bitWidth_t bw = 8;
+    SignalSource src0(bw), src1(bw);
+    Wire w0(bw), w1(bw), wMid(bw), wOut(bw);
+    src0.addTarget(&w0);
+    src1.addTarget(&w1);
+    ANDGate firstGate(bw);
+    ANDGate secondGate(bw);
+    // First gate connections
+    firstGate.connect("in0", w0);
+    firstGate.connect("in1", w1);
+    firstGate.connect("out", wMid);
+    // Second gate connections, feeding from first gate output and another source
+    SignalSource src2(bw);
+    Wire w2(bw);
+    src2.addTarget(&w2);
+    secondGate.connect("in0", wMid);
+    secondGate.connect("in1", w2);
+    secondGate.connect("out", wOut);
+    SignalDrain drain(bw);
+    drain.addSource(&wOut);
+    // Drive inputs
+    LogicVector a = LogicVector::FromInt(0xAA);
+    LogicVector b = LogicVector::FromInt(0x55);
+    LogicVector c = LogicVector::FromInt(0xFF);
+    src0.drive(a);
+    src1.drive(b);
+    src2.drive(c);
+    LogicVector expected = (a & b) & c;
+    EXPECT_EQ(drain.pull(), expected);
+}
+
+TEST(PropagationTest, MultiTargetDrain) {
+    const bitWidth_t bw = 4;
+    SignalSource src(bw);
+    Wire w(bw);
+    src.addTarget(&w);
+    SignalDrain drain1(bw), drain2(bw), drain3(bw);
+    drain1.addSource(&w);
+    drain2.addSource(&w);
+    drain3.addSource(&w);
+    LogicVector val = LogicVector::FromInt(0xA);
+    src.drive(val);
+    EXPECT_EQ(drain1.pull(), val);
+    EXPECT_EQ(drain2.pull(), val);
+    EXPECT_EQ(drain3.pull(), val);
+}
+
+TEST(PropagationTest, ComplexLoopWithTTL) {
+    const bitWidth_t bw = 8;
+    ANDGate gateA(bw);
+    ANDGate gateB(bw);
+    Wire wInA(bw), wInB(bw), wMid(bw), wOut(bw);
+    // Connect gates to form a loop: A.out -> wMid -> B.in0, B.out -> wOut -> A.in1, and also feed back wOut -> A.in0
+    gateA.connect("in0", wInA);
+    gateA.connect("in1", wOut);
+    gateA.connect("out", wMid);
+    gateB.connect("in0", wMid);
+    gateB.connect("in1", wInB);
+    gateB.connect("out", wOut);
+    // Create sources and drains
+    SignalSource srcA(bw), srcB(bw);
+    srcA.addTarget(&wInA);
+    srcB.addTarget(&wInB);
+    SignalDrain drain(bw);
+    drain.addSource(&wOut);
+    // Drive both inputs; TTL set to low value to prevent infinite recursion
+    LogicVector valA = LogicVector::FromInt(0xFF);
+    LogicVector valB = LogicVector::FromInt(0x0F);
+    srcA.drive(valA);
+    srcB.drive(valB);
+    // Propagation should terminate with TTL expiration; drive with zero TTL fails
+    EXPECT_FALSE(srcA.drive(valA, 0));
+}
+

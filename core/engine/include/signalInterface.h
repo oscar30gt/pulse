@@ -1,15 +1,10 @@
-#ifndef PULSE_SIGNALS_H
-#define PULSE_SIGNALS_H
+#ifndef PULSE_SIGNAL_INTERFACE_H
+#define PULSE_SIGNAL_INTERFACE_H
 
 #include <cstdint>
 
 #include "miniSet.h"
 #include "logicVector.h"
-
-/// Signals (wires) for connecting components and ports in a circuit simulation.
-/// Signals DO NOT manage memory. Pointers are just used for referencing other elements.
-/// Higher level objects are responsible for providing those elements and deleting them when
-/// actually needed.
 
 namespace Pulse
 {
@@ -51,6 +46,12 @@ namespace Pulse
         void addSourceInternal(ISignalEmitter* source);
         void removeSourceInternal(ISignalEmitter* source);
 
+        /// Optional overrideable function to handle notifications from connected sources.
+        /// @param ttl Time-to-live (TTL) value for the next signal propagation.
+        /// @note No need to check for TTL expiration here, as it is implicitly handled in the notify() function.
+        /// NEVER decrease TTL manually. Just propagate the same TTL value to the next notify() call, if any.
+        virtual bool onNotify(ttl_t ttl) { return true; }
+
     protected:
 
         /// Source ports connected to the signal.
@@ -86,7 +87,7 @@ namespace Pulse
         /// As it is common for signals to recursively notify each other, 
         //// this prevents infinite loops and allows for controlled propagation.
         /// @return false if TTL expired somewhere in the propagation, true otherwise.
-        virtual bool notify(ttl_t ttl = TTL_DEFAULT) = 0;
+        bool notify(ttl_t ttl = TTL_DEFAULT);
     };
 
     // --------------------------------------------------------------------------------------------
@@ -133,47 +134,6 @@ namespace Pulse
         [[nodiscard]]
         virtual LogicVector peek() const = 0;
     };
-
-    // --------------------------------------------------------------------------------------------
-
-    /// Intermediate node or bus wire connecting components and ports.
-    class Signal : public ISignalReceiver, public ISignalEmitter
-    {
-        /// Current state of the signal.
-        LogicVector m_state;
-
-    public:
-
-        explicit Signal(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~Signal() override;
-
-        /// Returns the logic state of this signal. 
-        [[nodiscard]]
-        virtual LogicVector peek() const override;
-
-        /// Notifies this signal of a change in some of its sources, 
-        /// updating its state and propagating the change if any.
-        /// @param ttl Optional time-to-live (TTL) value for signal propagation.
-        /// @return false if TTL expired somewhere in the propagation, true otherwise.
-        virtual bool notify(ttl_t ttl = TTL_DEFAULT) override;
-    };
-
-    // --------------------------------------------------------------------------------------------
-
-    /// A constant emmitter that always outputs the same logic state.
-    class Constant : public ISignalEmitter
-    {
-        /// Constant state 
-        const LogicVector m_state;
-
-    public:
-        explicit Constant(LogicVector state, bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~Constant() override;
-
-        /// Returns the logic state of this constant.
-        [[nodiscard]]
-        virtual LogicVector peek() const override;
-    };
 }
 
-#endif // PULSE_SIGNALS_H
+#endif // PULSE_SIGNAL_INTERFACE_H

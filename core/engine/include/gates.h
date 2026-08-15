@@ -1,22 +1,32 @@
 #ifndef PULSE_GATES_H
 #define PULSE_GATES_H
 
-#include <cstdint>
+#include <string>
+#include <unordered_map>
 
-namespace Pulse {
+#include "component.h"
+#include "signalDrain.h"
+#include "signalSource.h"
 
-    // template <uint8_t N>
-    // class ANDGate
-    // {
-    //     const InputPort m_inputs[N];
-    //     const OutputPort m_output;
+namespace Pulse
+{
+    /// A simple 2-input AND gate component.
+    class ANDGate : public Component
+    {
+        SignalDrain in0;
+        SignalDrain in1;
+        SignalSource out;
 
-    // public:
+        bool recalculate(ttl_t ttl);
+        void onConnected(const std::string& portName, Wire& signal) override;
+        void onDisconnected(const std::string& portName, Wire& signal) override;
 
-    //     ANDGate(const InputPort inputs[N], 
-    // };
+    public:
+        ANDGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
+        virtual ~ANDGate() override;
+    };
 
-}
+} // namespace Pulse
 
 
 #endif // PULSE_GATES_H
