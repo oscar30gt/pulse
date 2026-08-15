@@ -45,7 +45,7 @@ namespace Pulse
 
     void ISignalReceiver::addSource(ISignalEmitter* source)
     {
-        if (source && source->m_bitWidth != m_bitWidth)
+        if (source && source->width() != m_bitWidth)
             throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
 
         if (m_sources.insert(source))
@@ -62,7 +62,7 @@ namespace Pulse
     {
         LogicVector resolvedState;
         for (auto source : m_sources)
-            resolvedState = resolvedState.resolve(source->read());
+            resolvedState = resolvedState.resolve(source->peek());
 
         return resolvedState;
     }
@@ -96,7 +96,7 @@ namespace Pulse
 
     void ISignalEmitter::addTarget(ISignalReceiver* target)
     {
-        if (target && target->m_bitWidth != m_bitWidth)
+        if (target->width() != m_bitWidth)
             throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
 
         if (m_targets.insert(target))
@@ -117,28 +117,27 @@ namespace Pulse
 
     Signal::~Signal() { }
 
-    LogicVector Signal::read() const
+    LogicVector Signal::peek() const
     {
         return m_state;
     }
 
     bool Signal::notify(ttl_t ttl)
     {
-        if (ttl == 0) return true; // TTL expired, stop propagation
+        if (ttl == 0) return false; // TTL expired, stop propagation
 
         LogicVector newState = resolve(); // Update the signal state based on connected sources
-        if (newState == m_state) return false;
+        if (newState == m_state) return true;
         m_state = newState;
 
         // Notify all target ports connected to this signal
-        bool ttlExpiredSomewhere = false;
+        bool allOk = true;
         for (ISignalReceiver* target : m_targets)
         {
-            if (target != nullptr)
-                ttlExpiredSomewhere |= target->notify(ttl - 1);
+            allOk &= target->notify(ttl - 1);
         }
 
-        return ttlExpiredSomewhere;
+        return allOk;
     }
 
 
@@ -149,7 +148,7 @@ namespace Pulse
 
     Constant::~Constant() { }
 
-    LogicVector Constant::read() const
+    LogicVector Constant::peek() const
     {
         return m_state;
     }

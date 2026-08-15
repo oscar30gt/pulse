@@ -23,7 +23,7 @@ public:
     {
     }
 
-    [[nodiscard]] LogicVector read() const override
+    [[nodiscard]] LogicVector peek() const override
     {
         return state;
     }
@@ -62,7 +62,7 @@ public:
     {
     }
 
-    [[nodiscard]] LogicVector read() const override
+    [[nodiscard]] LogicVector peek() const override
     {
         return outputState;
     }
@@ -129,7 +129,7 @@ public:
         return ttlExpired;
     }
 
-    [[nodiscard]] LogicVector read() const override
+    [[nodiscard]] LogicVector peek() const override
     {
         return outputState;
     }
@@ -180,7 +180,7 @@ public:
         return ttlExpired;
     }
 
-    [[nodiscard]] LogicVector read() const override
+    [[nodiscard]] LogicVector peek() const override
     {
         return outputState;
     }
@@ -511,7 +511,7 @@ TEST(SignalNetworkTest, ResolveSplitBusMultiplexing)
 TEST(SignalNetworkTest, SignalInitialStateIsHighZ)
 {
     Signal wire;
-    EXPECT_EQ(wire.read(), LogicVector::HighZ());
+    EXPECT_EQ(wire.peek(), LogicVector::HighZ());
 }
 
 TEST(SignalNetworkTest, SignalPropagatesFromSourceToSink)
@@ -523,19 +523,19 @@ TEST(SignalNetworkTest, SignalPropagatesFromSourceToSink)
     wire.addSource(&driver);
     wire.addTarget(&sink);
 
-    EXPECT_EQ(wire.read(), LogicVector::HighZ());
+    EXPECT_EQ(wire.peek(), LogicVector::HighZ());
     EXPECT_EQ(sink.notifyCount, 0);
 
     bool expired = wire.notify();
     EXPECT_FALSE(expired);
-    EXPECT_EQ(wire.read(), LogicVector::FromInt(0xA5A5A5A5ULL));
+    EXPECT_EQ(wire.peek(), LogicVector::FromInt(0xA5A5A5A5ULL));
     EXPECT_EQ(sink.notifyCount, 1);
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0xA5A5A5A5ULL));
 
     // Change driver to different value and notify
     driver.state = LogicVector::FromInt(0x5A5A5A5AULL);
     wire.notify();
-    EXPECT_EQ(wire.read(), LogicVector::FromInt(0x5A5A5A5AULL));
+    EXPECT_EQ(wire.peek(), LogicVector::FromInt(0x5A5A5A5AULL));
     EXPECT_EQ(sink.notifyCount, 2);
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x5A5A5A5AULL));
 }
@@ -553,7 +553,7 @@ TEST(SignalNetworkTest, SignalUnchangedStateDoesNotRePropagate)
     EXPECT_EQ(sink.notifyCount, 1);
 
     // Notify again without changing driver state
-    bool expired = wire.notify();
+    bool expired = !wire.notify();
     EXPECT_FALSE(expired);
     // Notify count should remain 1 because wire state didn't change
     EXPECT_EQ(sink.notifyCount, 1);
@@ -575,9 +575,9 @@ TEST(SignalNetworkTest, SignalChainPropagation)
 
     wire1.notify();
 
-    EXPECT_EQ(wire1.read(), LogicVector::FromInt(0x123456789ABCDEF0ULL));
-    EXPECT_EQ(wire2.read(), LogicVector::FromInt(0x123456789ABCDEF0ULL));
-    EXPECT_EQ(wire3.read(), LogicVector::FromInt(0x123456789ABCDEF0ULL));
+    EXPECT_EQ(wire1.peek(), LogicVector::FromInt(0x123456789ABCDEF0ULL));
+    EXPECT_EQ(wire2.peek(), LogicVector::FromInt(0x123456789ABCDEF0ULL));
+    EXPECT_EQ(wire3.peek(), LogicVector::FromInt(0x123456789ABCDEF0ULL));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x123456789ABCDEF0ULL));
 }
 
@@ -597,7 +597,7 @@ TEST(SignalNetworkTest, SignalFanOut)
 
     wire.notify();
 
-    EXPECT_EQ(wire.read(), LogicVector::FromInt(0xF0F0));
+    EXPECT_EQ(wire.peek(), LogicVector::FromInt(0xF0F0));
     EXPECT_EQ(sinkA.notifyCount, 1);
     EXPECT_EQ(sinkB.notifyCount, 1);
     EXPECT_EQ(sinkC.notifyCount, 1);
@@ -620,20 +620,20 @@ TEST(SignalNetworkTest, TriStateBusMultiplexing)
 
     // Driver A active, Driver B disabled (HighZ)
     bus.notify();
-    EXPECT_EQ(bus.read(), LogicVector::FromInt(0xAAAA));
+    EXPECT_EQ(bus.peek(), LogicVector::FromInt(0xAAAA));
     EXPECT_EQ(device.lastResolvedState, LogicVector::FromInt(0xAAAA));
 
     // Switch active driver to Driver B (0x5555), Driver A disabled (HighZ)
     driverA.state = LogicVector::HighZ();
     driverB.state = LogicVector::FromInt(0x5555);
     bus.notify();
-    EXPECT_EQ(bus.read(), LogicVector::FromInt(0x5555));
+    EXPECT_EQ(bus.peek(), LogicVector::FromInt(0x5555));
     EXPECT_EQ(device.lastResolvedState, LogicVector::FromInt(0x5555));
 
     // Both disabled (HighZ)
     driverB.state = LogicVector::HighZ();
     bus.notify();
-    EXPECT_EQ(bus.read(), LogicVector::HighZ());
+    EXPECT_EQ(bus.peek(), LogicVector::HighZ());
     EXPECT_EQ(device.lastResolvedState, LogicVector::HighZ());
 }
 
@@ -656,17 +656,17 @@ TEST(SignalNetworkTest, VectorInverterCircuit)
     wireOut.addTarget(&sink);
 
     wireIn.notify();
-    EXPECT_EQ(wireIn.read(), LogicVector::FromInt(0x0F0F0F0F0F0F0F0FULL));
-    EXPECT_EQ(notGate.read(), LogicVector::FromInt(~0x0F0F0F0F0F0F0F0FULL));
-    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(~0x0F0F0F0F0F0F0F0FULL));
+    EXPECT_EQ(wireIn.peek(), LogicVector::FromInt(0x0F0F0F0F0F0F0F0FULL));
+    EXPECT_EQ(notGate.peek(), LogicVector::FromInt(~0x0F0F0F0F0F0F0F0FULL));
+    EXPECT_EQ(wireOut.peek(), LogicVector::FromInt(~0x0F0F0F0F0F0F0F0FULL));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(~0x0F0F0F0F0F0F0F0FULL));
 
     // Change driver to all 1s
     driver.state = LogicVector::Ones();
     wireIn.notify();
-    EXPECT_EQ(wireIn.read(), LogicVector::Ones());
-    EXPECT_EQ(notGate.read(), LogicVector::Zero());
-    EXPECT_EQ(wireOut.read(), LogicVector::Zero());
+    EXPECT_EQ(wireIn.peek(), LogicVector::Ones());
+    EXPECT_EQ(notGate.peek(), LogicVector::Zero());
+    EXPECT_EQ(wireOut.peek(), LogicVector::Zero());
     EXPECT_EQ(sink.lastResolvedState, LogicVector::Zero());
 }
 
@@ -693,13 +693,13 @@ TEST(SignalNetworkTest, VectorAndGateCircuit)
     wireB.notify();
 
     // 0xFF00FF00 & 0x0F0F0F0F = 0x0F000F00
-    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(0x0F000F00ULL));
+    EXPECT_EQ(wireOut.peek(), LogicVector::FromInt(0x0F000F00ULL));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x0F000F00ULL));
 
     // Update driver A
     driverA.state = LogicVector::Ones();
     wireA.notify();
-    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(0x0F0F0F0FULL));
+    EXPECT_EQ(wireOut.peek(), LogicVector::FromInt(0x0F0F0F0FULL));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x0F0F0F0FULL));
 }
 
@@ -725,13 +725,13 @@ TEST(SignalNetworkTest, VectorAdderCircuit)
     wireA.notify();
     wireB.notify();
 
-    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(350));
+    EXPECT_EQ(wireOut.peek(), LogicVector::FromInt(350));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(350));
 
     // Update driver B with an unknown bit -> output becomes unknown
     driverB.state = LogicVector::Unknown();
     wireB.notify();
-    EXPECT_EQ(wireOut.read(), LogicVector::Unknown());
+    EXPECT_EQ(wireOut.peek(), LogicVector::Unknown());
     EXPECT_EQ(sink.lastResolvedState, LogicVector::Unknown());
 }
 
@@ -757,8 +757,8 @@ TEST(SignalNetworkTest, MultiComponentPipelineCircuit)
     adder.inB.notify();
 
     // 10 + 20 = 30 -> Inverted = ~30
-    EXPECT_EQ(wire1.read(), LogicVector::FromInt(30));
-    EXPECT_EQ(wire2.read(), LogicVector::FromInt(~30ULL));
+    EXPECT_EQ(wire1.peek(), LogicVector::FromInt(30));
+    EXPECT_EQ(wire2.peek(), LogicVector::FromInt(~30ULL));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(~30ULL));
 }
 
@@ -774,14 +774,14 @@ TEST(SignalNetworkTest, NormalPropagationDoesNotExpireTTL)
     wire1.addSource(&driver);
     wire2.addSource(&wire1);
 
-    bool expired = wire1.notify(10);
+    bool expired = !wire1.notify(10);
     EXPECT_FALSE(expired);
 }
 
 TEST(SignalNetworkTest, ZeroTtlStopsImmediatelyAndReportsExpiration)
 {
     Signal wire;
-    bool expired = wire.notify(0);
+    bool expired = !wire.notify(0);
     EXPECT_TRUE(expired);
 }
 
@@ -810,7 +810,7 @@ TEST(SignalNetworkTest, RingOscillatorLoopTerminatesGracefully)
     feedbackWire.addSource(&inverter);
     feedbackWire.addTarget(&inverter);
 
-    bool expired = feedbackWire.notify(8);
+    bool expired = !feedbackWire.notify(8);
     EXPECT_TRUE(expired);
 }
 
@@ -818,22 +818,22 @@ TEST(SignalNetworkTest, RingOscillatorLoopTerminatesGracefully)
 // 8. Constant Signal Emitter
 // ============================================================================
 
-TEST(ConstantTest, ReadReturnsConfiguredState)
+TEST(ConstantTest, PeekReturnsConfiguredState)
 {
     Constant cZero(LogicVector::Zero());
-    EXPECT_EQ(cZero.read(), LogicVector::Zero());
+    EXPECT_EQ(cZero.peek(), LogicVector::Zero());
 
     Constant cOnes(LogicVector::Ones());
-    EXPECT_EQ(cOnes.read(), LogicVector::Ones());
+    EXPECT_EQ(cOnes.peek(), LogicVector::Ones());
 
     Constant cUnknown(LogicVector::Unknown());
-    EXPECT_EQ(cUnknown.read(), LogicVector::Unknown());
+    EXPECT_EQ(cUnknown.peek(), LogicVector::Unknown());
 
     Constant cHighZ(LogicVector::HighZ());
-    EXPECT_EQ(cHighZ.read(), LogicVector::HighZ());
+    EXPECT_EQ(cHighZ.peek(), LogicVector::HighZ());
 
     Constant cValue(LogicVector::FromInt(0xDEADBEEFCAFEBABEULL));
-    EXPECT_EQ(cValue.read(), LogicVector::FromInt(0xDEADBEEFCAFEBABEULL));
+    EXPECT_EQ(cValue.peek(), LogicVector::FromInt(0xDEADBEEFCAFEBABEULL));
 }
 
 TEST(ConstantTest, WidthReporting)
@@ -926,12 +926,12 @@ TEST(ConstantTest, DrivingSignalWire)
     wire.addSource(&vcc);
     wire.addTarget(&sink);
 
-    EXPECT_EQ(wire.read(), LogicVector::HighZ());
+    EXPECT_EQ(wire.peek(), LogicVector::HighZ());
     EXPECT_EQ(sink.notifyCount, 0);
 
     bool expired = wire.notify();
     EXPECT_FALSE(expired);
-    EXPECT_EQ(wire.read(), LogicVector::Ones());
+    EXPECT_EQ(wire.peek(), LogicVector::Ones());
     EXPECT_EQ(sink.notifyCount, 1);
     EXPECT_EQ(sink.lastResolvedState, LogicVector::Ones());
 }
@@ -952,8 +952,8 @@ TEST(ConstantTest, FanOutToMultipleWiresAndSinks)
     wire1.notify();
     wire2.notify();
 
-    EXPECT_EQ(wire1.read(), LogicVector::Zero());
-    EXPECT_EQ(wire2.read(), LogicVector::Zero());
+    EXPECT_EQ(wire1.peek(), LogicVector::Zero());
+    EXPECT_EQ(wire2.peek(), LogicVector::Zero());
     EXPECT_EQ(sink1.lastResolvedState, LogicVector::Zero());
     EXPECT_EQ(sink2.lastResolvedState, LogicVector::Zero());
 }
@@ -976,14 +976,14 @@ TEST(ConstantTest, ConstantInLogicGateCircuit)
     andGate.inB.notify();
 
     // 0x12345678 & 0x00FF00FF = 0x00340078
-    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(0x00340078ULL));
+    EXPECT_EQ(wireOut.peek(), LogicVector::FromInt(0x00340078ULL));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x00340078ULL));
 
     // Dynamic driver changes value
     dynamicDriver.state = LogicVector::FromInt(0xAABBCCDDULL);
     andGate.inB.notify();
     // 0xAABBCCDD & 0x00FF00FF = 0x00BB00DD
-    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(0x00BB00DDULL));
+    EXPECT_EQ(wireOut.peek(), LogicVector::FromInt(0x00BB00DDULL));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0x00BB00DDULL));
 }
 
@@ -1004,7 +1004,7 @@ TEST(ConstantTest, ConstantInArithmeticAdderCircuit)
     adder.inA.notify();
     adder.inB.notify();
 
-    EXPECT_EQ(wireOut.read(), LogicVector::FromInt(125));
+    EXPECT_EQ(wireOut.peek(), LogicVector::FromInt(125));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(125));
 }
 
@@ -1021,6 +1021,6 @@ TEST(ConstantTest, ConstantWithTriStateBusResolution)
     bus.addTarget(&sink);
 
     bus.notify();
-    EXPECT_EQ(bus.read(), LogicVector::FromInt(0xCAFE));
+    EXPECT_EQ(bus.peek(), LogicVector::FromInt(0xCAFE));
     EXPECT_EQ(sink.lastResolvedState, LogicVector::FromInt(0xCAFE));
 }

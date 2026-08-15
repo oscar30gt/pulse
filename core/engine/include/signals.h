@@ -28,7 +28,7 @@ namespace Pulse
 
         /// Bit width of the signal. Default is 64 bits.
         /// This will prevent signals from being connected to ports of different widths.
-        const bitWidth_t m_bitWidth = BITWIDTH_DEFAULT;
+        const bitWidth_t m_bitWidth;
 
     public:
 
@@ -85,7 +85,7 @@ namespace Pulse
         /// @param ttl Optional time-to-live (TTL) value for signal propagation.
         /// As it is common for signals to recursively notify each other, 
         //// this prevents infinite loops and allows for controlled propagation.
-        /// @return True if TTL expired somewhere in the propagation, false otherwise.
+        /// @return false if TTL expired somewhere in the propagation, true otherwise.
         virtual bool notify(ttl_t ttl = TTL_DEFAULT) = 0;
     };
 
@@ -131,7 +131,7 @@ namespace Pulse
         /// Reads the current logic state of the emitted signal.
         /// @return Logic state of the signal emitter.
         [[nodiscard]]
-        virtual LogicVector read() const = 0;
+        virtual LogicVector peek() const = 0;
     };
 
     // --------------------------------------------------------------------------------------------
@@ -149,12 +149,12 @@ namespace Pulse
 
         /// Returns the logic state of this signal. 
         [[nodiscard]]
-        virtual LogicVector read() const override;
+        virtual LogicVector peek() const override;
 
         /// Notifies this signal of a change in some of its sources, 
         /// updating its state and propagating the change if any.
         /// @param ttl Optional time-to-live (TTL) value for signal propagation.
-        /// @return True if TTL expired somewhere in the propagation, false otherwise.
+        /// @return false if TTL expired somewhere in the propagation, true otherwise.
         virtual bool notify(ttl_t ttl = TTL_DEFAULT) override;
     };
 
@@ -172,7 +172,7 @@ namespace Pulse
 
         /// Returns the logic state of this constant.
         [[nodiscard]]
-        virtual LogicVector read() const override;
+        virtual LogicVector peek() const override;
     };
 }
 
