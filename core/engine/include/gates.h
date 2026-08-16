@@ -10,107 +10,32 @@
 
 namespace Pulse
 {
-
-    /// A simple 2-input AND gate component.
-    /// Inputs: "in0" (X bits), "in1" (X bits)
-    /// Outputs: "out" (X bits)
-    class ANDGate : public Component
+    /// Enumerates available gate operations a binary gate can perform.
+    enum class BinaryOperation : uint8_t
     {
-        SignalDrain m_in0;
-        SignalDrain m_in1;
-        SignalSource m_out;
-
-        bool recalculate(ttl_t ttl);
-
-    public:
-        ANDGate(Wire* in0, Wire* in1, Wire* out);
-        ~ANDGate();
+        AND,        // And (&)
+        OR,         // Or (|)
+        XOR,        // Exclusive Or (^)
+        NAND,       // Not And
+        NOR,        // Not Or
+        XNOR        // Exclusive Not Or
     };
 
-    // --------------------------------------------------------------------------------------------
-
-    /// A simple 2-input OR gate component.
+    /// A simple 2-input gate component.
     /// Inputs: "in0" (X bits), "in1" (X bits)
     /// Outputs: "out" (X bits)
-    class ORGate : public Component
+    class BinaryGate : public Component
     {
         SignalDrain m_in0;
         SignalDrain m_in1;
         SignalSource m_out;
+        BinaryOperation m_operation : 3;
 
         bool recalculate(ttl_t ttl);
 
     public:
-        ORGate(Wire* in0, Wire* in1, Wire* out);
-        ~ORGate();
-    };
-
-    // --------------------------------------------------------------------------------------------
-
-    /// A simple 2-input XOR gate component.
-    /// Inputs: "in0" (X bits), "in1" (X bits)
-    /// Outputs: "out" (X bits)
-    class XORGate : public Component
-    {
-        SignalDrain m_in0;
-        SignalDrain m_in1;
-        SignalSource m_out;
-
-        bool recalculate(ttl_t ttl);
-
-    public:
-        XORGate(Wire* in0, Wire* in1, Wire* out);
-        ~XORGate();
-    };
-
-    /// A simple 2-input NAND gate component.
-    /// Inputs: "in0" (X bits), "in1" (X bits)
-    /// Outputs: "out" (X bits)
-    class NANDGate : public Component
-    {
-        SignalDrain m_in0;
-        SignalDrain m_in1;
-        SignalSource m_out;
-
-        bool recalculate(ttl_t ttl);
-
-    public:
-        NANDGate(Wire* in0, Wire* in1, Wire* out);
-        ~NANDGate();
-    };
-
-    // --------------------------------------------------------------------------------------------
-
-    /// A simple 2-input NOR gate component.
-    /// Inputs: "in0" (X bits), "in1" (X bits)
-    /// Outputs: "out" (X bits)
-    class NORGate : public Component
-    {
-        SignalDrain m_in0;
-        SignalDrain m_in1;
-        SignalSource m_out;
-
-        bool recalculate(ttl_t ttl);
-
-    public:
-        NORGate(Wire* in0, Wire* in1, Wire* out);
-        ~NORGate();
-    };
-
-    /// A simple 2-input XNOR gate component.
-    /// Inputs: "in0" (X bits), "in1" (X bits)
-    /// Outputs: "out" (X bits)
-    class XNORGate : public Component
-    {
-        SignalDrain m_in0;
-        SignalDrain m_in1;
-        SignalSource m_out;
-
-        bool recalculate(ttl_t ttl);
-
-    public:
-        XNORGate(Wire* in0, Wire* in1, Wire* out);
-        ~XNORGate();
+        BinaryGate(Wire* in0, Wire* in1, Wire* out, BinaryOperation op = BinaryOperation::AND);
+        ~BinaryGate();
     };
 
     // --------------------------------------------------------------------------------------------

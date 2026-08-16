@@ -45,7 +45,7 @@ TEST(PropagationTest, SelfChainedAND) {
     const bitWidth_t bw = 4;
     Wire wIn(bw), wOut(bw);
     // Connect output back to one input to create a loop
-    ANDGate gate(&wIn, &wOut, &wOut);
+    BinaryGate gate(&wIn, &wOut, &wOut, BinaryOperation::AND);
     // Drive input
     SignalSource src(bw);
     src.addTarget(&wIn);
@@ -62,7 +62,7 @@ TEST(PropagationTest, AndGatePropagation) {
     Wire w0(bw), w1(bw), wOut(bw);
     src0.addTarget(&w0);
     src1.addTarget(&w1);
-    ANDGate andGate(&w0, &w1, &wOut);
+    BinaryGate andGate(&w0, &w1, &wOut, BinaryOperation::AND);
     SignalDrain drain(bw);
     drain.addSource(&wOut);
     LogicVector a = LogicVector::FromInt(0x0F);
@@ -77,7 +77,7 @@ TEST(PropagationTest, LoopPrevention) {
     const bitWidth_t bw = 8;
     Wire wIn(bw), wOut(bw);
     // Connect output back to one input to create a loop
-    ANDGate gate(&wIn, &wOut, &wOut);
+    BinaryGate gate(&wIn, &wOut, &wOut, BinaryOperation::AND);
     // Drive input
     SignalSource src(bw);
     src.addTarget(&wIn);
@@ -96,12 +96,12 @@ TEST(PropagationTest, ChainedAndGates) {
     src0.addTarget(&w0);
     src1.addTarget(&w1);
     // First gate connections
-    ANDGate firstGate(&w0, &w1, &wMid);
+    BinaryGate firstGate(&w0, &w1, &wMid, BinaryOperation::AND);
     // Second gate connections, feeding from first gate output and another source
     SignalSource src2(bw);
     Wire w2(bw);
     src2.addTarget(&w2);
-    ANDGate secondGate(&wMid, &w2, &wOut);
+    BinaryGate secondGate(&wMid, &w2, &wOut, BinaryOperation::AND);
     SignalDrain drain(bw);
     drain.addSource(&wOut);
     // Drive inputs
@@ -135,8 +135,8 @@ TEST(PropagationTest, ComplexLoopWithTTL) {
     const bitWidth_t bw = 8;
     Wire wInA(bw), wInB(bw), wMid(bw), wOut(bw);
     // Connect gates to form a loop: A.out -> wMid -> B.in0, B.out -> wOut -> A.in1, and also feed back wOut -> A.in0
-    ANDGate gateA(&wInA, &wOut, &wMid);
-    ANDGate gateB(&wMid, &wInB, &wOut);
+    BinaryGate gateA(&wInA, &wOut, &wMid, BinaryOperation::AND);
+    BinaryGate gateB(&wMid, &wInB, &wOut, BinaryOperation::AND);
     // Create sources and drains
     SignalSource srcA(bw), srcB(bw);
     srcA.addTarget(&wInA);
