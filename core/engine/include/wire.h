@@ -1,5 +1,5 @@
-#ifndef PULSE_SIGNALS_H
-#define PULSE_SIGNALS_H
+#ifndef PULSE_WIRE_H
+#define PULSE_WIRE_H
 
 #include <cstdint>
 
@@ -26,4 +26,4 @@ namespace Pulse
     };
 }
 
-#endif // PULSE_SIGNALS_H
+#endif // PULSE_WIRE_H

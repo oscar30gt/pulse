@@ -10,101 +10,124 @@
 
 namespace Pulse
 {
-    /// Common interface for 2-input logic gates.
-    class ITwoInputGate : public Component
-    {
-        virtual bool recalculate(ttl_t ttl) = 0;
-        virtual void onConnected(const std::string& portName, Wire& signal) override final;
-        virtual void onDisconnected(const std::string& portName, Wire& signal) override final;
 
-    protected:
-        SignalDrain in0;
-        SignalDrain in1;
-        SignalSource out;
+    /// A simple 2-input AND gate component.
+    /// Inputs: "in0" (X bits), "in1" (X bits)
+    /// Outputs: "out" (X bits)
+    class ANDGate : public Component
+    {
+        SignalDrain m_in0;
+        SignalDrain m_in1;
+        SignalSource m_out;
+
+        bool recalculate(ttl_t ttl);
 
     public:
-        ITwoInputGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~ITwoInputGate() override;
+        ANDGate(Wire* in0, Wire* in1, Wire* out);
+        ~ANDGate();
     };
 
     // --------------------------------------------------------------------------------------------
 
-    /// A simple 2-input AND gate component.
-    class ANDGate : public ITwoInputGate
-    {
-        bool recalculate(ttl_t ttl);
-
-    public:
-        ANDGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~ANDGate() override;
-    };
-
     /// A simple 2-input OR gate component.
-    class ORGate : public ITwoInputGate
+    /// Inputs: "in0" (X bits), "in1" (X bits)
+    /// Outputs: "out" (X bits)
+    class ORGate : public Component
     {
+        SignalDrain m_in0;
+        SignalDrain m_in1;
+        SignalSource m_out;
+
         bool recalculate(ttl_t ttl);
 
     public:
-        ORGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~ORGate() override;
+        ORGate(Wire* in0, Wire* in1, Wire* out);
+        ~ORGate();
     };
+
+    // --------------------------------------------------------------------------------------------
 
     /// A simple 2-input XOR gate component.
-    class XORGate : public ITwoInputGate
+    /// Inputs: "in0" (X bits), "in1" (X bits)
+    /// Outputs: "out" (X bits)
+    class XORGate : public Component
     {
+        SignalDrain m_in0;
+        SignalDrain m_in1;
+        SignalSource m_out;
+
         bool recalculate(ttl_t ttl);
 
     public:
-        XORGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~XORGate() override;
+        XORGate(Wire* in0, Wire* in1, Wire* out);
+        ~XORGate();
     };
 
     /// A simple 2-input NAND gate component.
-    class NANDGate : public ITwoInputGate
+    /// Inputs: "in0" (X bits), "in1" (X bits)
+    /// Outputs: "out" (X bits)
+    class NANDGate : public Component
     {
+        SignalDrain m_in0;
+        SignalDrain m_in1;
+        SignalSource m_out;
+
         bool recalculate(ttl_t ttl);
 
     public:
-        NANDGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~NANDGate() override;
+        NANDGate(Wire* in0, Wire* in1, Wire* out);
+        ~NANDGate();
     };
 
+    // --------------------------------------------------------------------------------------------
+
     /// A simple 2-input NOR gate component.
-    class NORGate : public ITwoInputGate
+    /// Inputs: "in0" (X bits), "in1" (X bits)
+    /// Outputs: "out" (X bits)
+    class NORGate : public Component
     {
+        SignalDrain m_in0;
+        SignalDrain m_in1;
+        SignalSource m_out;
+
         bool recalculate(ttl_t ttl);
 
     public:
-        NORGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~NORGate() override;
+        NORGate(Wire* in0, Wire* in1, Wire* out);
+        ~NORGate();
     };
 
     /// A simple 2-input XNOR gate component.
-    class XNORGate : public ITwoInputGate
+    /// Inputs: "in0" (X bits), "in1" (X bits)
+    /// Outputs: "out" (X bits)
+    class XNORGate : public Component
     {
+        SignalDrain m_in0;
+        SignalDrain m_in1;
+        SignalSource m_out;
+
         bool recalculate(ttl_t ttl);
 
     public:
-        XNORGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~XNORGate() override;
+        XNORGate(Wire* in0, Wire* in1, Wire* out);
+        ~XNORGate();
     };
 
     // --------------------------------------------------------------------------------------------
 
     /// A simple NOT gate component.
+    /// Inputs: "in" (X bits)
+    /// Outputs: "out" (X bits)
     class NOTGate : public Component
     {
-        SignalDrain in;
-        SignalSource out;
-
-        virtual void onConnected(const std::string& portName, Wire& signal) override final;
-        virtual void onDisconnected(const std::string& portName, Wire& signal) override final;
+        SignalDrain m_in;
+        SignalSource m_out;
 
         bool recalculate(ttl_t ttl);
 
     public:
-        NOTGate(bitWidth_t bitWidth = BITWIDTH_DEFAULT);
-        virtual ~NOTGate() override;
+        NOTGate(Wire* in, Wire* out);
+        ~NOTGate();
     };
 
 } // namespace Pulse

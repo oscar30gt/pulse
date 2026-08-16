@@ -21,6 +21,21 @@ TEST(WireTest, ConstructionWithBitWidth) {
     // Bit width getter not exposed; we just ensure construction succeeds.
 }
 
+TEST(WireTest, LoseStateOnDisconnect) {
+    SignalSource src(8);
+    LogicVector state = LogicVector(0b11001100);
+    src.drive(state);
+
+    Wire wire8(8);
+    EXPECT_EQ(wire8.peek(), LogicVector::HighZ());
+
+    src.addTarget(&wire8);
+    EXPECT_EQ(wire8.peek(), state);
+
+    src.removeTarget(&wire8);
+    EXPECT_EQ(wire8.peek(), LogicVector::HighZ());
+}
+
 TEST(WireTest, NotifyPropagationFromSource) {
     // Create a source and connect to wire.
     SignalSource src(1);

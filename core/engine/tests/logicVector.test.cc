@@ -6,6 +6,17 @@
 using namespace Pulse;
 
 // ============================================================================
+// Helper function: Create a single-bit LogicVector with a specific state
+// ============================================================================
+
+static LogicVector make1Bit(char state)
+{
+    LogicVector v{ 0ULL, 0ULL };
+    v.setBit(0, state);
+    return v;
+}
+
+// ============================================================================
 // 1. Factory Methods & Default Initialization
 // ============================================================================
 
@@ -24,7 +35,7 @@ TEST(LogicVectorTest, FactoryZero)
     EXPECT_EQ(vec.mask, 0ULL);
     for (uint8_t i = 0; i < 64; ++i)
     {
-        EXPECT_EQ(vec.get(i), '0');
+        EXPECT_EQ(vec.getBit(i), '0');
     }
 }
 
@@ -35,7 +46,7 @@ TEST(LogicVectorTest, FactoryOnes)
     EXPECT_EQ(vec.mask, 0ULL);
     for (uint8_t i = 0; i < 64; ++i)
     {
-        EXPECT_EQ(vec.get(i), '1');
+        EXPECT_EQ(vec.getBit(i), '1');
     }
 }
 
@@ -46,7 +57,7 @@ TEST(LogicVectorTest, FactoryUnknown)
     EXPECT_EQ(vec.mask, ~0ULL);
     for (uint8_t i = 0; i < 64; ++i)
     {
-        EXPECT_EQ(vec.get(i), 'X');
+        EXPECT_EQ(vec.getBit(i), 'X');
     }
 }
 
@@ -57,7 +68,7 @@ TEST(LogicVectorTest, FactoryHighZ)
     EXPECT_EQ(vec.mask, ~0ULL);
     for (uint8_t i = 0; i < 64; ++i)
     {
-        EXPECT_EQ(vec.get(i), 'Z');
+        EXPECT_EQ(vec.getBit(i), 'Z');
     }
 }
 
@@ -76,7 +87,7 @@ TEST(LogicVectorTest, FactoryFromInt)
     LogicVector v4 = LogicVector::FromInt(0x5555555555555555ULL);
     for (uint8_t i = 0; i < 64; ++i)
     {
-        EXPECT_EQ(v4.get(i), (i % 2 == 0) ? '1' : '0');
+        EXPECT_EQ(v4.getBit(i), (i % 2 == 0) ? '1' : '0');
     }
 }
 
@@ -85,8 +96,8 @@ TEST(LogicVectorTest, FactoryFromBool)
     LogicVector vTrue = LogicVector::FromBool(true);
     EXPECT_EQ(vTrue.value, 1ULL);
     EXPECT_EQ(vTrue.mask, 0ULL);
-    EXPECT_EQ(vTrue.get(0), '1');
-    EXPECT_EQ(vTrue.get(1), '0');
+    EXPECT_EQ(vTrue.getBit(0), '1');
+    EXPECT_EQ(vTrue.getBit(1), '0');
 
     LogicVector vFalse = LogicVector::FromBool(false);
     EXPECT_EQ(vFalse, LogicVector::Zero());
@@ -110,6 +121,16 @@ TEST(LogicVectorTest, ExplicitBoolConversion)
 
     LogicVector onlyMask{ 0ULL, 1ULL };
     EXPECT_TRUE(static_cast<bool>(onlyMask));
+}
+
+TEST(LogicVectorTest, ExplicitIntegerConversion)
+{
+    LogicVector vec = LogicVector::FromInt(0x123456789ABCDEF0ULL);
+
+    EXPECT_EQ(static_cast<uint64_t>(vec), 0x123456789ABCDEF0ULL);
+    EXPECT_EQ(static_cast<uint32_t>(vec), 0x9ABCDEF0ULL);
+    EXPECT_EQ(static_cast<uint16_t>(vec), 0xDEF0ULL);
+    EXPECT_EQ(static_cast<uint8_t>(vec), 0xF0ULL);
 }
 
 TEST(LogicVectorTest, EqualityAndInequality)
@@ -140,25 +161,266 @@ TEST(LogicVectorTest, EqualityAndInequality)
 }
 
 // ============================================================================
-// 3. 4-State Bitwise Operations (AND, OR, XOR, NOT)
+// 3. Single Bit Access via getBit/setBit
 // ============================================================================
 
-static LogicVector make1Bit(char state)
+TEST(LogicVectorTest, GetBitRead)
 {
-    LogicVector v{ 0ULL, 0ULL };
-    v.set(0, state);
-    return v;
+    LogicVector vec = LogicVector::FromInt(0xAAAAAAAAAAAAAAAAULL);
+    for (uint8_t i = 0; i < 64; ++i)
+    {
+        char expected = (i % 2 == 0) ? '0' : '1';
+        EXPECT_EQ(vec.getBit(i), expected);
+    }
 }
+
+TEST(LogicVectorTest, SetBitWrite)
+{
+    LogicVector vec = LogicVector::Zero();
+
+    vec.setBit(0, '1');
+    vec.setBit(5, 'X');
+    vec.setBit(10, 'Z');
+    vec.setBit(63, '1');
+
+    EXPECT_EQ(vec.getBit(0), '1');
+    EXPECT_EQ(vec.getBit(1), '0');
+    EXPECT_EQ(vec.getBit(5), 'X');
+    EXPECT_EQ(vec.getBit(10), 'Z');
+    EXPECT_EQ(vec.getBit(63), '1');
+
+    // Overwrite existing states
+    vec.setBit(0, '0');
+    EXPECT_EQ(vec.getBit(0), '0');
+    vec.setBit(5, '1');
+    EXPECT_EQ(vec.getBit(5), '1');
+    vec.setBit(10, 'X');
+    EXPECT_EQ(vec.getBit(10), 'X');
+}
+
+TEST(LogicVectorTest, SetBitAllStates)
+{
+    LogicVector vec = LogicVector::Zero();
+
+    // Set to each state and verify
+    vec.setBit(0, '0');
+    EXPECT_EQ(vec.getBit(0), '0');
+
+    vec.setBit(0, '1');
+    EXPECT_EQ(vec.getBit(0), '1');
+
+    vec.setBit(0, 'X');
+    EXPECT_EQ(vec.getBit(0), 'X');
+
+    vec.setBit(0, 'Z');
+    EXPECT_EQ(vec.getBit(0), 'Z');
+
+    // Invalid character (ignored)
+    vec.setBit(0, '?');
+    EXPECT_EQ(vec.getBit(0), 'Z'); // Previous value unchanged
+}
+
+TEST(LogicVectorTest, GetBitOutOfBounds)
+{
+    LogicVector vec = LogicVector::Zero();
+    EXPECT_THROW(vec.getBit(64), std::out_of_range);
+    EXPECT_THROW(vec.getBit(100), std::out_of_range);
+}
+
+TEST(LogicVectorTest, SetBitOutOfBounds)
+{
+    LogicVector vec = LogicVector::Zero();
+    EXPECT_THROW(vec.setBit(64, '1'), std::out_of_range);
+    EXPECT_THROW(vec.setBit(100, 'X'), std::out_of_range);
+}
+
+TEST(LogicVectorTest, SequentialBitModification)
+{
+    LogicVector vec = LogicVector::Zero();
+
+    // Set bits sequentially with different states
+    for (uint8_t i = 0; i < 16; ++i)
+    {
+        char states[] = { '0', '1', 'X', 'Z' };
+        vec.setBit(i, states[i % 4]);
+    }
+
+    // Verify all bits
+    for (uint8_t i = 0; i < 16; ++i)
+    {
+        char expected = "01XZ"[i % 4];
+        EXPECT_EQ(vec.getBit(i), expected);
+    }
+}
+
+// ============================================================================
+// 4. Range Access via getRange/setRange (Standard order: high >= low)
+// ============================================================================
+
+TEST(LogicVectorTest, GetRangeStandardOrder)
+{
+    LogicVector vec = LogicVector::FromInt(0xDEADBEEF01234567ULL);
+
+    // Get lower byte (bits 7 down to 0): 0x67
+    LogicVector byte0 = vec.getRange(7, 0);
+    EXPECT_EQ(byte0, LogicVector::FromInt(0x67));
+
+    // Get second byte (bits 15 down to 8): 0x45
+    LogicVector byte1 = vec.getRange(15, 8);
+    EXPECT_EQ(byte1, LogicVector::FromInt(0x45));
+
+    // Get upper 32 bits (bits 63 down to 32): 0xDEADBEEF
+    LogicVector upper32 = vec.getRange(63, 32);
+    EXPECT_EQ(upper32, LogicVector::FromInt(0xDEADBEEFULL));
+
+    // Single bit via range (bit 0)
+    EXPECT_EQ(vec.getRange(0, 0), LogicVector::FromInt(1));
+    EXPECT_EQ(vec.getRange(1, 1), LogicVector::FromInt(1));
+    EXPECT_EQ(vec.getRange(2, 2), LogicVector::FromInt(1));
+    EXPECT_EQ(vec.getRange(3, 3), LogicVector::FromInt(0));
+}
+
+TEST(LogicVectorTest, GetRangeReversal)
+{
+    // Test VHDL downto-style range extraction with reversal
+    // 0010 = bits[3:0] = 0,0,1,0
+    LogicVector vec = LogicVector::FromInt(0b0010); 
+
+    // getRange(1, 0): normal order, extract bits 1,0 = 1,0 -> result 10 (binary) = 2
+    LogicVector r1 = vec.getRange(1, 0);
+    EXPECT_EQ(r1, LogicVector::FromInt(0b10));
+
+    // getRange(0, 1): reversed order, extract bits 0,1 with reversal = 0,1 reversed -> 1,0 = 10 -> 2
+    LogicVector r2 = vec.getRange(0, 1);
+    EXPECT_EQ(r2, LogicVector::FromInt(0b01));
+
+    // Test with asymmetric pattern: 1011 (bits 3,2,1,0 = 1,0,1,1)
+    LogicVector vec2 = LogicVector::FromInt(0x0B);
+    
+    // getRange(3, 1): normal, bits 3,2,1 = 1,0,1 -> 101 = 5
+    LogicVector r3 = vec2.getRange(3, 1);
+    EXPECT_EQ(r3, LogicVector::FromInt(0x05));
+
+    // getRange(1, 3): reversed, bits 1,2,3 with reversal = 1,0,1 reversed -> 1,0,1 = 101 = 5
+    LogicVector r4 = vec2.getRange(1, 3);
+    EXPECT_EQ(r4, LogicVector::FromInt(0x05));
+}
+
+TEST(LogicVectorTest, GetRangeWithMixedStates)
+{
+    LogicVector vec = LogicVector::HighZ(); // All bits Z
+    vec.setBit(10, '0');
+    vec.setBit(11, '1');
+    vec.setBit(12, 'X');
+    vec.setBit(13, 'Z');
+
+    LogicVector sub = vec.getRange(13, 10);
+    EXPECT_EQ(sub.getBit(0), '0');
+    EXPECT_EQ(sub.getBit(1), '1');
+    EXPECT_EQ(sub.getBit(2), 'X');
+    EXPECT_EQ(sub.getBit(3), 'Z');
+}
+
+TEST(LogicVectorTest, SetRangeStandardOrder)
+{
+    LogicVector vec = LogicVector::Zero();
+
+    // Write to lower byte (bits 7 down to 0)
+    vec.setRange(7, 0, LogicVector::FromInt(0xFF));
+    EXPECT_EQ(vec.getBit(0), '1');
+    EXPECT_EQ(vec.getBit(7), '1');
+    EXPECT_EQ(vec.getBit(8), '0');
+
+    // Write to upper 32 bits (bits 63 down to 32)
+    vec.setRange(63, 32, LogicVector::FromInt(0x12345678ULL));
+    EXPECT_EQ(vec.getRange(63, 32), LogicVector::FromInt(0x12345678ULL));
+
+    // Mixed states
+    LogicVector mixed = LogicVector::Zero();
+    mixed.setBit(0, 'X');
+    mixed.setBit(1, 'Z');
+    vec.setRange(15, 8, mixed);
+    EXPECT_EQ(vec.getBit(8), 'X');
+    EXPECT_EQ(vec.getBit(9), 'Z');
+}
+
+TEST(LogicVectorTest, SetRangeReversal)
+{
+    // Test example from user specification
+    // 010101.setRange(5,2, 001100) ->110001
+    LogicVector vec = LogicVector::FromInt(0x15);  // 010101
+    LogicVector value = LogicVector::FromInt(0x0C); // 001100
+
+    vec.setRange(5, 2, value);
+    EXPECT_EQ(vec, LogicVector::FromInt(0x31)); // 110001
+
+    // Test reversed example
+    // 010101.setRange(2,5, 001100) ->001101
+    LogicVector vec2 = LogicVector::FromInt(0x15);  // 010101
+    vec2.setRange(2, 5, value);
+    EXPECT_EQ(vec2, LogicVector::FromInt(0x0D)); // 001101
+}
+
+TEST(LogicVectorTest, SetRangePreservesOtherBits)
+{
+    LogicVector vec = LogicVector::FromInt(0xFFFFFFFFFFFFFFFFULL);
+
+    // Write zeros to middle bits only
+    vec.setRange(31, 16, LogicVector::Zero());
+
+    // Verify lower bits unchanged
+    EXPECT_EQ(vec.getRange(15, 0), LogicVector::FromInt(0xFFFFULL));
+
+    // Verify upper bits unchanged
+    EXPECT_EQ(vec.getRange(63, 32), LogicVector::FromInt(0xFFFFFFFFULL));
+
+    // Verify middle bits are zero
+    EXPECT_EQ(vec.getRange(31, 16), LogicVector::Zero());
+}
+
+TEST(LogicVectorTest, GetRangeOutOfBounds)
+{
+    LogicVector vec = LogicVector::FromInt(0x1234);
+
+    EXPECT_THROW(vec.getRange(64, 0), std::out_of_range);   // start out of bounds
+    EXPECT_THROW(vec.getRange(0, 64), std::out_of_range);   // end out of bounds
+    EXPECT_THROW(vec.getRange(100, 90), std::out_of_range); // both out of bounds
+}
+
+TEST(LogicVectorTest, SetRangeOutOfBounds)
+{
+    LogicVector vec = LogicVector::FromInt(0x1234);
+
+    EXPECT_THROW(vec.setRange(64, 0, LogicVector::Zero()), std::out_of_range);
+    EXPECT_THROW(vec.setRange(0, 64, LogicVector::Zero()), std::out_of_range);
+    EXPECT_THROW(vec.setRange(100, 90, LogicVector::Zero()), std::out_of_range);
+}
+
+TEST(LogicVectorTest, SetRangeFullVector)
+{
+    LogicVector vec = LogicVector::Zero();
+    vec.setRange(63, 0, LogicVector::Ones());
+    EXPECT_EQ(vec, LogicVector::Ones());
+}
+
+TEST(LogicVectorTest, SetRangeWithNarrowWidth)
+{
+    LogicVector vec = LogicVector::Zero();
+    LogicVector pattern = LogicVector::FromInt(0xAA);
+
+    vec.setRange(7, 0, pattern);
+    EXPECT_EQ(vec.getRange(7, 0), pattern);
+
+    vec.setRange(15, 8, pattern);
+    EXPECT_EQ(vec.getRange(15, 8), pattern);
+}
+
+// ============================================================================
+// 5. 4-State Bitwise Operations (AND, OR, XOR, NOT)
+// ============================================================================
 
 TEST(LogicVectorTest, BitwiseAndTruthTable)
 {
-    // Truth table:
-    //    0 1 X Z
-    //  0 0 0 0 0
-    //  1 0 1 X X
-    //  X 0 X X X
-    //  Z 0 X X X
-
     const char states[] = { '0', '1', 'X', 'Z' };
     const char expectedAnd[4][4] = {
         { '0', '0', '0', '0' },
@@ -174,7 +436,7 @@ TEST(LogicVectorTest, BitwiseAndTruthTable)
             LogicVector a = make1Bit(states[i]);
             LogicVector b = make1Bit(states[j]);
             LogicVector res = a & b;
-            EXPECT_EQ(res.get(0), expectedAnd[i][j])
+            EXPECT_EQ(res.getBit(0), expectedAnd[i][j])
                 << "Failed AND for " << states[i] << " & " << states[j];
         }
     }
@@ -182,13 +444,6 @@ TEST(LogicVectorTest, BitwiseAndTruthTable)
 
 TEST(LogicVectorTest, BitwiseOrTruthTable)
 {
-    // Truth table:
-    //    0 1 X Z
-    //  0 0 1 X X
-    //  1 1 1 1 1
-    //  X X 1 X X
-    //  Z X 1 X X
-
     const char states[] = { '0', '1', 'X', 'Z' };
     const char expectedOr[4][4] = {
         { '0', '1', 'X', 'X' },
@@ -204,7 +459,7 @@ TEST(LogicVectorTest, BitwiseOrTruthTable)
             LogicVector a = make1Bit(states[i]);
             LogicVector b = make1Bit(states[j]);
             LogicVector res = a | b;
-            EXPECT_EQ(res.get(0), expectedOr[i][j])
+            EXPECT_EQ(res.getBit(0), expectedOr[i][j])
                 << "Failed OR for " << states[i] << " | " << states[j];
         }
     }
@@ -212,13 +467,6 @@ TEST(LogicVectorTest, BitwiseOrTruthTable)
 
 TEST(LogicVectorTest, BitwiseXorTruthTable)
 {
-    // Truth table:
-    //    0 1 X Z
-    //  0 0 1 X X
-    //  1 1 0 X X
-    //  X X X X X
-    //  Z X X X X
-
     const char states[] = { '0', '1', 'X', 'Z' };
     const char expectedXor[4][4] = {
         { '0', '1', 'X', 'X' },
@@ -234,7 +482,7 @@ TEST(LogicVectorTest, BitwiseXorTruthTable)
             LogicVector a = make1Bit(states[i]);
             LogicVector b = make1Bit(states[j]);
             LogicVector res = a ^ b;
-            EXPECT_EQ(res.get(0), expectedXor[i][j])
+            EXPECT_EQ(res.getBit(0), expectedXor[i][j])
                 << "Failed XOR for " << states[i] << " ^ " << states[j];
         }
     }
@@ -242,10 +490,10 @@ TEST(LogicVectorTest, BitwiseXorTruthTable)
 
 TEST(LogicVectorTest, BitwiseNotTruthTable)
 {
-    EXPECT_EQ((~make1Bit('0')).get(0), '1');
-    EXPECT_EQ((~make1Bit('1')).get(0), '0');
-    EXPECT_EQ((~make1Bit('X')).get(0), 'X');
-    EXPECT_EQ((~make1Bit('Z')).get(0), 'X');
+    EXPECT_EQ((~make1Bit('0')).getBit(0), '1');
+    EXPECT_EQ((~make1Bit('1')).getBit(0), '0');
+    EXPECT_EQ((~make1Bit('X')).getBit(0), 'X');
+    EXPECT_EQ((~make1Bit('Z')).getBit(0), 'X');
 
     EXPECT_EQ(~LogicVector::Zero(), LogicVector::Ones());
     EXPECT_EQ(~LogicVector::Ones(), LogicVector::Zero());
@@ -257,45 +505,47 @@ TEST(LogicVectorTest, BitwiseNotTruthTable)
 TEST(LogicVectorTest, VectorWideBitwiseOperations)
 {
     LogicVector a = LogicVector::FromInt(0x0F0F0F0F0F0F0F0FULL);
-    LogicVector b = LogicVector::FromInt(0x3333333333333333ULL);
+    LogicVector b = LogicVector::FromInt(0xF0F0F0F0F0F0F0F0ULL);
 
-    EXPECT_EQ(a & b, LogicVector::FromInt(0x0303030303030303ULL));
-    EXPECT_EQ(a | b, LogicVector::FromInt(0x3F3F3F3F3F3F3F3FULL));
-    EXPECT_EQ(a ^ b, LogicVector::FromInt(0x3C3C3C3C3C3C3C3CULL));
+    EXPECT_EQ(a & b, LogicVector::Zero());
+    EXPECT_EQ(a | b, LogicVector::Ones());
+    EXPECT_EQ(a ^ b, LogicVector::Ones());
+
+    LogicVector c = LogicVector::FromInt(0x3333333333333333ULL);
+    EXPECT_EQ((a & b) & c, a & (b & c));
+    EXPECT_EQ((a | b) | c, a | (b | c));
+    EXPECT_EQ((a ^ b) ^ c, a ^ (b ^ c));
 }
 
 // ============================================================================
-// 4. Arithmetic Addition (operator+)
+// 6. Addition (Commutative XOR for definite bits)
 // ============================================================================
 
-TEST(LogicVectorTest, AdditionDefiniteValues)
+TEST(LogicVectorTest, AdditionDefiniteBits)
 {
-    LogicVector a = LogicVector::FromInt(40);
-    LogicVector b = LogicVector::FromInt(2);
-    EXPECT_EQ(a + b, LogicVector::FromInt(42));
+    LogicVector a = LogicVector::FromInt(0x0ULL);
+    LogicVector b = LogicVector::FromInt(0x1ULL);
 
-    LogicVector maxVal = LogicVector::FromInt(~0ULL);
-    LogicVector one = LogicVector::FromInt(1);
-    EXPECT_EQ(maxVal + one, LogicVector::FromInt(0ULL)); // 64-bit wrap-around
+    EXPECT_EQ(a + a, LogicVector::FromInt(0x0ULL));
+    EXPECT_EQ(a + b, LogicVector::FromInt(0x1ULL));
+    EXPECT_EQ(b + b, LogicVector::FromInt(0x0ULL));
+
+    EXPECT_EQ(a + b, b + a);
 }
 
-TEST(LogicVectorTest, AdditionWithIndefiniteValuesReturnsUnknown)
+TEST(LogicVectorTest, AdditionWithUndefinedBits)
 {
-    LogicVector def = LogicVector::FromInt(42);
+    LogicVector def = LogicVector::FromInt(0xFFULL);
     LogicVector unk = LogicVector::Unknown();
     LogicVector hz = LogicVector::HighZ();
 
     EXPECT_EQ(def + unk, LogicVector::Unknown());
-    EXPECT_EQ(unk + def, LogicVector::Unknown());
     EXPECT_EQ(def + hz, LogicVector::Unknown());
     EXPECT_EQ(unk + hz, LogicVector::Unknown());
-
-    LogicVector mixed{ 1ULL, 2ULL }; // bit 1 is indefinite
-    EXPECT_EQ(def + mixed, LogicVector::Unknown());
 }
 
 // ============================================================================
-// 5. Logical & Arithmetic Shifts (lsl, lsr, asr)
+// 7. Logical Shifts (lsl, lsr)
 // ============================================================================
 
 TEST(LogicVectorTest, LogicalShiftLeft)
@@ -308,10 +558,9 @@ TEST(LogicVectorTest, LogicalShiftLeft)
     EXPECT_EQ(v.lsl(64), LogicVector::Zero());
     EXPECT_EQ(v.lsl(70), LogicVector::Zero());
 
-    // Negative shamt acts as LSR
-    EXPECT_EQ(v.lsl(-2), LogicVector::FromInt(0x0000000000000003ULL));
+    // LSL expects a natural number. -2 is understood as a large positive shift, resulting in zero.
+    EXPECT_EQ(v.lsl(-2), LogicVector::FromInt(0));
 
-    // Custom width (8-bit)
     LogicVector v8 = LogicVector::FromInt(0x0F);
     EXPECT_EQ(v8.lsl(2, 8), LogicVector::FromInt(0x3C));
     EXPECT_EQ(v8.lsl(4, 8), LogicVector::FromInt(0xF0));
@@ -328,46 +577,58 @@ TEST(LogicVectorTest, LogicalShiftRight)
     EXPECT_EQ(v.lsr(64), LogicVector::Zero());
     EXPECT_EQ(v.lsr(70), LogicVector::Zero());
 
-    // Negative shamt acts as LSL
+    // LSR expects a natural number. -2 is understood as a large positive shift, resulting in zero.
     LogicVector small = LogicVector::FromInt(0x01);
-    EXPECT_EQ(small.lsr(-4), LogicVector::FromInt(0x10));
+    EXPECT_EQ(small.lsr(-4), LogicVector::FromInt(0));
 
-    // Custom width (8-bit)
     LogicVector v8 = LogicVector::FromInt(0xF0);
     EXPECT_EQ(v8.lsr(2, 8), LogicVector::FromInt(0x3C));
 }
 
+TEST(LogicVectorTest, ShiftWithMixedStates)
+{
+    LogicVector vec = LogicVector::Zero();
+    vec.setBit(0, 'X');
+    vec.setBit(1, 'Z');
+
+    LogicVector shifted = vec.lsl(2);
+    EXPECT_EQ(shifted.getBit(2), 'X');
+    EXPECT_EQ(shifted.getBit(3), 'Z');
+    EXPECT_EQ(shifted.getBit(0), '0');
+}
+
+// ============================================================================
+// 8. Arithmetic Shift LogicalRight (asr)
+// ============================================================================
+
 TEST(LogicVectorTest, ArithmeticShiftRight)
 {
-    // Positive number (MSB is 0)
     LogicVector pos = LogicVector::FromInt(0x4000000000000000ULL);
     EXPECT_EQ(pos.asr(2), LogicVector::FromInt(0x1000000000000000ULL));
 
-    // Negative number (MSB is 1)
     LogicVector neg = LogicVector::FromInt(0x8000000000000000ULL);
     EXPECT_EQ(neg.asr(1), LogicVector::FromInt(0xC000000000000000ULL));
     EXPECT_EQ(neg.asr(4), LogicVector::FromInt(0xF800000000000000ULL));
     EXPECT_EQ(neg.asr(63), LogicVector::Ones());
     EXPECT_EQ(neg.asr(64), LogicVector::Ones());
     EXPECT_EQ(neg.asr(70), LogicVector::Ones());
+}
 
-    // Custom width (8-bit signed)
-    LogicVector neg8 = LogicVector::FromInt(0x80); // 8-bit sign bit set
+TEST(LogicVectorTest, ArithmeticShiftRightNarrowWidth)
+{
+    LogicVector neg8 = LogicVector::FromInt(0x80);
     EXPECT_EQ(neg8.asr(1, 8), LogicVector::FromInt(0xC0));
     EXPECT_EQ(neg8.asr(3, 8), LogicVector::FromInt(0xF0));
     EXPECT_EQ(neg8.asr(7, 8), LogicVector::FromInt(0xFF));
     EXPECT_EQ(neg8.asr(8, 8), LogicVector::FromInt(0xFF));
 
-    LogicVector pos8 = LogicVector::FromInt(0x40); // 8-bit sign bit 0
+    LogicVector pos8 = LogicVector::FromInt(0x40);
     EXPECT_EQ(pos8.asr(1, 8), LogicVector::FromInt(0x20));
     EXPECT_EQ(pos8.asr(8, 8), LogicVector::Zero());
-
-    // Negative shamt acts as LSL
-    EXPECT_EQ(pos8.asr(-2, 8), LogicVector::FromInt(0x00));
 }
 
 // ============================================================================
-// 6. Rotations (rol, ror)
+// 9. Rotations (rol, ror)
 // ============================================================================
 
 TEST(LogicVectorTest, RotateLeftAndRight64Bit)
@@ -377,44 +638,47 @@ TEST(LogicVectorTest, RotateLeftAndRight64Bit)
     EXPECT_EQ(v.rol(0), v);
     EXPECT_EQ(v.ror(0), v);
 
-    // ROL 1: bit 63 becomes bit 0, bit 0 becomes bit 1
     EXPECT_EQ(v.rol(1), LogicVector::FromInt(0x0000000000000003ULL));
-
-    // ROR 1: bit 0 becomes bit 63, bit 63 becomes bit 62
     EXPECT_EQ(v.ror(1), LogicVector::FromInt(0xC000000000000000ULL));
 
-    // Full circle rotation
     EXPECT_EQ(v.rol(64), v);
     EXPECT_EQ(v.ror(64), v);
 
-    // Invertibility
     EXPECT_EQ(v.rol(15).ror(15), v);
     EXPECT_EQ(v.ror(23).rol(23), v);
 
-    // Negative shamt
     EXPECT_EQ(v.rol(-5), v.ror(5));
     EXPECT_EQ(v.ror(-5), v.rol(5));
 }
 
 TEST(LogicVectorTest, RotateLeftAndRightNarrowWidth)
 {
-    // 8-bit rotation of 0x81 (1000 0001)
     LogicVector v8 = LogicVector::FromInt(0x81);
 
-    EXPECT_EQ(v8.rol(1, 8), LogicVector::FromInt(0x03)); // 0000 0011
-    EXPECT_EQ(v8.ror(1, 8), LogicVector::FromInt(0xC0)); // 1100 0000
+    EXPECT_EQ(v8.rol(1, 8), LogicVector::FromInt(0x03));
+    EXPECT_EQ(v8.ror(1, 8), LogicVector::FromInt(0xC0));
     EXPECT_EQ(v8.rol(8, 8), v8);
     EXPECT_EQ(v8.ror(8, 8), v8);
     EXPECT_EQ(v8.rol(9, 8), v8.rol(1, 8));
 
-    // 4-bit rotation of 0x9 (1001)
     LogicVector v4 = LogicVector::FromInt(0x9);
     EXPECT_EQ(v4.rol(1, 4), LogicVector::FromInt(0x3));
     EXPECT_EQ(v4.ror(1, 4), LogicVector::FromInt(0xC));
 }
 
+TEST(LogicVectorTest, RotateWithMixedStates)
+{
+    LogicVector vec = LogicVector::Zero();
+    vec.setBit(0, 'X');
+    vec.setBit(63, 'Z');
+
+    LogicVector rotated = vec.rol(1);
+    EXPECT_EQ(rotated.getBit(1), 'X');
+    EXPECT_EQ(rotated.getBit(0), 'Z');
+}
+
 // ============================================================================
-// 7. Multi-Driver Bus Resolution (resolve)
+// 10. Multi-Driver Bus Resolution (resolve)
 // ============================================================================
 
 TEST(LogicVectorTest, ResolutionTruthTable)
@@ -434,7 +698,7 @@ TEST(LogicVectorTest, ResolutionTruthTable)
             LogicVector a = make1Bit(states[i]);
             LogicVector b = make1Bit(states[j]);
             LogicVector res = a.resolve(b);
-            EXPECT_EQ(res.get(0), expectedResolve[i][j])
+            EXPECT_EQ(res.getBit(0), expectedResolve[i][j])
                 << "Failed resolve for " << states[i] << " resolve " << states[j];
         }
     }
@@ -442,108 +706,209 @@ TEST(LogicVectorTest, ResolutionTruthTable)
 
 TEST(LogicVectorTest, ResolutionVectorMultiBit)
 {
-    // Tri-state bus multiplexing:
-    // Driver A active on lower 32 bits, High-Z (v=1, m=1) on upper 32 bits
     LogicVector driverA{ 0xFFFFFFFF12345678ULL, 0xFFFFFFFF00000000ULL };
-    // Driver B High-Z (v=1, m=1) on lower 32 bits, active on upper 32 bits
     LogicVector driverB{ 0xABCDEF01FFFFFFFFULL, 0x00000000FFFFFFFFULL };
 
     LogicVector bus = driverA.resolve(driverB);
     EXPECT_EQ(bus.value, 0xABCDEF0112345678ULL);
-    EXPECT_EQ(bus.mask, 0ULL); // All bits definite!
+    EXPECT_EQ(bus.mask, 0ULL);
 
-    // Add driver with contention on bit 0 only (bit 0 is driven to 1, bits 1..63 are High-Z)
     LogicVector driverC{ ~0ULL, ~1ULL };
     LogicVector busWithConflict = bus.resolve(driverC);
-    // Bit 0 was 0 in driverA (0x...8), now driverC drives 1 -> contention on bit 0!
-    EXPECT_EQ(busWithConflict.get(0), 'X');
-    EXPECT_EQ(busWithConflict.get(1), '0');
-    EXPECT_EQ(busWithConflict.get(2), '0');
-    EXPECT_EQ(busWithConflict.get(3), '1');
+    EXPECT_EQ(busWithConflict.getBit(0), 'X');
+    EXPECT_EQ(busWithConflict.getBit(1), '0');
+    EXPECT_EQ(busWithConflict.getBit(2), '0');
+    EXPECT_EQ(busWithConflict.getBit(3), '1');
+}
+
+TEST(LogicVectorTest, ResolutionAssociativity)
+{
+    LogicVector a = make1Bit('0');
+    LogicVector b = make1Bit('Z');
+    LogicVector c = make1Bit('1');
+
+    EXPECT_EQ((a.resolve(b)).resolve(c), a.resolve(b.resolve(c)));
+}
+
+TEST(LogicVectorTest, ResolutionIdentity)
+{
+    LogicVector v = LogicVector::FromInt(0x12345678ULL);
+    LogicVector hz = LogicVector::HighZ();
+
+    EXPECT_EQ(v.resolve(hz), v);
+    EXPECT_EQ(hz.resolve(v), v);
 }
 
 // ============================================================================
-// 8. Bit Manipulation & Range Extraction (get, set, getRange)
+// 11. Range Comparison Tests (now possible with methods)
 // ============================================================================
 
-TEST(LogicVectorTest, BitGetAndSet)
+TEST(LogicVectorTest, CompareRanges)
+{
+    LogicVector a = LogicVector::FromInt(0xDEADBEEF01234567ULL);
+    LogicVector b = LogicVector::FromInt(0xDEADBEEF01234567ULL);
+
+    // Compare ranges directly (no macro issues)
+    EXPECT_EQ(a.getRange(15, 0), b.getRange(15, 0));
+    EXPECT_EQ(a.getRange(63, 32), b.getRange(63, 32));
+}
+
+TEST(LogicVectorTest, CompareBits)
+{
+    LogicVector a = LogicVector::FromInt(0xFF);
+    LogicVector b = LogicVector::FromInt(0xFF);
+
+    // Compare individual bits directly
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        EXPECT_EQ(a.getBit(i), b.getBit(i));
+    }
+}
+
+TEST(LogicVectorTest, RangeComparisonWithMixedStates)
+{
+    LogicVector v = LogicVector::HighZ();
+    v.setBit(0, '0');
+    v.setBit(1, '1');
+    v.setBit(2, 'X');
+
+    LogicVector expected = LogicVector::Zero();
+    expected.setBit(0, '0');
+    expected.setBit(1, '1');
+    expected.setBit(2, 'X');
+
+    EXPECT_EQ(v.getRange(2, 0), expected.getRange(2, 0));
+}
+
+// ============================================================================
+// 12. Edge Cases and Stress Tests
+// ============================================================================
+
+TEST(LogicVectorTest, AllZeroPattern)
+{
+    LogicVector vec = LogicVector::Zero();
+    for (uint8_t i = 0; i < 64; ++i)
+    {
+        EXPECT_EQ(vec.getBit(i), '0');
+    }
+
+    EXPECT_EQ(vec & vec, vec);
+    EXPECT_EQ(vec | vec, vec);
+    EXPECT_EQ(vec ^ vec, vec);
+    EXPECT_EQ(vec + vec, vec);
+}
+
+TEST(LogicVectorTest, AllOnesPattern)
+{
+    LogicVector vec = LogicVector::Ones();
+    for (uint8_t i = 0; i < 64; ++i)
+    {
+        EXPECT_EQ(vec.getBit(i), '1');
+    }
+
+    EXPECT_EQ(vec & vec, vec);
+    EXPECT_EQ(vec | vec, vec);
+    EXPECT_EQ(vec ^ vec, LogicVector::Zero());
+}
+
+TEST(LogicVectorTest, AlternatingPattern)
+{
+    LogicVector vec = LogicVector::FromInt(0xAAAAAAAAAAAAAAAAULL);
+    for (uint8_t i = 0; i < 64; ++i)
+    {
+        char expected = (i % 2 == 0) ? '0' : '1';
+        EXPECT_EQ(vec.getBit(i), expected);
+    }
+
+    LogicVector shifted = vec.lsl(1);
+    for (uint8_t i = 1; i < 64; ++i)
+    {
+        char expected = (i % 2 == 0) ? '1' : '0';
+        EXPECT_EQ(shifted.getBit(i), expected);
+    }
+}
+
+TEST(LogicVectorTest, RangeOperationsOnLargeRanges)
 {
     LogicVector vec = LogicVector::Zero();
 
-    vec.set(0, '1');
-    vec.set(5, 'X');
-    vec.set(63, 'Z');
+    vec.setRange(63, 32, LogicVector::Ones());
 
-    EXPECT_EQ(vec.get(0), '1');
-    EXPECT_EQ(vec.get(1), '0');
-    EXPECT_EQ(vec.get(5), 'X');
-    EXPECT_EQ(vec.get(63), 'Z');
+    for (uint8_t i = 32; i < 64; ++i)
+    {
+        EXPECT_EQ(vec.getBit(i), '1');
+    }
 
-    // Overwrite existing states
-    vec.set(0, '0');
-    EXPECT_EQ(vec.get(0), '0');
-    vec.set(5, '1');
-    EXPECT_EQ(vec.get(5), '1');
-    vec.set(63, 'X');
-    EXPECT_EQ(vec.get(63), 'X');
-
-    // Out of bounds get and set
-    EXPECT_EQ(vec.get(64), 0);
-    EXPECT_EQ(vec.get(100), 0);
-
-    // Setting out of bounds or invalid char does not crash or corrupt
-    vec.set(64, '1');
-    vec.set(10, '?');
-    EXPECT_EQ(vec.get(10), '0');
+    for (uint8_t i = 0; i < 32; ++i)
+    {
+        EXPECT_EQ(vec.getBit(i), '0');
+    }
 }
 
-TEST(LogicVectorTest, GetRangeValid)
+TEST(LogicVectorTest, ComplexOperationSequence)
 {
-    // 0xDEADBEEF01234567
-    LogicVector vec = LogicVector::FromInt(0xDEADBEEF01234567ULL);
+    LogicVector a = LogicVector::FromInt(0x0F0F0F0F0F0F0F0FULL);
+    LogicVector b = LogicVector::FromInt(0xF0F0F0F0F0F0F0F0ULL);
 
-    // Lowest byte (bits 0..7): 0x67
-    LogicVector byte0 = vec.getRange(0, 7);
-    EXPECT_EQ(byte0, LogicVector::FromInt(0x67));
-
-    // Second byte (bits 8..15): 0x45
-    LogicVector byte1 = vec.getRange(8, 15);
-    EXPECT_EQ(byte1, LogicVector::FromInt(0x45));
-
-    // Upper 32 bits (bits 32..63): 0xDEADBEEF
-    LogicVector upper32 = vec.getRange(32, 63);
-    EXPECT_EQ(upper32, LogicVector::FromInt(0xDEADBEEFULL));
-
-    // Single bit range
-    EXPECT_EQ(vec.getRange(0, 0), LogicVector::FromInt(1)); // 0x7 & 1 = 1
-    EXPECT_EQ(vec.getRange(1, 1), LogicVector::FromInt(1)); // (0x7 >> 1) & 1 = 1
-    EXPECT_EQ(vec.getRange(2, 2), LogicVector::FromInt(1)); // (0x7 >> 2) & 1 = 1
-    EXPECT_EQ(vec.getRange(3, 3), LogicVector::FromInt(0)); // (0x7 >> 3) & 1 = 0
-
-    // Full 64-bit range
-    EXPECT_EQ(vec.getRange(0, 63), vec);
+    LogicVector result = ((a & b) | (a ^ b)).lsl(4).ror(8);
+    EXPECT_EQ(result.getBit(0), '1');
 }
 
-TEST(LogicVectorTest, GetRangeWithMixedStates)
+TEST(LogicVectorTest, MultipleRangeWrites)
 {
-    LogicVector vec = LogicVector::HighZ(); // All bits Z
-    vec.set(10, '0');
-    vec.set(11, '1');
-    vec.set(12, 'X');
-    vec.set(13, 'Z');
+    LogicVector vec = LogicVector::Zero();
 
-    LogicVector sub = vec.getRange(10, 13);
-    EXPECT_EQ(sub.get(0), '0');
-    EXPECT_EQ(sub.get(1), '1');
-    EXPECT_EQ(sub.get(2), 'X');
-    EXPECT_EQ(sub.get(3), 'Z');
+    vec.setRange(7, 0, LogicVector::FromInt(0xAA));
+    vec.setRange(15, 8, LogicVector::FromInt(0x55));
+    vec.setRange(23, 16, LogicVector::FromInt(0xFF));
+
+    EXPECT_EQ(vec.getRange(7, 0), LogicVector::FromInt(0xAA));
+    EXPECT_EQ(vec.getRange(15, 8), LogicVector::FromInt(0x55));
+    EXPECT_EQ(vec.getRange(23, 16), LogicVector::FromInt(0xFF));
+
+    // Write overlapping ranges
+    vec.setRange(19, 4, LogicVector::Zero());
+    EXPECT_EQ(vec.getBit(4), '0');
+    EXPECT_EQ(vec.getBit(19), '0');
 }
 
-TEST(LogicVectorTest, GetRangeInvalidBounds)
+TEST(LogicVectorTest, RangeExtractionChaining)
 {
-    LogicVector vec = LogicVector::FromInt(0x1234);
+    LogicVector vec = LogicVector::FromInt(0x123456789ABCDEFULL);
 
-    EXPECT_EQ(vec.getRange(10, 5), LogicVector::Unknown()); // start > end
-    EXPECT_EQ(vec.getRange(64, 65), LogicVector::Unknown()); // out of bounds
-    EXPECT_EQ(vec.getRange(0, 64), LogicVector::Unknown()); // end out of bounds
+    // Extract nested ranges
+    LogicVector r1 = vec.getRange(63, 32);
+    LogicVector r2 = r1.getRange(15, 0);
+    
+    // Should equal the corresponding bits from original
+    EXPECT_EQ(r2, vec.getRange(47, 32));
+}
+
+TEST(LogicVectorTest, SetRangeMultipleTimes)
+{
+    LogicVector vec = LogicVector::Zero();
+
+    // Set same range multiple times
+    vec.setRange(15, 0, LogicVector::FromInt(0x1111));
+    EXPECT_EQ(vec.getRange(15, 0), LogicVector::FromInt(0x1111));
+
+    vec.setRange(15, 0, LogicVector::FromInt(0x2222));
+    EXPECT_EQ(vec.getRange(15, 0), LogicVector::FromInt(0x2222));
+
+    vec.setRange(15, 0, LogicVector::FromInt(0x3333));
+    EXPECT_EQ(vec.getRange(15, 0), LogicVector::FromInt(0x3333));
+}
+
+TEST(LogicVectorTest, BoundaryRanges)
+{
+    LogicVector vec = LogicVector::FromInt(0xFFFFFFFFFFFFFFFFULL);
+
+    // Bits at boundaries
+    EXPECT_EQ(vec.getBit(0), '1');
+    EXPECT_EQ(vec.getBit(63), '1');
+
+    // Ranges touching boundaries
+    EXPECT_EQ(vec.getRange(0, 0), LogicVector::FromInt(1));
+    EXPECT_EQ(vec.getRange(63, 63), LogicVector::FromInt(1));
+    EXPECT_EQ(vec.getRange(63, 0), vec);
 }

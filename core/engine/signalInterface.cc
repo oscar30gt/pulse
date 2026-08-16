@@ -1,15 +1,27 @@
 #include "signalInterface.h"
 
 #include <stdexcept>
-#include <iostream> // For debug output
+#include <string>
 namespace Pulse
 {
+
+    bit_width_mismatch::bit_width_mismatch(const std::string& message, bitWidth_t received, bitWidth_t expected)
+        : std::invalid_argument(message + ": " + std::to_string(received) + "b signal cannot be connected to " + std::to_string(expected) + "b signal.") { }
+
+    bit_width_mismatch::bit_width_mismatch(const std::string& message)
+        : std::invalid_argument(message) { }
+
     // -------- Base ------------------------------------------------------------------------------
 
 
-    ISignalBase::ISignalBase(bitWidth_t bitWidth) : m_bitWidth(bitWidth) { }
+    ISignalBase::ISignalBase(bitWidth_t bitWidth) : m_bitWidth(bitWidth) { 
+        if (bitWidth > BITWIDTH_MAX)
+            throw std::invalid_argument("Bit width exceeds maximum allowed value.");
+        if (bitWidth == 0)
+            throw std::invalid_argument("Bit width must be greater than zero.");
+    }
 
-    ISignalBase::~ISignalBase() { }
+    ISignalBase::~ISignalBase() = default;
 
     bitWidth_t ISignalBase::width() const
     {
@@ -46,7 +58,7 @@ namespace Pulse
     void ISignalReceiver::addSource(ISignalEmitter* source)
     {
         if (source && source->width() != m_bitWidth)
-            throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
+            throw bit_width_mismatch("Bit width mismatch between emitter and receiver", source->width(), m_bitWidth);
 
         if (m_sources.insert(source)) {
             source->addTargetInternal(this);
@@ -107,7 +119,7 @@ namespace Pulse
     void ISignalEmitter::addTarget(ISignalReceiver* target)
     {
         if (target->width() != m_bitWidth)
-            throw std::invalid_argument("Bit width mismatch between emitter and receiver.");
+            throw bit_width_mismatch("Bit width mismatch between emitter and receiver", m_bitWidth, target->width());
 
         if (m_targets.insert(target)) {
             target->addSourceInternal(this);

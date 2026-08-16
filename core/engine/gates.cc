@@ -1,157 +1,224 @@
 #include "gates.h"
-
+#include <iostream> // For debug output
 namespace Pulse
 {
-    ITwoInputGate::ITwoInputGate(bitWidth_t bitWidth)
-        : Component({ "in0", "in1" }, { "out" }),
-        in0(bitWidth, this, &ITwoInputGate::recalculate),
-        in1(bitWidth, this, &ITwoInputGate::recalculate),
-        out(bitWidth)
-    { }
-
-    ITwoInputGate::~ITwoInputGate() = default;
-
-    void ITwoInputGate::onConnected(const std::string& portName, Wire& signal)
+    ANDGate::ANDGate(Wire* in0, Wire* in1, Wire* out)
+        : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
+        m_in0(in0->width(), this, &ANDGate::recalculate),
+        m_in1(in0->width(), this, &ANDGate::recalculate),       // Width is assumed to be the same as in0
+        m_out(in0->width())                                     // Width is assumed to be the same as in0
     {
-        if (portName == "in0")
+        m_in0.addSource(in0);
+
+        try
         {
-            in0.addSource(&signal);
+            // As all port widths are forced to be the same. If any of the widths are mismatched,
+            // connection will throw a bit_width_mismatch exception.
+            m_in1.addSource(in1);
+            m_out.addTarget(out);
         }
-        else if (portName == "in1")
+        catch (const bit_width_mismatch& e)
         {
-            in1.addSource(&signal);
-        }
-        else if (portName == "out")
-        {
-            out.addTarget(&signal);
+            throw bit_width_mismatch("AND gate construction failed: " + std::string(e.what()));
         }
     }
 
-    void ITwoInputGate::onDisconnected(const std::string& portName, Wire& signal)
-    {
-        if (portName == "in0")
-        {
-            in0.removeSource(&signal);
-        }
-        else if (portName == "in1")
-        {
-            in1.removeSource(&signal);
-        }
-        else if (portName == "out")
-        {
-            out.removeTarget(&signal);
-        }
-    }
-
-    // --------------------------------------------------------------------------------------------
-
-    ANDGate::ANDGate(bitWidth_t bitWidth) : ITwoInputGate(bitWidth) { }
     ANDGate::~ANDGate() = default;
 
     bool ANDGate::recalculate(ttl_t ttl)
     {
-        LogicVector a = in0.pull();
-        LogicVector b = in1.pull();
-        return out.drive(a & b, ttl);
+        LogicVector a = m_in0.pull();
+        LogicVector b = m_in1.pull();
+        return m_out.drive(a & b, ttl);
     }
 
     // --------------------------------------------------------------------------------------------
 
-    ORGate::ORGate(bitWidth_t bitWidth) : ITwoInputGate(bitWidth) { }
+    ORGate::ORGate(Wire* in0, Wire* in1, Wire* out)
+        : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
+        m_in0(in0->width(), this, &ORGate::recalculate),
+        m_in1(in0->width(), this, &ORGate::recalculate),        // Width is assumed to be the same as in0
+        m_out(in0->width())                                     // Width is assumed to be the same as in0
+    {
+        m_in0.addSource(in0);
+
+        try
+        {
+            // As all port widths are forced to be the same. If any of the widths are mismatched,
+            // connection will throw a bit_width_mismatch exception.
+            m_in1.addSource(in1);
+            m_out.addTarget(out);
+        }
+        catch (const bit_width_mismatch& e)
+        {
+            throw bit_width_mismatch("OR gate construction failed: " + std::string(e.what()));
+        }
+    }
+
     ORGate::~ORGate() = default;
 
     bool ORGate::recalculate(ttl_t ttl)
     {
-        LogicVector a = in0.pull();
-        LogicVector b = in1.pull();
-        return out.drive(a | b, ttl);
+        LogicVector a = m_in0.pull();
+        LogicVector b = m_in1.pull();
+        return m_out.drive(a | b, ttl);
     }
 
     // --------------------------------------------------------------------------------------------
 
-    XORGate::XORGate(bitWidth_t bitWidth) : ITwoInputGate(bitWidth) { }
+    XORGate::XORGate(Wire* in0, Wire* in1, Wire* out)
+        : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
+        m_in0(in0->width(), this, &XORGate::recalculate),
+        m_in1(in0->width(), this, &XORGate::recalculate),       // Width is assumed to be the same as in0
+        m_out(in0->width())                                     // Width is assumed to be the same as in0
+    {
+        m_in0.addSource(in0);
+
+        try
+        {
+            // As all port widths are forced to be the same. If any of the widths are mismatched,
+            // connection will throw a bit_width_mismatch exception.
+            m_in1.addSource(in1);
+            m_out.addTarget(out);
+        }
+        catch (const bit_width_mismatch& e)
+        {
+            throw bit_width_mismatch("XOR gate construction failed: " + std::string(e.what()));
+        }
+    }
+
     XORGate::~XORGate() = default;
 
     bool XORGate::recalculate(ttl_t ttl)
     {
-        LogicVector a = in0.pull();
-        LogicVector b = in1.pull();
-        return out.drive(a ^ b, ttl);
+        LogicVector a = m_in0.pull();
+        LogicVector b = m_in1.pull();
+        return m_out.drive(a ^ b, ttl);
     }
 
     // --------------------------------------------------------------------------------------------
 
-    NANDGate::NANDGate(bitWidth_t bitWidth) : ITwoInputGate(bitWidth) { }
+    NANDGate::NANDGate(Wire* in0, Wire* in1, Wire* out)
+        : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
+        m_in0(in0->width(), this, &NANDGate::recalculate),
+        m_in1(in0->width(), this, &NANDGate::recalculate),      // Width is assumed to be the same as in0
+        m_out(in0->width())                                     // Width is assumed to be the same as in0
+    {
+        m_in0.addSource(in0);
+
+        try
+        {
+            // As all port widths are forced to be the same. If any of the widths are mismatched,
+            // connection will throw a bit_width_mismatch exception.
+            m_in1.addSource(in1);
+            m_out.addTarget(out);
+        }
+        catch (const bit_width_mismatch& e)
+        {
+            throw bit_width_mismatch("NAND gate construction failed: " + std::string(e.what()));
+        }
+    }
+
     NANDGate::~NANDGate() = default;
 
     bool NANDGate::recalculate(ttl_t ttl)
     {
-        LogicVector a = in0.pull();
-        LogicVector b = in1.pull();
-        return out.drive(~(a & b), ttl);
+        LogicVector a = m_in0.pull();
+        LogicVector b = m_in1.pull();
+        return m_out.drive(~(a & b), ttl);
     }
 
     // --------------------------------------------------------------------------------------------
 
-    NORGate::NORGate(bitWidth_t bitWidth) : ITwoInputGate(bitWidth) { }
+    NORGate::NORGate(Wire* in0, Wire* in1, Wire* out)
+        : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
+        m_in0(in0->width(), this, &NORGate::recalculate),
+        m_in1(in0->width(), this, &NORGate::recalculate),       // Width is assumed to be the same as in0
+        m_out(in0->width())                                     // Width is assumed to be the same as in0
+    {
+        m_in0.addSource(in0);
+
+        try
+        {
+            // As all port widths are forced to be the same. If any of the widths are mismatched,
+            // connection will throw a bit_width_mismatch exception.
+            m_in1.addSource(in1);
+            m_out.addTarget(out);
+        }
+        catch (const bit_width_mismatch& e)
+        {
+            throw bit_width_mismatch("NOR gate construction failed: " + std::string(e.what()));
+        }
+    }
+
     NORGate::~NORGate() = default;
 
     bool NORGate::recalculate(ttl_t ttl)
     {
-        LogicVector a = in0.pull();
-        LogicVector b = in1.pull();
-        return out.drive(~(a | b), ttl);
+        LogicVector a = m_in0.pull();
+        LogicVector b = m_in1.pull();
+        return m_out.drive(~(a | b), ttl);
     }
 
     // --------------------------------------------------------------------------------------------
 
-    XNORGate::XNORGate(bitWidth_t bitWidth) : ITwoInputGate(bitWidth) { }
+    XNORGate::XNORGate(Wire* in0, Wire* in1, Wire* out)
+        : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
+        m_in0(in0->width(), this, &XNORGate::recalculate),
+        m_in1(in0->width(), this, &XNORGate::recalculate),      // Width is assumed to be the same as in0
+        m_out(in0->width())                                     // Width is assumed to be the same as in0
+    {
+        m_in0.addSource(in0);
+
+        try
+        {
+            // As all port widths are forced to be the same. If any of the widths are mismatched,
+            // connection will throw a bit_width_mismatch exception.
+            m_in1.addSource(in1);
+            m_out.addTarget(out);
+        }
+        catch (const bit_width_mismatch& e)
+        {
+            throw bit_width_mismatch("XNOR gate construction failed: " + std::string(e.what()));
+        }
+    }
+
     XNORGate::~XNORGate() = default;
 
     bool XNORGate::recalculate(ttl_t ttl)
     {
-        LogicVector a = in0.pull();
-        LogicVector b = in1.pull();
-        return out.drive(~(a ^ b), ttl);
+        LogicVector a = m_in0.pull();
+        LogicVector b = m_in1.pull();
+        return m_out.drive(~(a ^ b), ttl);
     }
 
     // --------------------------------------------------------------------------------------------
 
-    NOTGate::NOTGate(bitWidth_t bitWidth)
-        : Component({ "in" }, { "out" }),
-        in(bitWidth, this, &NOTGate::recalculate),
-        out(bitWidth)
-    { }
+    NOTGate::NOTGate(Wire* in, Wire* out)
+        : Component({ { "in", in } }, { { "out", out } }),
+        m_in(in->width(), this, &NOTGate::recalculate),
+        m_out(in->width())                                      // Width is assumed to be the same as in
+    {
+        m_in.addSource(in);
+
+        try
+        {
+            // As all port widths are forced to be the same. If any of the widths are mismatched,
+            // connection will throw a bit_width_mismatch exception.
+            m_out.addTarget(out);
+        }
+        catch (const bit_width_mismatch& e)
+        {
+            throw bit_width_mismatch("NOT gate construction failed: " + std::string(e.what()));
+        }
+    }
+
 
     NOTGate::~NOTGate() = default;
 
-    void NOTGate::onConnected(const std::string& portName, Wire& signal)
-    {
-        if (portName == "in")
-        {
-            in.addSource(&signal);
-        }
-        else if (portName == "out")
-        {
-            out.addTarget(&signal);
-        }
-    }
-
-    void NOTGate::onDisconnected(const std::string& portName, Wire& signal)
-    {
-        if (portName == "in")
-        {
-            in.removeSource(&signal);
-        }
-        else if (portName == "out")
-        {
-            out.removeTarget(&signal);
-        }
-    }
-
     bool NOTGate::recalculate(ttl_t ttl)
     {
-        LogicVector a = in.pull();
-        return out.drive(~a, ttl);
+        LogicVector a = m_in.pull();
+        return m_out.drive(~a, ttl);
     }
 }

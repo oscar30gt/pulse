@@ -6,7 +6,7 @@ namespace Pulse
 {
     Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(state) { }
 
-    Constant::~Constant() { }
+    Constant::~Constant() = default;
 
     LogicVector Constant::peek() const
     {

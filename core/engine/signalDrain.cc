@@ -4,7 +4,7 @@ namespace Pulse
 {
     SignalDrain::SignalDrain(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalReceiver(bitWidth), m_state(LogicVector::HighZ()) { }
 
-    SignalDrain::~SignalDrain() { }
+    SignalDrain::~SignalDrain() = default;
 
     bool SignalDrain::onNotify(ttl_t ttl)
     {
@@ -13,7 +13,7 @@ namespace Pulse
         {
             return m_methodInvoker(m_owner, ttl);
         }
-        return true; // ttl is not expired, but no method to invoke.
+        return true; // ttl did not expire, but no method to invoke.
     }
 
     LogicVector SignalDrain::pull() const

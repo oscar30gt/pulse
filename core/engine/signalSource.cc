@@ -4,7 +4,7 @@ namespace Pulse
 {
     SignalSource::SignalSource(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(LogicVector::HighZ()) { }
 
-    SignalSource::~SignalSource() { }
+    SignalSource::~SignalSource() = default;
 
     LogicVector SignalSource::peek() const
     {

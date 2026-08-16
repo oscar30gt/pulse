@@ -1,4 +1,3 @@
-
 #ifndef PULSE_SIGNAL_SOURCE_H
 #define PULSE_SIGNAL_SOURCE_H
 

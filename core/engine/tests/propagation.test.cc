@@ -43,12 +43,9 @@ TEST(PropagationTest, SelfChainedWire) {
 
 TEST(PropagationTest, SelfChainedAND) {
     const bitWidth_t bw = 4;
-    ANDGate gate(bw);
     Wire wIn(bw), wOut(bw);
     // Connect output back to one input to create a loop
-    gate.connect("in0", wIn);
-    gate.connect("out", wOut);
-    gate.connect("in1", wOut); // feedback loop via wire's target list
+    ANDGate gate(&wIn, &wOut, &wOut);
     // Drive input
     SignalSource src(bw);
     src.addTarget(&wIn);
@@ -65,11 +62,7 @@ TEST(PropagationTest, AndGatePropagation) {
     Wire w0(bw), w1(bw), wOut(bw);
     src0.addTarget(&w0);
     src1.addTarget(&w1);
-    ANDGate andGate(bw);
-    // Connect wires to gate ports
-    andGate.connect("in0", w0);
-    andGate.connect("in1", w1);
-    andGate.connect("out", wOut);
+    ANDGate andGate(&w0, &w1, &wOut);
     SignalDrain drain(bw);
     drain.addSource(&wOut);
     LogicVector a = LogicVector::FromInt(0x0F);
@@ -82,12 +75,9 @@ TEST(PropagationTest, AndGatePropagation) {
 
 TEST(PropagationTest, LoopPrevention) {
     const bitWidth_t bw = 8;
-    ANDGate gate(bw);
     Wire wIn(bw), wOut(bw);
     // Connect output back to one input to create a loop
-    gate.connect("in0", wIn);
-    gate.connect("out", wOut);
-    gate.connect("in1", wOut); // feedback loop via wire's target list
+    ANDGate gate(&wIn, &wOut, &wOut);
     // Drive input
     SignalSource src(bw);
     src.addTarget(&wIn);
@@ -105,19 +95,13 @@ TEST(PropagationTest, ChainedAndGates) {
     Wire w0(bw), w1(bw), wMid(bw), wOut(bw);
     src0.addTarget(&w0);
     src1.addTarget(&w1);
-    ANDGate firstGate(bw);
-    ANDGate secondGate(bw);
     // First gate connections
-    firstGate.connect("in0", w0);
-    firstGate.connect("in1", w1);
-    firstGate.connect("out", wMid);
+    ANDGate firstGate(&w0, &w1, &wMid);
     // Second gate connections, feeding from first gate output and another source
     SignalSource src2(bw);
     Wire w2(bw);
     src2.addTarget(&w2);
-    secondGate.connect("in0", wMid);
-    secondGate.connect("in1", w2);
-    secondGate.connect("out", wOut);
+    ANDGate secondGate(&wMid, &w2, &wOut);
     SignalDrain drain(bw);
     drain.addSource(&wOut);
     // Drive inputs
@@ -149,16 +133,10 @@ TEST(PropagationTest, MultiTargetDrain) {
 
 TEST(PropagationTest, ComplexLoopWithTTL) {
     const bitWidth_t bw = 8;
-    ANDGate gateA(bw);
-    ANDGate gateB(bw);
     Wire wInA(bw), wInB(bw), wMid(bw), wOut(bw);
     // Connect gates to form a loop: A.out -> wMid -> B.in0, B.out -> wOut -> A.in1, and also feed back wOut -> A.in0
-    gateA.connect("in0", wInA);
-    gateA.connect("in1", wOut);
-    gateA.connect("out", wMid);
-    gateB.connect("in0", wMid);
-    gateB.connect("in1", wInB);
-    gateB.connect("out", wOut);
+    ANDGate gateA(&wInA, &wOut, &wMid);
+    ANDGate gateB(&wMid, &wInB, &wOut);
     // Create sources and drains
     SignalSource srcA(bw), srcB(bw);
     srcA.addTarget(&wInA);

@@ -1,4 +1,3 @@
-
 #ifndef PULSE_SIGNAL_DRAIN_H
 #define PULSE_SIGNAL_DRAIN_H
 

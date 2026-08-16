@@ -2,6 +2,7 @@
 #define PULSE_SIGNAL_INTERFACE_H
 
 #include <cstdint>
+#include <stdexcept>
 
 #include "miniSet.h"
 #include "logicVector.h"
@@ -13,6 +14,16 @@ namespace Pulse
 
     typedef uint8_t bitWidth_t;                         /// Bit width type for signals and ports.
     static constexpr bitWidth_t BITWIDTH_DEFAULT = 64;  /// Default bit width for signals
+    static constexpr bitWidth_t BITWIDTH_MAX = 64;      /// Maximum bit width for signals and ports.
+
+    // --------------------------------------------------------------------------------------------
+
+    class bit_width_mismatch : public std::invalid_argument
+    {
+    public:
+        bit_width_mismatch(const std::string& message, bitWidth_t expected, bitWidth_t actual);
+        bit_width_mismatch(const std::string& message);
+    };
 
     // --------------------------------------------------------------------------------------------
 
