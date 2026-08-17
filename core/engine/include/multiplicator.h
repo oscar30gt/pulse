@@ -5,7 +5,7 @@
 #include "signalDrain.h"
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// A binary multiplicator that performs multiplication on two input signals and produces an output signal.
     /// Inputs: "in0" (N bits), "in1" (M bits)
@@ -23,6 +23,6 @@ namespace Pulse
         virtual ~Multiplicator() override;
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 #endif // PULSE_MULTIPLICATOR_H

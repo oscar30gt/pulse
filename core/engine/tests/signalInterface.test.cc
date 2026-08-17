@@ -7,7 +7,7 @@
 #include "../include/signalSource.h"
 #include "../include/signalDrain.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 // Helper derived classes to expose protected members for testing.
 class TestReceiver : public ISignalReceiver {

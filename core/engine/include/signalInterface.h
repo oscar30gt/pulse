@@ -7,7 +7,7 @@
 #include "miniSet.h"
 #include "logicVector.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     typedef uint16_t ttl_t;                             /// Time-to-live (TTL) type for signal propagation.
     static constexpr ttl_t TTL_DEFAULT = 512;           /// Default TTL value for signal propagation.

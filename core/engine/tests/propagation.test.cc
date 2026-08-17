@@ -5,7 +5,7 @@
 #include "../include/signalDrain.h"
 #include "../include/signalSource.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 TEST(PropagationTest, SimpleWirePropagation) {
     const bitWidth_t bw = 8;

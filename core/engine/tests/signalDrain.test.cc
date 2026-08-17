@@ -6,7 +6,7 @@
 #include "../include/wire.h"
 #include "../include/signalSource.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 TEST(SignalDrainTest, BasicConstructionAndPull) {
     // Default constructor creates a drain with default bit width.

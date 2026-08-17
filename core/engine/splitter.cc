@@ -1,6 +1,6 @@
 #include "splitter.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Splitter::Splitter(Wire* in, Wire* out, std::pair<bitWidth_t, bitWidth_t> range)
         : Component({ {"in", in} }, { {"out", out} }),

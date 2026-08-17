@@ -5,7 +5,7 @@
 #include "signalDrain.h"
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Available gate operations a binary gate can perform.
     enum class BinaryOp : uint8_t
@@ -52,7 +52,7 @@ namespace Pulse
         ~NOTGate();
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 
 #endif // PULSE_GATES_H

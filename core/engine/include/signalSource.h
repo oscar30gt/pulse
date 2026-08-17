@@ -4,7 +4,7 @@
 #include <functional>
 #include "wire.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Signal sources are used to drive a logic state onto a signal.
     class SignalSource : public ISignalEmitter

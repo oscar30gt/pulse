@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Component::Component(PortInitializer inPorts, PortInitializer outPorts)
     {

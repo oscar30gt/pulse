@@ -1,6 +1,6 @@
 #include "multiplicator.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Multiplicator::Multiplicator(Wire* in0, Wire* in1, Wire* out)
         : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
@@ -27,4 +27,4 @@ namespace Pulse
         LogicVector result = m_in0.pull() * m_in1.pull();
         return m_out.drive(result, ttl);
     }
-} // namespace Pulse
+} // namespace Pulse::Engine

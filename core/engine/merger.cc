@@ -1,6 +1,6 @@
 #include "merger.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Merger::Merger(Wire* in0, Wire* in1, Wire* out)
         : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),

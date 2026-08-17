@@ -5,22 +5,24 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # -----------------------------------------------------------------------------
-# 1. Core Engine Static Library
+# 1. Core Static Library
 # -----------------------------------------------------------------------------
-# Automatically gather all engine source files
-file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
+# Automatically gather all core source files
+file(GLOB_RECURSE PULSE_SOURCES CONFIGURE_DEPENDS
     "core/engine/*.cc"
+    "core/parser/*.cc"
 )
-# Exclude test files from engine library
-list(FILTER ENGINE_SOURCES EXCLUDE REGEX ".*/tests/.*")
+# Exclude test files from core library
+list(FILTER PULSE_SOURCES EXCLUDE REGEX ".*/tests/.*")
 
-add_library(pulse_engine STATIC
-    ${ENGINE_SOURCES}
+add_library(pulse_app STATIC
+    ${PULSE_SOURCES}
 )
 
-target_include_directories(pulse_engine PUBLIC
+target_include_directories(pulse_app PUBLIC
     core/engine/include
     core/engine/lib
+    core/parser/include
 )
 
 # -----------------------------------------------------------------------------
@@ -31,7 +33,7 @@ add_executable(pulse
 )
 
 target_link_libraries(pulse PRIVATE
-    pulse_engine
+    pulse_app
 )
 
 # -----------------------------------------------------------------------------
@@ -62,7 +64,7 @@ if(BUILD_TESTS)
         )
 
         target_link_libraries(pulse_tests PRIVATE
-            pulse_engine
+            pulse_app
             GTest::gtest_main
         )
 

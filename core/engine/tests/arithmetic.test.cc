@@ -5,7 +5,7 @@
 #include "../include/wire.h"
 #include "../include/signalSource.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 // ===========================================================================
 // ADDER - CONSTRUCTION AND PORT TESTS

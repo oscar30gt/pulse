@@ -5,7 +5,7 @@
 
 #include "signalInterface.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Intermediate node or bus wire connecting components and ports.
     class Wire : public ISignalReceiver, public ISignalEmitter

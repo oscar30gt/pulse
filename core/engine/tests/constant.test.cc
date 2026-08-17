@@ -5,7 +5,7 @@
 #include "../include/constant.h"
 #include "../lib/logicVector.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 TEST(ConstantTest, ConstructorInitializesState) {
     // Assuming LogicVector can be created from an unsigned integer literal.

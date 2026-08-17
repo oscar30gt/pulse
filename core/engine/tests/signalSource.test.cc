@@ -5,7 +5,7 @@
 #include "../include/signalSource.h"
 #include "../lib/logicVector.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 TEST(SignalSourceTest, ConstructorInitializesZeroState) {
     SignalSource src(8);

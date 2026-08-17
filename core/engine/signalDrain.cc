@@ -1,6 +1,6 @@
 #include "signalDrain.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     SignalDrain::SignalDrain(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalReceiver(bitWidth), m_state(LogicVector::HighZ()) { }
 

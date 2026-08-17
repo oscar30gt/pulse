@@ -1,6 +1,6 @@
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     SignalSource::SignalSource(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(LogicVector::HighZ()) { }
 

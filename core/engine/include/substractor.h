@@ -5,7 +5,7 @@
 #include "signalDrain.h"
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// A binary subtractor that performs subtraction on two input signals and produces an output signal.
     /// Inputs: "in0" (N bits), "in1" (N bits)
@@ -23,6 +23,6 @@ namespace Pulse
         virtual ~Subtractor() override;
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 #endif // PULSE_SUBSTRACTOR_H

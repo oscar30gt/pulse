@@ -1,6 +1,6 @@
 #include "gates.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     BinaryGate::BinaryGate(Wire* in0, Wire* in1, Wire* out, BinaryOp op)
         : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),

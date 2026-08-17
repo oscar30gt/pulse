@@ -2,7 +2,7 @@
 #include "../include/component.h"
 #include "../include/wire.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 TEST(ComponentTest, PortExistence) {
     Component comp({{"in1", nullptr}, {"in2", nullptr}}, {{"out1", nullptr}});

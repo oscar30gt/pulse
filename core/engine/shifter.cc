@@ -1,6 +1,6 @@
 #include "shifter.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Shifter::Shifter(Wire* in, Wire* shamt, Wire* out, ShiftOp op)
         : Component({ {"in", in}, {"shamt", shamt} }, { {"out", out} }),
@@ -55,4 +55,4 @@ namespace Pulse
         return m_out.drive(result, ttl);
     }
 
-} // namespace Pulse
+} // namespace Pulse::Engine

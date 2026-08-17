@@ -5,7 +5,7 @@
 
 #include "wire.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Input ports are used to pull a logic state from a signal.
     class SignalDrain : public ISignalReceiver

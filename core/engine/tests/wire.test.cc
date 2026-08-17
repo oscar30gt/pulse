@@ -7,7 +7,7 @@
 #include "../include/signalDrain.h"
 #include "../lib/logicVector.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 TEST(WireTest, DefaultConstructionAndPeek) {
     Wire wire; // default bit width

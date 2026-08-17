@@ -5,7 +5,7 @@
 #include "signalDrain.h"
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Available shift operations for the Shifter component.
     enum class ShiftOp : uint8_t
@@ -36,6 +36,6 @@ namespace Pulse
         virtual ~Shifter() override final;
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 #endif // PULSE_SHIFTER_H

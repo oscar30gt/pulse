@@ -1,6 +1,6 @@
 #include "comparator.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Comparator::Comparator(Wire* in0, Wire* in1, Wire* out, CompareOp op, CompareMode mode)
         : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
@@ -72,4 +72,4 @@ namespace Pulse
         return m_out.drive(LogicVector::FromBool(result), ttl);
     }
 
-} // namespace Pulse
+} // namespace Pulse::Engine

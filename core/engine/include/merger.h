@@ -5,7 +5,7 @@
 #include "signalDrain.h"
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Receives two input signals and concatenates them into a single output signal.
     /// Result is in1&in0 (in1 is the most significant bits, in0 is the least significant bits).
@@ -24,7 +24,7 @@ namespace Pulse
         virtual ~Merger() override final;
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 
 #endif // PULSE_MERGER_H

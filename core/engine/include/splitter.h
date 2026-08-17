@@ -8,7 +8,7 @@
 #include "signalDrain.h"
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Receives a single input signal and extracts a certain range of bits from it.
     /// Range must be within the bounds of the input signal's bit width.
@@ -27,6 +27,6 @@ namespace Pulse
         virtual ~Splitter() override final;
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 #endif // PULSE_SPLITTER_H

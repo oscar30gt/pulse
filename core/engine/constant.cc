@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(state.range(bitWidth)) { }
 

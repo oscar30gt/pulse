@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 #include <string>
-namespace Pulse
+namespace Pulse::Engine
 {
 
     bit_width_mismatch::bit_width_mismatch(const std::string& message, bitWidth_t received, bitWidth_t expected)

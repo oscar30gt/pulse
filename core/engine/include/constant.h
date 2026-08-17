@@ -5,7 +5,7 @@
 
 #include "signalInterface.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// A constant emmitter that always outputs the same logic state.
     class Constant : public ISignalEmitter

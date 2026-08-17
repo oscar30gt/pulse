@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace Pulse
+namespace Pulse::Engine
 {
     Wire::Wire(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth), m_state(LogicVector::HighZ()) { }
 

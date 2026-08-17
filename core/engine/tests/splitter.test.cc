@@ -8,7 +8,7 @@
 #include "../include/signalDrain.h"
 #include "../include/constant.h"
 
-using namespace Pulse;
+using namespace Pulse::Engine;
 
 TEST(SplitterTest, ConstructionCreatesPorts)
 {

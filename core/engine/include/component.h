@@ -7,7 +7,7 @@
 
 #include "wire.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     class Component
     {
@@ -53,7 +53,7 @@ namespace Pulse
         bool hasPort(const std::string& portName) const;
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 
 #endif // PULSE_COMPONENT_H

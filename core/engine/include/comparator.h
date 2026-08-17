@@ -5,7 +5,7 @@
 #include "signalDrain.h"
 #include "signalSource.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     /// Available comparator operations a binary comparator can perform.
     enum class CompareOp : uint8_t
@@ -48,6 +48,6 @@ namespace Pulse
         virtual ~Comparator() override;
     };
 
-} // namespace Pulse
+} // namespace Pulse::Engine
 
 #endif // PULSE_COMPARATOR_H
