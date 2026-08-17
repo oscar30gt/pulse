@@ -8,6 +8,7 @@
 #include "../include/signalSource.h"
 #include "../include/constant.h"
 
+using namespace Pulse;
 using namespace Pulse::Engine;
  
 // ===========================================================================

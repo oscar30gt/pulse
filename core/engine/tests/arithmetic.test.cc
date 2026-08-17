@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include "../include/adder.h"
-#include "../include/substractor.h"
+#include "../include/subtractor.h"
 #include "../include/multiplicator.h"
 #include "../include/wire.h"
 #include "../include/signalSource.h"
 
+using namespace Pulse;
 using namespace Pulse::Engine;
 
 // ===========================================================================

@@ -1,5 +1,5 @@
-#ifndef PULSE_SUBSTRACTOR_H
-#define PULSE_SUBSTRACTOR_H
+#ifndef PULSE_SUBTRACTOR_H
+#define PULSE_SUBTRACTOR_H
 
 #include "component.h"
 #include "signalDrain.h"
@@ -25,4 +25,4 @@ namespace Pulse::Engine
 
 } // namespace Pulse::Engine
 
-#endif // PULSE_SUBSTRACTOR_H
+#endif // PULSE_SUBTRACTOR_H

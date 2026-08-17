@@ -4,12 +4,20 @@
 
 namespace Pulse::Engine
 {
-    Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(state.range(bitWidth)) { }
+    Constant::Constant(Wire* out, LogicVector state)
+        : Component({}, { {"out", out} }),
+        m_out(out->width())
+    { 
+        try
+        {
+            m_out.drive(state);
+            m_out.addTarget(out);
+        }
+        catch (const bit_width_mismatch& e)
+        {
+            throw bit_width_mismatch("Constant construction failed: " + std::string(e.what()));
+        }
+    }
 
     Constant::~Constant() = default;
-
-    LogicVector Constant::peek() const
-    {
-        return m_state;
-    }
 }

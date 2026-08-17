@@ -30,7 +30,7 @@ namespace Pulse::Engine
         Wire* getPort(const std::string& portName) const;
 
         /// Overloaded operator[] to access ports by name.
-        /// Same as getPort().
+        /// @note Same as getPort().
         [[nodiscard]]
         Wire* operator[](const std::string& portName) const;
 

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-namespace Pulse::Engine
+namespace Pulse
 {
     // ============================================================================
     // LogicVector: IEEE 1164 four-state logic vector
@@ -227,7 +227,7 @@ namespace Pulse::Engine
 // Implementation section
 // ============================================================================
 
-namespace Pulse::Engine
+namespace Pulse
 {
     // -------- LogicVector implementation: Factory methods ---------------------------------------
 

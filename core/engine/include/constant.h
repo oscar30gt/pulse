@@ -3,23 +3,21 @@
 
 #include <cstdint>
 
-#include "signalInterface.h"
+#include "component.h"
+#include "signalSource.h"
 
 namespace Pulse::Engine
 {
     /// A constant emmitter that always outputs the same logic state.
-    class Constant : public ISignalEmitter
+    /// Inputs: None
+    /// Outputs: "out" (N bits)
+    class Constant : public Component
     {
-        /// Constant state 
-        const LogicVector m_state;
+        SignalSource m_out;
 
     public:
-        explicit Constant(LogicVector state, bitWidth_t bitWidth = BITWIDTH_DEFAULT);
+        explicit Constant(Wire* out, LogicVector state);
         virtual ~Constant() override;
-
-        /// Returns the logic state of this constant.
-        [[nodiscard]]
-        virtual LogicVector peek() const override;
     };
 }
 

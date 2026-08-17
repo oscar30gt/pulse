@@ -5,19 +5,22 @@
 #include "../include/constant.h"
 #include "../lib/logicVector.h"
 
+using namespace Pulse;
 using namespace Pulse::Engine;
 
 TEST(ConstantTest, ConstructorInitializesState) {
     // Assuming LogicVector can be created from an unsigned integer literal.
     LogicVector initState = LogicVector(0b1100);
-    Constant c(initState, 8);
-    EXPECT_EQ(c.peek(), initState);
+    Wire outWire(4);
+    Constant c(&outWire, initState);
+    EXPECT_EQ(outWire.peek(), initState);
 }
 
 TEST(ConstantTest, PeekReturnsConsistentState) {
     LogicVector state = LogicVector(0xFF);
-    Constant c(state, 64);
-    EXPECT_EQ(c.peek(), state);
+    Wire outWire(64);
+    Constant c(&outWire, state);
+    EXPECT_EQ(outWire.peek(), state);
     // Constant should remain immutable; peek should always return the same value.
-    EXPECT_EQ(c.peek(), state);
+    EXPECT_EQ(outWire.peek(), state);
 }
