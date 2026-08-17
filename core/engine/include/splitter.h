@@ -18,7 +18,7 @@ namespace Pulse::Engine
     {
         SignalDrain m_in;
         SignalSource m_out;
-        std::pair<bitWidth_t, bitWidth_t> m_range;
+        std::pair<bitWidth_t, bitWidth_t> m_range;  // high, low
 
         bool recalculate(ttl_t ttl);
 

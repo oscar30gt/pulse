@@ -4,6 +4,7 @@
 #include <string>
 #include <span>
 #include <unordered_map>
+#include <initializer_list>
 
 #include "wire.h"
 
@@ -15,7 +16,9 @@ namespace Pulse::Engine
         PortMap m_inSignals;
         PortMap m_outSignals;
 
-        using PortInitializer = std::vector<std::pair<std::string, Wire*>>;
+    protected:
+        /// Initializer for component ports where each input/output gets a wire assigned.
+        using PortInitializer = std::initializer_list<std::pair<std::string, Wire*>>;
 
     public:
         explicit Component(PortInitializer inPorts, PortInitializer outPorts);
