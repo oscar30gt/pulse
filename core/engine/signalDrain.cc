@@ -1,5 +1,5 @@
 #include "signalDrain.h"
-#include <iostream> // For debug output
+
 namespace Pulse
 {
     SignalDrain::SignalDrain(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalReceiver(bitWidth), m_state(LogicVector::HighZ()) { }

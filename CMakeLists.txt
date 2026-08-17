@@ -66,6 +66,13 @@ if(BUILD_TESTS)
             GTest::gtest_main
         )
 
+        # Silence [[nodiscard]] warnings only for unit tests
+        if(MSVC)
+            target_compile_options(pulse_tests PRIVATE /wd4834)
+        else()
+            target_compile_options(pulse_tests PRIVATE -Wno-unused-result)
+        endif()
+
         include(GoogleTest)
         gtest_discover_tests(pulse_tests)
     endif()

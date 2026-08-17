@@ -15,14 +15,10 @@ namespace Pulse
         PortMap m_inSignals;
         PortMap m_outSignals;
 
-   
-        using PortInitializer = std::vector<std::pair<std::string, Wire*>>;    
+        using PortInitializer = std::vector<std::pair<std::string, Wire*>>;
 
     public:
-        explicit Component(
-            PortInitializer inPorts, 
-            PortInitializer outPorts
-        );
+        explicit Component(PortInitializer inPorts, PortInitializer outPorts);
         virtual ~Component();
 
         /// Gets the wire that is currently connected to the specified port, or nullptr if no wire is connected.

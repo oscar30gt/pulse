@@ -29,5 +29,4 @@ namespace Pulse
 
 } // namespace Pulse
 
-
 #endif // PULSE_SPLITTER_H

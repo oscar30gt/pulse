@@ -17,7 +17,7 @@ TEST(WireTest, DefaultConstructionAndPeek) {
 
 TEST(WireTest, ConstructionWithBitWidth) {
     Wire wire8(8);
-    EXPECT_EQ(wire8.peek().getRange(0, 7), LogicVector::HighZ().getRange(0, 7));
+    EXPECT_EQ(wire8.peek().range(0, 7), LogicVector::HighZ().range(0, 7));
     // Bit width getter not exposed; we just ensure construction succeeds.
 }
 
@@ -33,7 +33,7 @@ TEST(WireTest, LoseStateOnDisconnect) {
     EXPECT_EQ(wire8.peek(), state);
 
     src.removeTarget(&wire8);
-    EXPECT_EQ(wire8.peek(), LogicVector::HighZ());
+    EXPECT_EQ(wire8.peek(), LogicVector::HighZ().range(8));
 }
 
 TEST(WireTest, NotifyPropagationFromSource) {

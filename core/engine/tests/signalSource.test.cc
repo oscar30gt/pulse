@@ -10,7 +10,7 @@ using namespace Pulse;
 TEST(SignalSourceTest, ConstructorInitializesZeroState) {
     SignalSource src(8);
     // Assuming default state is zero.
-    EXPECT_EQ(src.peek().getRange(0, 7), LogicVector::HighZ().getRange(0, 7));
+    EXPECT_EQ(src.peek().range(0, 7), LogicVector::HighZ().range(0, 7));
 }
 
 TEST(SignalSourceTest, DriveUpdatesStateAndPeek) {

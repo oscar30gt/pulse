@@ -16,7 +16,7 @@ TEST(ConstantTest, ConstructorInitializesState) {
 
 TEST(ConstantTest, PeekReturnsConsistentState) {
     LogicVector state = LogicVector(0xFF);
-    Constant c(state);
+    Constant c(state, 64);
     EXPECT_EQ(c.peek(), state);
     // Constant should remain immutable; peek should always return the same value.
     EXPECT_EQ(c.peek(), state);

@@ -75,6 +75,21 @@ namespace Pulse
         /// @note Overflowing bits are clamped.
         explicit operator uint8_t() const;
 
+        /// Converts the LogicVector to a signed 64-bit integer.
+        explicit operator int64_t() const;
+
+        /// Converts the LogicVector to a signed 32-bit integer.
+        /// @note Overflowing bits are clamped.
+        explicit operator int32_t() const;
+
+        /// Converts the LogicVector to a signed 16-bit integer.
+        /// @note Overflowing bits are clamped.
+        explicit operator int16_t() const;
+
+        /// Converts the LogicVector to a signed 8-bit integer.
+        /// @note Overflowing bits are clamped.
+        explicit operator int8_t() const;
+
         // -------- Equality operators ------------------------------------------------------------
 
         /// Checks if two LogicVectors are identical.
@@ -105,39 +120,47 @@ namespace Pulse
         /// Inverts definite bits ('0' <-> '1'), unknown becomes unknown, high-Z becomes unknown.
         [[nodiscard]] LogicVector operator~() const;
 
-        /// Addition operation (commutative XOR for definite bits).
-        /// Returns unknown if either operand contains undefined bits.
+        /// Addition operation.
+        /// Returns unknown if any operand contains undefined bits.
         [[nodiscard]] LogicVector operator+(const LogicVector& other) const;
+
+        /// Subtraction operation.
+        /// Returns unknown if any operand contains undefined bits.
+        [[nodiscard]] LogicVector operator-(const LogicVector& other) const;
+
+        /// Multiplication operation.
+        /// Returns unknown if any operand contains undefined bits.
+        [[nodiscard]] LogicVector operator*(const LogicVector& other) const;
 
         // -------- Shift operations---------------------------------------------------------------
 
         /// Logical shift left (LSL).
-        /// @param shamt Shift amount in bits. Negative values perform LSR instead.
+        /// @param shamt Shift amount in bits.
         /// @param width Optional bit width to constrain the operation (default 64).
         /// @returns A new LogicVector shifted left by shamt bits.
         [[nodiscard]] LogicVector lsl(uint8_t shamt, uint8_t width = 64) const;
 
         /// Logical shift right (LSR).
-        /// @param shamt Shift amount in bits. Negative values perform LSL instead.
+        /// @param shamt Shift amount in bits.
         /// @param width Optional bit width to constrain the operation (default 64).
         /// @returns A new LogicVector shifted right by shamt bits.
         [[nodiscard]] LogicVector lsr(uint8_t shamt, uint8_t width = 64) const;
 
         /// Arithmetic shift right (ASR).
         /// Extends the sign bit (MSB) when shifting right.
-        /// @param shamt Shift amount in bits. Negative values perform LSL instead.
+        /// @param shamt Shift amount in bits.
         /// @param width Optional bit width to constrain the operation (default 64).
         /// @returns A new LogicVector shifted right arithmetically.
         [[nodiscard]] LogicVector asr(uint8_t shamt, uint8_t width = 64) const;
 
         /// Rotate left (ROL).
-        /// @param shamt Rotate amount in bits. Negative values perform ROR instead.
+        /// @param shamt Rotate amount in bits.
         /// @param width Optional bit width to constrain the rotation (default 64).
         /// @returns A new LogicVector rotated left by shamt bits.
         [[nodiscard]] LogicVector rol(uint8_t shamt, uint8_t width = 64) const;
 
         /// Rotate right (ROR).
-        /// @param shamt Rotate amount in bits. Negative values perform ROL instead.
+        /// @param shamt Rotate amount in bits.
         /// @param width Optional bit width to constrain the rotation (default 64).
         /// @returns A new LogicVector rotated right by shamt bits.
         [[nodiscard]] LogicVector ror(uint8_t shamt, uint8_t width = 64) const;
@@ -161,49 +184,42 @@ namespace Pulse
         /// @param index The bit index (0-63).
         /// @returns The bit state: '0', '1', 'X' (unknown), or 'Z' (high impedance).
         /// @throws std::out_of_range if index > 63.
-        [[nodiscard]] char getBit(uint8_t index) const;
-
-        /// Sets a single bit to a specific state.
-        /// @param index The bit index (0-63).
-        /// @param state The state to set ('0', '1', 'X', or 'Z'). Invalid values are ignored.
-        /// @throws std::out_of_range if index > 63.
-        void setBit(uint8_t index, char state);
+        [[nodiscard]] char bit(uint8_t index) const;
 
         // -------- Bit range access --------------------------------------------------------------
 
         /// Extracts a range of bits as a new LogicVector.
-        /// Supports both standard (start >= end) and reversed (start < end) ranges.
+        /// Supports both standard (high >= low) and reversed (high < low) ranges.
         /// The extracted bits are placed in the lower bits of the returned vector.
         /// 
         /// Examples:
         ///   - getRange(7, 0): extract bits [7:0] (standard, high to low)
         ///   - getRange(0, 7): extract bits [0:7] with reversal (low to high, reversed)
         /// 
-        /// @param start First bit index (0-63).
-        /// @param end Second bit index (0-63). Can be higher or lower than start.
+        /// @param high First bit index (0-63).
+        /// @param low Second bit index (0-63).
         /// @returns A new LogicVector containing the extracted bit range.
         /// @throws std::out_of_range if either index > 63.
-        [[nodiscard]] LogicVector getRange(uint8_t start, uint8_t end) const;
+        [[nodiscard]] LogicVector range(uint8_t high, uint8_t low) const;
 
-        /// Sets a range of bits from another LogicVector.
-        /// Supports both standard (start >= end) and reversed (start < end) ranges.
-        /// The lower bits of the value parameter are used to fill the range.
-        /// 
-        /// Examples:
-        ///   - setRange(7, 0, val): set bits [7:0] from val (standard, high to low)
-        ///   - setRange(0, 7, val): set bits [0:7] from val with reversal (low to high, reversed)
-        /// 
-        /// @param start First bit index (0-63).
-        /// @param end Second bit index (0-63). Can be higher or lower than start.
-        /// @param value LogicVector providing the new state. Only the bits needed are used.
-        /// @throws std::out_of_range if either index > 63.
-        void setRange(uint8_t start, uint8_t end, const LogicVector& value);
+        /// Extracts the first 'width' bits as a new LogicVector.
+        /// @param width The number of bits to extract (0-64).
+        /// @returns A new LogicVector containing the extracted bits.
+        [[nodiscard]]
+        LogicVector range(uint8_t width) const;
 
         // -------- Misc --------------------------------------------------------------------------
 
-        /// Sanitizes the LogicVector to a certain width by clearing bits above the specified width.
-        /// @param width The desired width of the LogicVector.
-        LogicVector sanitize(uint8_t width) const;
+        /// Checks if all bits in the LogicVector are definite (not unknown or high-impedance).
+        /// @returns True if all bits are definite, false otherwise.
+        [[nodiscard]]
+        bool isDefinite() const { return mask == 0; }
+
+        /// String representation of the LogicVector, using '0', '1', 'X', and 'Z' for each bit.
+        /// @param width Optional width to display (default 64). Bits beyond this width are ignored.
+        /// @returns A string of length 'width' representing the LogicVector state.
+        [[nodiscard]]
+        std::string str(uint8_t width = 64) const;
     };
 }
 
@@ -231,22 +247,50 @@ namespace Pulse
 
     inline LogicVector::operator uint64_t() const
     {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to uint64_t.");
         return value;
     }
 
     inline LogicVector::operator uint32_t() const
     {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to uint32_t.");
         return static_cast<uint32_t>(value & 0xFFFFFFFFULL);
     }
 
     inline LogicVector::operator uint16_t() const
     {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to uint16_t.");
         return static_cast<uint16_t>(value & 0xFFFFULL);
     }
 
     inline LogicVector::operator uint8_t() const
     {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to uint8_t.");
         return static_cast<uint8_t>(value & 0xFFULL);
+    }
+
+    inline LogicVector::operator int64_t() const
+    {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to int64_t.");
+        return static_cast<int64_t>(value);
+    }
+
+    inline LogicVector::operator int32_t() const
+    {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to int32_t.");
+        return static_cast<int32_t>(value & 0xFFFFFFFFULL);
+    }
+
+    inline LogicVector::operator int16_t() const
+    {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to int16_t.");
+        return static_cast<int16_t>(value & 0xFFFFULL);
+    }
+
+    inline LogicVector::operator int8_t() const
+    {
+        if (mask != 0) throw std::runtime_error("Cannot convert LogicVector with undefined bits to int8_t.");
+        return static_cast<int8_t>(value & 0xFFULL);
     }
 
     // -------- LogicVector implementation: Equality operators ------------------------------------
@@ -270,8 +314,6 @@ namespace Pulse
         // 1 & 0 = 0,  1 & 1 = 1,  1 & X = X,  1 & Z = X
         // X & 0 = 0,  X & 1 = X,  X & X = X,  X & Z = X
         // Z & 0 = 0,  Z & 1 = X,  Z & X = X,  Z & Z = X
-
-        uint64_t new_value = this->value & other.value;
 
         uint64_t result_0 = (~value & ~mask) | (~other.value & ~other.mask);
         uint64_t result_1 = (value & ~mask) & (other.value & ~other.mask);
@@ -317,13 +359,32 @@ namespace Pulse
 
     inline LogicVector LogicVector::operator+(const LogicVector& other) const
     {
-        // Addition (XOR for definite bits, unknown if either is undefined)
-        bool both_definite = (mask == 0) && (other.mask == 0);
-        if (!both_definite)
+        if (!isDefinite() || !other.isDefinite()) [[unlikely]]
         {
             return LogicVector::Unknown();
         }
-        return { value ^ other.value, 0ULL };
+
+        return { value + other.value, 0ULL };
+    }
+
+    inline LogicVector LogicVector::operator-(const LogicVector& other) const
+    {
+        if (!isDefinite() || !other.isDefinite()) [[unlikely]]
+        {
+            return LogicVector::Unknown();
+        }
+
+        return { value - other.value, 0ULL };
+    }
+
+    inline LogicVector LogicVector::operator*(const LogicVector& other) const
+    {
+        if (!isDefinite() || !other.isDefinite()) [[unlikely]]
+        {
+            return LogicVector::Unknown();
+        }
+
+        return { value * other.value, 0ULL };
     }
 
     // -------- LogicVector implementation: Shift operations --------------------------------------
@@ -336,8 +397,8 @@ namespace Pulse
         }
 
         uint64_t wmask = ~0ULL >> (64 - width);
-        uint64_t new_value = (value << shamt) & wmask;
-        uint64_t new_mask = (mask << shamt) & wmask;
+        uint64_t new_value = (value & wmask) << shamt;
+        uint64_t new_mask = (mask & wmask) << shamt;
 
         return { new_value, new_mask };
     }
@@ -350,34 +411,33 @@ namespace Pulse
         }
 
         uint64_t wmask = ~0ULL >> (64 - width);
-        uint64_t new_value = (value >> shamt) & wmask;
-        uint64_t new_mask = (mask >> shamt) & wmask;
+        uint64_t new_value = (value & wmask) >> shamt;
+        uint64_t new_mask = (mask & wmask) >> shamt;
         return { new_value, new_mask };
     }
 
     inline LogicVector LogicVector::asr(uint8_t shamt, uint8_t width) const
     {
         if (width == 0) return { 0ULL, 0ULL };
+        if (width > 64) width = 64;
 
-        uint64_t wmask = (width >= 64) ? ~0ULL : ((1ULL << width) - 1ULL);
-        uint64_t sign_bit = 1ULL << (width - 1);
-        bool is_negative = (width <= 64) && ((value & sign_bit) != 0);
+        const uint64_t wmask = (width >= 64) ? ~0ULL : ((1ULL << width) - 1ULL);
 
-        // Clamp shift amount to width to avoid UB and unify out-of-bounds logic
-        uint8_t effective_shamt = (shamt >= width || shamt >= 64) ? width : shamt;
+        // Leftmost bit's value/mask state
+        bool isValue1 = (value & (1ULL << (width - 1))) != 0;
+        bool isMask1  = (mask & (1ULL << (width - 1))) != 0;
 
-        // Shift logic vector components
-        uint64_t new_value = (value & wmask) >> effective_shamt;
-        uint64_t new_mask = (mask & wmask) >> effective_shamt;
+        // Clamp shamt so shifting can never leave 0 real bits (avoids the
+        // width-shamt==64 case below, and unifies the "shift everything out" case)
+        uint8_t effective_shamt = (shamt >= width) ? width : shamt;
 
-        // Apply sign extension bitmask if the original sign bit was set
-        if (is_negative)
-        {
-            uint64_t sign_ext = wmask << (width - effective_shamt);
-            new_value |= sign_ext;
-        }
+        uint64_t valueSignExt = (isValue1 ? wmask : 0ULL) << (width - effective_shamt);
+        uint64_t maskSignExt  = (isMask1 ? wmask : 0ULL) << (width - effective_shamt);
 
-        return { new_value & wmask, new_mask & wmask };
+        uint64_t new_value = ((value >> effective_shamt) | valueSignExt) & wmask;
+        uint64_t new_mask  = ((mask >> effective_shamt) | maskSignExt) & wmask;
+
+        return { new_value, new_mask };
     }
 
     inline LogicVector LogicVector::rol(uint8_t shamt, uint8_t width) const
@@ -431,7 +491,7 @@ namespace Pulse
 
     // -------- LogicVector implementation: Single bit access -------------------------------------
 
-    inline char LogicVector::getBit(uint8_t index) const
+    inline char LogicVector::bit(uint8_t index) const
     {
         if (index > 63) throw std::out_of_range("Bit index out of range. Valid range is 0-63.");
 
@@ -442,42 +502,14 @@ namespace Pulse
         else return isLow ? 'X' : 'Z';
     }
 
-    inline void LogicVector::setBit(uint8_t index, char state)
-    {
-        if (index > 63) throw std::out_of_range("Bit index out of range. Valid range is 0-63.");
-
-        switch (state)
-        {
-            case '0':
-                value &= ~(1ULL << index);
-                mask  &= ~(1ULL << index);
-                break;
-            case '1':
-                value |= (1ULL << index);
-                mask  &= ~(1ULL << index);
-                break;
-            case 'X':
-                value &= ~(1ULL << index);
-                mask  |= (1ULL << index);
-                break;
-            case 'Z':
-                value |= (1ULL << index);
-                mask  |= (1ULL << index);
-                break;
-            default:
-                // Invalid state, do nothing
-                break;
-        }
-    }
-
     // -------- LogicVector implementation: Bit range access --------------------------------------
 
-    inline LogicVector LogicVector::getRange(uint8_t start, uint8_t end) const
+    inline LogicVector LogicVector::range(uint8_t high, uint8_t low) const
     {
-        if (start > 63 || end > 63) throw std::out_of_range("Bit range out of range. Valid range is 0-63.");
+        if (high > 63 || low > 63) throw std::out_of_range("Bit range out of range. Valid range is 0-63.");
 
-        uint8_t real_high = (start > end) ? start : end;
-        uint8_t real_low = (start > end) ? end : start;
+        uint8_t real_high = (high > low) ? high : low;
+        uint8_t real_low = (high > low) ? low : high;
         uint8_t width = real_high - real_low + 1;
 
         uint8_t shamtLeft = 64 - real_high - 1;
@@ -485,8 +517,8 @@ namespace Pulse
         uint64_t new_value = (value << shamtLeft) >> shamtRight;
         uint64_t new_mask  = (mask << shamtLeft) >> shamtRight;
 
-        // If range is reversed (start < end), reverse the extracted bits
-        if (start < end)
+        // If range is reversed (high < low), reverse the extracted bits
+        if (high < low)
         {
             uint64_t rev_val = 0, rev_mask = 0;
             for (uint8_t i = 0; i < width; ++i)
@@ -501,51 +533,25 @@ namespace Pulse
         return { new_value, new_mask };
     }
 
-    inline void LogicVector::setRange(uint8_t start, uint8_t end, const LogicVector& newState)
+    inline LogicVector LogicVector::range(uint8_t width) const
     {
-        if (start > 63 || end > 63) throw std::out_of_range("Bit range out of range. Valid range is 0-63.");
-
-        uint8_t real_high = (start > end) ? start : end;
-        uint8_t real_low = (start > end) ? end : start;
-        uint8_t width = real_high - real_low + 1;
-
-        uint64_t input_val = newState.value;
-        uint64_t input_mask = newState.mask;
-
-        // If range is reversed (start < end), reverse the input bits before placing
-        if (start < end)
-        {
-            uint64_t rev_val = 0, rev_mask = 0;
-            for (uint8_t i = 0; i < width; ++i)
-            {
-                if ((input_val >> i) & 1ULL) rev_val |= (1ULL << (width - 1 - i));
-                if ((input_mask >> i) & 1ULL)  rev_mask |= (1ULL << (width - 1 - i));
-            }
-            input_val = rev_val;
-            input_mask = rev_mask;
-        }
-
-        uint64_t range_mask = (width >= 64) ? ~0ULL : ((1ULL << width) - 1ULL);
-        uint64_t shifted_mask = range_mask << real_low;
-
-        // Clear the bits in the current LogicVector for the specified range
-        value &= ~shifted_mask;
-        mask  &= ~shifted_mask;
-
-        // Set the new state for the specified range
-        value |= (input_val & range_mask) << real_low;
-        mask  |= (input_mask & range_mask) << real_low;
-    }
-
-    // -------- LogicVector implementation: Misc --------------------------------------------------
-
-    inline LogicVector LogicVector::sanitize(uint8_t width) const
-    {
-        if (width >= 64) return *this; // No change needed for full width
-        if (width == 0) return { 0ULL, 0ULL }; // All bits cleared for zero width
-
+        if (width > 64) throw std::out_of_range("Width out of range. Valid range is 0-64.");
+        if (width == 64) return *this;
         uint64_t wmask = (1ULL << width) - 1ULL;
         return { value & wmask, mask & wmask };
+    }
+
+    // -------- LogicVector implementation: Misc ---------------------------------------------------
+
+    inline std::string LogicVector::str(uint8_t width) const
+    {
+        if (width > 64) width = 64;
+        std::string result(width, '0');
+        for (uint8_t i = 0; i < width; ++i)
+        {
+            result[width - 1 - i] = bit(i);
+        }
+        return result;
     }
 }
 

@@ -13,7 +13,7 @@ namespace Pulse
 
     bool SignalSource::drive(LogicVector state, ttl_t ttl)
     {
-        m_state = state;
+        m_state = state.range(m_bitWidth);
         bool allOk = true;
         for (auto* target : m_targets)
         {

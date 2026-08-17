@@ -17,7 +17,7 @@ using namespace Pulse;
 TEST(ORGateTest, ConstructionCreatesPorts)
 {
     Wire w0(1), w1(1), wOut(1);
-    BinaryGate gate(&w0, &w1, &wOut, BinaryOperation::OR);
+    BinaryGate gate(&w0, &w1, &wOut, BinaryOp::OR);
     EXPECT_TRUE(gate.hasInputPort("in0"));
     EXPECT_TRUE(gate.hasInputPort("in1"));
     EXPECT_TRUE(gate.hasOutputPort("out"));
@@ -28,7 +28,7 @@ TEST(ORGateTest, TruthTable)
 {
     const bitWidth_t bw = 1;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::OR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::OR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -52,7 +52,7 @@ TEST(ORGateTest, WideBitsTruthTable)
 {
     const bitWidth_t bw = 8;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::OR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::OR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -72,8 +72,8 @@ TEST(ORGateTest, ChainedGates)
 {
     const bitWidth_t bw = 8;
     Wire w0(bw), w1(bw), w2(bw), wMid(bw), wOut(bw);
-    BinaryGate g1(&w0, &w1, &wMid, BinaryOperation::OR);
-    BinaryGate g2(&wMid, &w2, &wOut, BinaryOperation::OR);
+    BinaryGate g1(&w0, &w1, &wMid, BinaryOp::OR);
+    BinaryGate g2(&wMid, &w2, &wOut, BinaryOp::OR);
     SignalSource s0(bw), s1(bw), s2(bw);
  
     s0.addTarget(&w0);
@@ -98,7 +98,7 @@ TEST(ORGateTest, ChainedGates)
 TEST(XORGateTest, ConstructionCreatesPorts)
 {
     Wire w0(1), w1(1), wOut(1);
-    BinaryGate gate(&w0, &w1, &wOut, BinaryOperation::XOR);
+    BinaryGate gate(&w0, &w1, &wOut, BinaryOp::XOR);
     EXPECT_TRUE(gate.hasInputPort("in0"));
     EXPECT_TRUE(gate.hasInputPort("in1"));
     EXPECT_TRUE(gate.hasOutputPort("out"));
@@ -108,7 +108,7 @@ TEST(XORGateTest, TruthTable)
 {
     const bitWidth_t bw = 1;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::XOR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::XOR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -132,7 +132,7 @@ TEST(XORGateTest, WideBitsParityDetection)
 {
     const bitWidth_t bw = 8;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::XOR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::XOR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -150,8 +150,8 @@ TEST(XORGateTest, ChainedGates)
 {
     const bitWidth_t bw = 8;
     Wire w0(bw), w1(bw), w2(bw), wMid(bw), wOut(bw);
-    BinaryGate g1(&w0, &w1, &wMid, BinaryOperation::XOR);
-    BinaryGate g2(&wMid, &w2, &wOut, BinaryOperation::XOR);
+    BinaryGate g1(&w0, &w1, &wMid, BinaryOp::XOR);
+    BinaryGate g2(&wMid, &w2, &wOut, BinaryOp::XOR);
     SignalSource s0(bw), s1(bw), s2(bw);
  
     s0.addTarget(&w0);
@@ -176,7 +176,7 @@ TEST(XORGateTest, ChainedGates)
 TEST(NANDGateTest, ConstructionCreatesPorts)
 {
     Wire w0(1), w1(1), wOut(1);
-    BinaryGate gate(&w0, &w1, &wOut, BinaryOperation::NAND);
+    BinaryGate gate(&w0, &w1, &wOut, BinaryOp::NAND);
     EXPECT_TRUE(gate.hasInputPort("in0"));
     EXPECT_TRUE(gate.hasInputPort("in1"));
     EXPECT_TRUE(gate.hasOutputPort("out"));
@@ -186,7 +186,7 @@ TEST(NANDGateTest, TruthTable)
 {
     const bitWidth_t bw = 1;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::NAND);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::NAND);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -202,7 +202,7 @@ TEST(NANDGateTest, TruthTable)
             src0.drive(LogicVector::FromBool(a));
             src1.drive(LogicVector::FromBool(b));
             bool expected = truthTable[a][b];
-            EXPECT_EQ(out.peek().getBit(0) == '1', expected);
+            EXPECT_EQ(out.peek().bit(0) == '1', expected);
         }
     }
 }
@@ -211,7 +211,7 @@ TEST(NANDGateTest, WideBitsInversion)
 {
     const bitWidth_t bw = 8;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::NAND);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::NAND);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -224,7 +224,7 @@ TEST(NANDGateTest, WideBitsInversion)
     // NAND(0xFF, 0xFF) should be 0x00
     for (int i = 0; i < 8; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '0');
+        EXPECT_EQ(out.peek().bit(i), '0');
     }
 }
  
@@ -233,8 +233,8 @@ TEST(NANDGateTest, ChainedNANDGates)
     // Two NAND gates chained: demonstrates logical completeness
     const bitWidth_t bw = 1;
     Wire w0(bw), w1(bw), w2(bw), wMid(bw), wOut(bw);
-    BinaryGate g1(&w0, &w1, &wMid, BinaryOperation::NAND);
-    BinaryGate g2(&wMid, &w2, &wOut, BinaryOperation::NAND);
+    BinaryGate g1(&w0, &w1, &wMid, BinaryOp::NAND);
+    BinaryGate g2(&wMid, &w2, &wOut, BinaryOp::NAND);
     SignalSource s0(bw), s1(bw), s2(bw);
  
     s0.addTarget(&w0);
@@ -256,7 +256,7 @@ TEST(NANDGateTest, ChainedNANDGates)
                 bool mid = !(a && b);
                 bool expected = !(mid && c);
                 char expectedChar = expected ? '1' : '0';
-                EXPECT_EQ(wOut.peek().getBit(0), expectedChar);
+                EXPECT_EQ(wOut.peek().bit(0), expectedChar);
             }
         }
     }
@@ -269,7 +269,7 @@ TEST(NANDGateTest, ChainedNANDGates)
 TEST(NORGateTest, ConstructionCreatesPorts)
 {
     Wire w0(1), w1(1), wOut(1);
-    BinaryGate gate(&w0, &w1, &wOut, BinaryOperation::NOR);
+    BinaryGate gate(&w0, &w1, &wOut, BinaryOp::NOR);
     EXPECT_TRUE(gate.hasInputPort("in0"));
     EXPECT_TRUE(gate.hasInputPort("in1"));
     EXPECT_TRUE(gate.hasOutputPort("out"));
@@ -279,7 +279,7 @@ TEST(NORGateTest, TruthTable)
 {
     const bitWidth_t bw = 1;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::NOR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::NOR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -295,7 +295,7 @@ TEST(NORGateTest, TruthTable)
             src0.drive(LogicVector::FromBool(a));
             src1.drive(LogicVector::FromBool(b));
             char expected = truthTable[a][b];
-            EXPECT_EQ(out.peek().getBit(0), expected);
+            EXPECT_EQ(out.peek().bit(0), expected);
         }
     }
 }
@@ -304,7 +304,7 @@ TEST(NORGateTest, WideBits)
 {
     const bitWidth_t bw = 8;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::NOR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::NOR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -318,7 +318,7 @@ TEST(NORGateTest, WideBits)
     // Check each bit is 0
     for (int i = 0; i < 8; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '0');
+        EXPECT_EQ(out.peek().bit(i), '0');
     }
 }
  
@@ -329,7 +329,7 @@ TEST(NORGateTest, WideBits)
 TEST(XNORGateTest, ConstructionCreatesPorts)
 {
     Wire w0(1), w1(1), wOut(1);
-    BinaryGate gate(&w0, &w1, &wOut, BinaryOperation::XNOR);
+    BinaryGate gate(&w0, &w1, &wOut, BinaryOp::XNOR);
     EXPECT_TRUE(gate.hasInputPort("in0"));
     EXPECT_TRUE(gate.hasInputPort("in1"));
     EXPECT_TRUE(gate.hasOutputPort("out"));
@@ -339,7 +339,7 @@ TEST(XNORGateTest, TruthTable)
 {
     const bitWidth_t bw = 1;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::XNOR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::XNOR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -355,7 +355,7 @@ TEST(XNORGateTest, TruthTable)
             src0.drive(LogicVector::FromBool(a));
             src1.drive(LogicVector::FromBool(b));
             char expected = truthTable[a][b];
-            EXPECT_EQ(out.peek().getBit(0), expected);
+            EXPECT_EQ(out.peek().bit(0), expected);
         }
     }
 }
@@ -364,7 +364,7 @@ TEST(XNORGateTest, EquivalenceDetector)
 {
     const bitWidth_t bw = 8;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::XNOR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::XNOR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -377,7 +377,7 @@ TEST(XNORGateTest, EquivalenceDetector)
     // Check each bit is 1
     for (int i = 0; i < 8; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '1');
+        EXPECT_EQ(out.peek().bit(i), '1');
     }
 }
  
@@ -385,7 +385,7 @@ TEST(XNORGateTest, WideBitsInversion)
 {
     const bitWidth_t bw = 8;
     Wire in0(bw), in1(bw), out(bw);
-    BinaryGate gate(&in0, &in1, &out, BinaryOperation::XNOR);
+    BinaryGate gate(&in0, &in1, &out, BinaryOp::XNOR);
     SignalSource src0(bw), src1(bw);
     src0.addTarget(&in0);
     src1.addTarget(&in1);
@@ -398,7 +398,7 @@ TEST(XNORGateTest, WideBitsInversion)
     // XNOR of complementary patterns should be all 0s
     for (int i = 0; i < 8; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '0');
+        EXPECT_EQ(out.peek().bit(i), '0');
     }
 }
  
@@ -430,7 +430,7 @@ TEST(NOTGateTest, TruthTable)
     {
         src.drive(LogicVector::FromBool(a));
         char expected = truthTable[a];
-        EXPECT_EQ(out.peek().getBit(0), expected);
+        EXPECT_EQ(out.peek().bit(0), expected);
     }
 }
  
@@ -448,12 +448,12 @@ TEST(NOTGateTest, WideBitsInversion)
     // Check bits 0-3 are 1 (inverted from 0s)
     for (int i = 0; i < 4; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '1');
+        EXPECT_EQ(out.peek().bit(i), '1');
     }
     // Check bits 4-7 are 0 (inverted from 1s)
     for (int i = 4; i < 8; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '0');
+        EXPECT_EQ(out.peek().bit(i), '0');
     }
 }
  
@@ -466,7 +466,7 @@ TEST(NOTGateTest, DoubleNegation)
     SignalSource src(bw);
     src.addTarget(&wIn);
  
-    LogicVector a = LogicVector::FromInt(0xAA);
+    LogicVector a = LogicVector::FromInt(0xAA); // 10101010
     src.drive(a);
  
     // NOT(NOT(a)) == a
@@ -487,7 +487,7 @@ TEST(NOTGateTest, AllOnes)
     // All bits should be 0 after inversion
     for (int i = 0; i < 8; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '0');
+        EXPECT_EQ(out.peek().bit(i), '0');
     }
 }
  
@@ -505,7 +505,7 @@ TEST(NOTGateTest, AllZeros)
     // All bits should be 1 after inversion
     for (int i = 0; i < 8; ++i)
     {
-        EXPECT_EQ(out.peek().getBit(i), '1');
+        EXPECT_EQ(out.peek().bit(i), '1');
     }
 }
  
@@ -520,14 +520,14 @@ TEST(MixedGatesTest, DeMoregansLaw_NOT_AND_eq_OR_NOT)
     
     // Left side: NOT(A AND B)
     Wire wA1(bw), wB1(bw), wAndOut(bw), wNotOut1(bw);
-    BinaryGate andGate(&wA1, &wB1, &wAndOut, BinaryOperation::AND);
+    BinaryGate andGate(&wA1, &wB1, &wAndOut, BinaryOp::AND);
     NOTGate notGate1(&wAndOut, &wNotOut1);
     
     // Right side: NOT(A) OR NOT(B)
     Wire wA2(bw), wB2(bw), wNotA(bw), wNotB(bw), wOrOut(bw);
     NOTGate notGateA(&wA2, &wNotA);
     NOTGate notGateB(&wB2, &wNotB);
-    BinaryGate orGate(&wNotA, &wNotB, &wOrOut, BinaryOperation::OR);
+    BinaryGate orGate(&wNotA, &wNotB, &wOrOut, BinaryOp::OR);
     
     SignalSource srcA1(bw), srcB1(bw), srcA2(bw), srcB2(bw);
     srcA1.addTarget(&wA1);
@@ -559,9 +559,9 @@ TEST(MixedGatesTest, Multiplexer2to1)
     Wire wNotSel(bw), wAndA(bw), wAndB(bw), wOut(bw);
     
     NOTGate notGate(&wSel, &wNotSel);
-    BinaryGate andGateA(&wA, &wSel, &wAndA, BinaryOperation::AND);
-    BinaryGate andGateB(&wB, &wNotSel, &wAndB, BinaryOperation::AND);
-    BinaryGate orGate(&wAndA, &wAndB, &wOut, BinaryOperation::OR);
+    BinaryGate andGateA(&wA, &wSel, &wAndA, BinaryOp::AND);
+    BinaryGate andGateB(&wB, &wNotSel, &wAndB, BinaryOp::AND);
+    BinaryGate orGate(&wAndA, &wAndB, &wOut, BinaryOp::OR);
     
     SignalSource srcA(bw), srcB(bw), srcSel(bw);
     srcA.addTarget(&wA);
@@ -589,10 +589,10 @@ TEST(MixedGatesTest, FullAdderCarout)
     Wire wA(bw), wB(bw), wCin(bw);
     Wire wAndAB(bw), wXorAB(bw), wAndCinXor(bw), wCout(bw);
     
-    BinaryGate andAB(&wA, &wB, &wAndAB, BinaryOperation::AND);
-    BinaryGate xorAB(&wA, &wB, &wXorAB, BinaryOperation::XOR);
-    BinaryGate andCinXor(&wCin, &wXorAB, &wAndCinXor, BinaryOperation::AND);
-    BinaryGate orOut(&wAndAB, &wAndCinXor, &wCout, BinaryOperation::OR);
+    BinaryGate andAB(&wA, &wB, &wAndAB, BinaryOp::AND);
+    BinaryGate xorAB(&wA, &wB, &wXorAB, BinaryOp::XOR);
+    BinaryGate andCinXor(&wCin, &wXorAB, &wAndCinXor, BinaryOp::AND);
+    BinaryGate orOut(&wAndAB, &wAndCinXor, &wCout, BinaryOp::OR);
     
     SignalSource srcA(bw), srcB(bw), srcCin(bw);
     srcA.addTarget(&wA);
@@ -618,3 +618,31 @@ TEST(MixedGatesTest, FullAdderCarout)
     EXPECT_EQ((bool)wCout.peek(), false);
 }
  
+TEST(MixedGatesTest, SRFlipFlop) {
+    Wire set(1), reset(1), q(1), qNot(1);
+
+    SignalSource srcSet(1), srcReset(1);
+    srcSet.addTarget(&set);
+    srcReset.addTarget(&reset);
+
+    // SR Flip-Flop using NOR
+    BinaryGate nor1(&reset, &qNot, &q, BinaryOp::NOR); // q = reset NOR qNot
+    BinaryGate nor2(&set, &q, &qNot, BinaryOp::NOR); // qNot = set NOR q
+    
+    srcSet.drive(LogicVector::FromBool(0));
+    srcReset.drive(LogicVector::FromBool(0));
+
+    srcSet.drive(LogicVector::FromBool(1)); // Set
+    EXPECT_EQ((bool)q.peek(), true);
+    EXPECT_EQ((bool)qNot.peek(), false);
+    srcSet.drive(LogicVector::FromBool(0));
+    
+    srcReset.drive(LogicVector::FromBool(1)); // Reset
+    EXPECT_EQ((bool)q.peek(), false);
+    EXPECT_EQ((bool)qNot.peek(), true);
+    srcReset.drive(LogicVector::FromBool(0));
+    
+    srcSet.drive(LogicVector::FromBool(1)); // Set again
+    EXPECT_EQ((bool)q.peek(), true);
+    EXPECT_EQ((bool)qNot.peek(), false);
+}

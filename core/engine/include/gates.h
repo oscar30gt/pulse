@@ -1,17 +1,14 @@
 #ifndef PULSE_GATES_H
 #define PULSE_GATES_H
 
-#include <string>
-#include <unordered_map>
-
 #include "component.h"
 #include "signalDrain.h"
 #include "signalSource.h"
 
 namespace Pulse
 {
-    /// Enumerates available gate operations a binary gate can perform.
-    enum class BinaryOperation : uint8_t
+    /// Available gate operations a binary gate can perform.
+    enum class BinaryOp : uint8_t
     {
         AND,        // And (&)
         OR,         // Or (|)
@@ -22,27 +19,27 @@ namespace Pulse
     };
 
     /// A simple 2-input gate component.
-    /// Inputs: "in0" (X bits), "in1" (X bits)
-    /// Outputs: "out" (X bits)
+    /// Inputs: "in0" (N bits), "in1" (N bits)
+    /// Outputs: "out" (N bits)
     class BinaryGate : public Component
     {
         SignalDrain m_in0;
         SignalDrain m_in1;
         SignalSource m_out;
-        BinaryOperation m_operation : 3;
+        BinaryOp m_operation : 3;
 
         bool recalculate(ttl_t ttl);
 
     public:
-        BinaryGate(Wire* in0, Wire* in1, Wire* out, BinaryOperation op = BinaryOperation::AND);
+        BinaryGate(Wire* in0, Wire* in1, Wire* out, BinaryOp op = BinaryOp::AND);
         ~BinaryGate();
     };
 
     // --------------------------------------------------------------------------------------------
 
     /// A simple NOT gate component.
-    /// Inputs: "in" (X bits)
-    /// Outputs: "out" (X bits)
+    /// Inputs: "in" (N bits)
+    /// Outputs: "out" (N bits)
     class NOTGate : public Component
     {
         SignalDrain m_in;

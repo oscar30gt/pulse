@@ -35,7 +35,7 @@ namespace Pulse
     bool Splitter::recalculate(ttl_t ttl)
     {
         LogicVector inputState = m_in.pull();
-        LogicVector outputState = inputState.getRange(m_range.first, m_range.second);
+        LogicVector outputState = inputState.range(m_range.first, m_range.second);
         return m_out.drive(outputState, ttl);
     }
 }

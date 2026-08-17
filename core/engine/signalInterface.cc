@@ -80,7 +80,7 @@ namespace Pulse
         for (auto source : m_sources)
             resolvedState = resolvedState.resolve(source->peek());
 
-        return resolvedState;
+        return resolvedState.range(m_bitWidth);
     }
 
     bool ISignalReceiver::notify(ttl_t ttl)

@@ -2,10 +2,10 @@
 
 namespace Pulse
 {
-    Shifter::Shifter(Wire* in, Wire* shamt, Wire* out, ShiftOperation op)
+    Shifter::Shifter(Wire* in, Wire* shamt, Wire* out, ShiftOp op)
         : Component({ {"in", in}, {"shamt", shamt} }, { {"out", out} }),
         m_in(in->width(), this, &Shifter::recalculate),
-        m_shamt(shamt->width(), this, &Shifter::recalculate),
+        m_shamt(6, this, &Shifter::recalculate),
         m_out(in->width()),  // Output must match the input width
         m_operation(op)
     {
@@ -28,23 +28,27 @@ namespace Pulse
         LogicVector input = m_in.pull();
         LogicVector shiftAmount = m_shamt.pull();
 
+        if (!shiftAmount.isDefinite()) {
+            return m_out.drive(LogicVector::Unknown(), ttl);
+        }
+
         LogicVector result;
         switch (m_operation)
         {
-            case ShiftOperation::LogicalLeft:
-                result = input.lsl((uint8_t)shiftAmount, m_in.width());
+            case ShiftOp::LogicalLeft:
+                result = input.lsl(static_cast<uint8_t>(shiftAmount), m_in.width());
                 break;
-            case ShiftOperation::LogicalRight:
-                result = input.lsr((uint8_t)shiftAmount, m_in.width());
+            case ShiftOp::LogicalRight:
+                result = input.lsr(static_cast<uint8_t>(shiftAmount), m_in.width());
                 break;
-            case ShiftOperation::ArithmeticRight:
-                result = input.asr((uint8_t)shiftAmount, m_in.width());
+            case ShiftOp::ArithmeticRight:
+                result = input.asr(static_cast<uint8_t>(shiftAmount), m_in.width());
                 break;
-            case ShiftOperation::RotateLeft:
-                result = input.rol((uint8_t)shiftAmount, m_in.width());
+            case ShiftOp::RotateLeft:
+                result = input.rol(static_cast<uint8_t>(shiftAmount), m_in.width());
                 break;
-            case ShiftOperation::RotateRight:
-                result = input.ror((uint8_t)shiftAmount, m_in.width());
+            case ShiftOp::RotateRight:
+                result = input.ror(static_cast<uint8_t>(shiftAmount), m_in.width());
                 break;
         }
 

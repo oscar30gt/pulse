@@ -7,35 +7,35 @@
 
 namespace Pulse
 {
-    /// Enumerates the available shift operations for the Shifter component.
-    enum class ShiftOperation : uint8_t
+    /// Available shift operations for the Shifter component.
+    enum class ShiftOp : uint8_t
     {
-        LogicalLeft,               /// Logical left shift
-        LogicalRight,              /// Logical right shift
-        ArithmeticRight,    /// Arithmetic right shift (preserves sign bit)
-        RotateLeft,         /// Rotate left
-        RotateRight         /// Rotate right
+        LogicalLeft,            /// Logical left shift
+        LogicalRight,           /// Logical right shift
+        ArithmeticRight,        /// Arithmetic right shift (preserves sign bit)
+        RotateLeft,             /// Rotate left
+        RotateRight             /// Rotate right
     };
 
     /// Barrel shifter component that shifts a signal the specified number of bits.
     /// Available shift operations: left, right, arithmetic right, rotate left, rotate right.
-    /// Inputs: "in" (X bits), "shamt" (6 bits)
-    /// Outputs: "out" (X bits)
+    /// Inputs: "in" (N bits), "shamt" (6 bits)
+    /// Outputs: "out" (N bits)
     class Shifter : public Component
     {
         SignalDrain m_in;
         SignalDrain m_shamt;
         SignalSource m_out;
-        ShiftOperation m_operation : 3;
+        ShiftOp m_operation : 3;
 
+        /// Recalculate the output based on the current input and shift amount.
         bool recalculate(ttl_t ttl);
 
     public:
-        explicit Shifter(Wire* in, Wire* shamt, Wire* out, ShiftOperation op = ShiftOperation::LogicalLeft);
+        explicit Shifter(Wire* in, Wire* shamt, Wire* out, ShiftOp op = ShiftOp::LogicalLeft);
         virtual ~Shifter() override final;
     };
 
 } // namespace Pulse
-
 
 #endif // PULSE_SHIFTER_H

@@ -12,7 +12,7 @@ using namespace Pulse;
 TEST(ShifterTest, ConstructionCreatesPorts)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalLeft);
     EXPECT_TRUE(shifter.hasInputPort("in"));
     EXPECT_TRUE(shifter.hasInputPort("shamt"));
     EXPECT_TRUE(shifter.hasOutputPort("out"));
@@ -29,7 +29,7 @@ TEST(ShifterTest, DefaultOperationIsLeft)
 TEST(ShifterTest, LogicalLeftShift)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalLeft);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -47,7 +47,7 @@ TEST(ShifterTest, LogicalLeftShift)
 TEST(ShifterTest, LogicalRightShift)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalRight);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalRight);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -65,7 +65,7 @@ TEST(ShifterTest, LogicalRightShift)
 TEST(ShifterTest, ArithmeticRightShiftPreservesSign)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::ArithmeticRight);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::ArithmeticRight);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -83,7 +83,7 @@ TEST(ShifterTest, ArithmeticRightShiftPreservesSign)
 TEST(ShifterTest, ArithmeticRightShiftPositive)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::ArithmeticRight);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::ArithmeticRight);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -101,7 +101,7 @@ TEST(ShifterTest, ArithmeticRightShiftPositive)
 TEST(ShifterTest, RotateLeft)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::RotateLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::RotateLeft);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -119,7 +119,7 @@ TEST(ShifterTest, RotateLeft)
 TEST(ShifterTest, RotateRight)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::RotateRight);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::RotateRight);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -137,7 +137,7 @@ TEST(ShifterTest, RotateRight)
 TEST(ShifterTest, ShiftByZero)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalLeft);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -155,7 +155,7 @@ TEST(ShifterTest, ShiftByZero)
 TEST(ShifterTest, LeftShiftByFullWidth)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalLeft);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -173,7 +173,7 @@ TEST(ShifterTest, LeftShiftByFullWidth)
 TEST(ShifterTest, RightShiftByFullWidth)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalRight);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalRight);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -191,7 +191,7 @@ TEST(ShifterTest, RightShiftByFullWidth)
 TEST(ShifterTest, Rotate8BitsByFullAmount)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::RotateLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::RotateLeft);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -209,7 +209,7 @@ TEST(ShifterTest, Rotate8BitsByFullAmount)
 TEST(ShifterTest, VaryingWidths16Bit)
 {
     Wire in(16), shamt(6), out(16);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalLeft);
     
     SignalSource inSrc(16), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -227,7 +227,7 @@ TEST(ShifterTest, VaryingWidths16Bit)
 TEST(ShifterTest, MultipleShiftsSequential)
 {
     Wire in(8), shamt(6), out(8);
-    Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalLeft);
+    Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalLeft);
     
     SignalSource inSrc(8), shamtSrc(6);
     inSrc.addTarget(&in);
@@ -255,7 +255,7 @@ TEST(ShifterTest, AllOperationsWithSameInput)
     
     // Test each operation type
     {
-        Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalLeft);
+        Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalLeft);
         SignalSource inSrc(8), shamtSrc(6);
         inSrc.addTarget(&in);
         shamtSrc.addTarget(&shamt);
@@ -267,7 +267,7 @@ TEST(ShifterTest, AllOperationsWithSameInput)
     }
     
     {
-        Shifter shifter(&in, &shamt, &out, ShiftOperation::LogicalRight);
+        Shifter shifter(&in, &shamt, &out, ShiftOp::LogicalRight);
         SignalSource inSrc(8), shamtSrc(6);
         inSrc.addTarget(&in);
         shamtSrc.addTarget(&shamt);

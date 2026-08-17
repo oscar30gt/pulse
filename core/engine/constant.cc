@@ -4,7 +4,7 @@
 
 namespace Pulse
 {
-    Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(state) { }
+    Constant::Constant(LogicVector state, bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalEmitter(bitWidth), m_state(state.range(bitWidth)) { }
 
     Constant::~Constant() = default;
 

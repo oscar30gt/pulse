@@ -2,7 +2,7 @@
 
 namespace Pulse
 {
-    BinaryGate::BinaryGate(Wire* in0, Wire* in1, Wire* out, BinaryOperation op)
+    BinaryGate::BinaryGate(Wire* in0, Wire* in1, Wire* out, BinaryOp op)
         : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
         m_in0(in0->width(), this, &BinaryGate::recalculate),
         m_in1(in0->width(), this, &BinaryGate::recalculate),   // Width is assumed to be the same as in0
@@ -34,22 +34,22 @@ namespace Pulse
         LogicVector result;
         switch (m_operation)
         {
-            case BinaryOperation::AND:
+            case BinaryOp::AND:
                 result = a & b;
                 break;
-            case BinaryOperation::OR:
+            case BinaryOp::OR:
                 result = a | b;
                 break;
-            case BinaryOperation::XOR:
+            case BinaryOp::XOR:
                 result = a ^ b;
                 break;
-            case BinaryOperation::NAND:
+            case BinaryOp::NAND:
                 result = ~(a & b);
                 break;
-            case BinaryOperation::NOR:
+            case BinaryOp::NOR:
                 result = ~(a | b);
                 break;
-            case BinaryOperation::XNOR:
+            case BinaryOp::XNOR:
                 result = ~(a ^ b);
                 break;
         }

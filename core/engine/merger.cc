@@ -26,8 +26,8 @@ namespace Pulse
 
     bool Merger::recalculate(ttl_t ttl)
     {
-        LogicVector lessSignificant = m_in0.pull().sanitize(m_in0.width());
-        LogicVector moreSignificant = m_in1.pull(); // No need to sanitize. Trash will remain trash.
+        LogicVector lessSignificant = m_in0.pull();
+        LogicVector moreSignificant = m_in1.pull();
         LogicVector result = lessSignificant | moreSignificant.lsl(m_in0.width());
         return m_out.drive(result, ttl);
     }
