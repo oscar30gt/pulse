@@ -1,6 +1,8 @@
 #include "subgraph.h"
-#include "blueprint.h"
 
+#include <stdexcept>
+
+#include "blueprint.h"
 #include "gates.h"
 #include "shifter.h"
 #include "comparator.h"
@@ -16,15 +18,32 @@ namespace Pulse::Engine
     Subgraph::Subgraph(const Blueprint& bp, const PortInitializer& inPorts, const PortInitializer& outPorts)
         : Component(inPorts, outPorts)
     {
+        std::vector<std::string> visitedSubgraphs;
+        build(bp, visitedSubgraphs);
+    }
 
+    Subgraph::Subgraph(const Blueprint& bp, const PortInitializer& inPorts, const PortInitializer& outPorts, std::vector<std::string>& visitedSubgraphs)
+        : Component(inPorts, outPorts)
+    {
+        build(bp, visitedSubgraphs);
+    }
+
+    void Subgraph::build(const Blueprint& bp, std::vector<std::string>& visitedSubgraphs)
+    {
+        // Wires must be created before components, as components need 
+        // to connect to the wires during their construction.
         for (auto& [name, wire] : bp.wires)
         {
             wires.insert({ name, std::make_unique<Wire>(wire.width) });
         }
 
+        // Now, create the components based on the blueprint. 
+        // Each component will connect to the appropriate wires, 
+        // which can be either internal wires or the subgraph's ports.
         using namespace Pulse::Parser;
         for (auto& [name, component] : bp.components)
         {
+            // Instantiate the component based on its type. Subgraph will take ownership of the created component.
             switch (component->type)
             {
                 case InstanceType::BinaryGate:
@@ -124,8 +143,14 @@ namespace Pulse::Engine
                 }
                 break;
 
+                // Subgraphs are nested components, so we need to recursively create them.
                 case InstanceType::Subgraph:
                 {
+                    if (std::find(visitedSubgraphs.begin(), visitedSubgraphs.end(), name) != visitedSubgraphs.end())
+                    {
+                        throw std::runtime_error("Subgraph construction failed: Recursive subgraph detected at: " + name);
+                    }
+
                     auto* subgraph = static_cast<SubgraphInstance*>(component.get());
                     auto* bp = subgraph->bp;
                     auto& portMap = subgraph->portMap;
@@ -133,7 +158,7 @@ namespace Pulse::Engine
                     // Map the subgraph's ports to the parent subgraph's wires
                     PortInitializer inPorts, outPorts;
 
-                    for (const auto& portName: subgraph->bp->inPorts)
+                    for (const auto& portName : subgraph->bp->inPorts)
                     {
                         auto it = portMap.find(portName);
                         if (it == portMap.end())
@@ -143,7 +168,7 @@ namespace Pulse::Engine
                         inPorts.emplace_back(portName, parentWire);
                     }
 
-                    for (const auto& portName: subgraph->bp->outPorts)
+                    for (const auto& portName : subgraph->bp->outPorts)
                     {
                         auto it = portMap.find(portName);
                         if (it == portMap.end())
@@ -152,8 +177,10 @@ namespace Pulse::Engine
                         Wire* parentWire = findWire(it->second);
                         outPorts.emplace_back(portName, parentWire);
                     }
-                    
-                    components.insert({ name, std::make_unique<Subgraph>(*bp, inPorts, outPorts) });
+
+                    visitedSubgraphs.push_back(name);
+                    components.insert({ name, std::make_unique<Subgraph>(*bp, inPorts, outPorts, visitedSubgraphs) });
+                    visitedSubgraphs.pop_back();
                 }
                 break;
 
@@ -183,14 +210,9 @@ namespace Pulse::Engine
         return nullptr;
     }
 
-    Component* Subgraph::findComponent(const std::string& name)
+    void Subgraph::update()
     {
-        auto it = components.find(name);
-        if (it != components.end())
-        {
-            return it->second.get();
-        }
-
-        return nullptr;
+        for (auto& [name, component] : components)
+            component->update();
     }
 }
