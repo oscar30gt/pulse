@@ -9,6 +9,11 @@
 
 namespace Pulse::Engine
 {
+    /// Base class for all components in the Pulse engine. 
+    /// A component can have multiple input and output ports, each connected to a Wire.
+    /// Components are just an abstraction. Connected wires are only "injected" into the component,
+    /// allowing the internal logic of the component to operate on those signals.
+    /// A component port has no inherent width. The internal circuit does.
     class Component
     {
         using PortMap = std::unordered_map<std::string, Wire*>;
@@ -52,6 +57,11 @@ namespace Pulse::Engine
         /// @returns True if the port exists, false otherwise.
         [[nodiscard]]
         bool hasPort(const std::string& portName) const;
+
+        /// Updates the component. Can be used by time-aware components such 
+        /// as asynchronous circuits or sequential elements
+        /// with an specific delay.
+        virtual void update() { /* Optional override */ };
     };
 
 } // namespace Pulse::Engine

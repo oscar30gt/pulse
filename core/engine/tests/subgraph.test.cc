@@ -6,10 +6,6 @@ using namespace Pulse;
 using namespace Pulse::Engine;
 using namespace Pulse::Parser;
 
-// ===========================================================================
-// ADDER - CONSTRUCTION AND PORT TESTS
-// ===========================================================================
-
 TEST(SubgraphTest, SRFlipFlop)
 {
     // Create a subgraph that implements an SR flip-flop using NOR gates
