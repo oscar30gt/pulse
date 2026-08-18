@@ -23,6 +23,7 @@ namespace Pulse::Engine
         bool recalculate(ttl_t ttl);
 
     public:
+        /// Range is defined as a pair of (high, low) bit indices, inclusive.
         explicit Splitter(Wire* in, Wire* out, std::pair<bitWidth_t, bitWidth_t> range);
         virtual ~Splitter() override final;
     };

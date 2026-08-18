@@ -5,7 +5,7 @@
 
 namespace Pulse::Engine
 {
-    Component::Component(PortInitializer inPorts, PortInitializer outPorts)
+    Component::Component(const PortInitializer& inPorts, const PortInitializer& outPorts)
     {
         std::unordered_set<std::string> uniquePorts;
         uniquePorts.reserve(inPorts.size() + outPorts.size());

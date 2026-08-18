@@ -8,6 +8,7 @@
 namespace Pulse::Engine
 {
     /// A binary subtractor that performs subtraction on two input signals and produces an output signal.
+    /// Resulting signal is calculated as: out = in0 - in1
     /// Inputs: "in0" (N bits), "in1" (N bits)
     /// Outputs: "out" (N bits)
     class Subtractor : public Component

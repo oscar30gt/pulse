@@ -2,9 +2,8 @@
 #define PULSE_COMPONENT_H
 
 #include <string>
-#include <span>
 #include <unordered_map>
-#include <initializer_list>
+#include <vector>
 
 #include "wire.h"
 
@@ -16,12 +15,11 @@ namespace Pulse::Engine
         PortMap m_inSignals;
         PortMap m_outSignals;
 
-    protected:
-        /// Initializer for component ports where each input/output gets a wire assigned.
-        using PortInitializer = std::initializer_list<std::pair<std::string, Wire*>>;
-
     public:
-        explicit Component(PortInitializer inPorts, PortInitializer outPorts);
+        /// Initializer for component ports where each input/output gets a wire assigned.
+        using PortInitializer = std::vector<std::pair<std::string, Wire*>>;
+
+        explicit Component(const PortInitializer& inPorts, const PortInitializer& outPorts);
         virtual ~Component();
 
         /// Gets the wire that is currently connected to the specified port, or nullptr if no wire is connected.

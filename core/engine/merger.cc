@@ -2,14 +2,14 @@
 
 namespace Pulse::Engine
 {
-    Merger::Merger(Wire* in0, Wire* in1, Wire* out)
-        : Component({ {"in0", in0}, {"in1", in1} }, { {"out", out} }),
-        m_in0(in0->width(), this, &Merger::recalculate),
-        m_in1(in1->width(), this, &Merger::recalculate),
-        m_out(in0->width() + in1->width())
+    Merger::Merger(Wire* low, Wire* high, Wire* out)
+        : Component({ {"low", low}, {"high", high} }, { {"out", out} }),
+        m_low(low->width(), this, &Merger::recalculate),
+        m_high(high->width(), this, &Merger::recalculate),
+        m_out(low->width() + high->width())
     {
-        m_in0.addSource(in0);
-        m_in1.addSource(in1);
+        m_low.addSource(low);
+        m_high.addSource(high);
 
         try
         {
@@ -26,9 +26,9 @@ namespace Pulse::Engine
 
     bool Merger::recalculate(ttl_t ttl)
     {
-        LogicVector lessSignificant = m_in0.pull();
-        LogicVector moreSignificant = m_in1.pull();
-        LogicVector result = lessSignificant | moreSignificant.lsl(m_in0.width());
+        LogicVector lessSignificant = m_low.pull();
+        LogicVector moreSignificant = m_high.pull();
+        LogicVector result = lessSignificant | moreSignificant.lsl(m_low.width());
         return m_out.drive(result, ttl);
     }
 }

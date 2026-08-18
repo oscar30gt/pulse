@@ -14,42 +14,42 @@ using namespace Pulse::Engine;
 
 TEST(MergerTest, ConstructionCreatesPorts)
 {
-    Wire in0(4), in1(4), out(8);
-    Merger merger(&in0, &in1, &out);
-    EXPECT_TRUE(merger.hasInputPort("in0"));
-    EXPECT_TRUE(merger.hasInputPort("in1"));
+    Wire low(4), high(4), out(8);
+    Merger merger(&low, &high, &out);
+    EXPECT_TRUE(merger.hasInputPort("low"));
+    EXPECT_TRUE(merger.hasInputPort("high"));
     EXPECT_TRUE(merger.hasOutputPort("out"));
     EXPECT_FALSE(merger.hasPort("nonexistent"));
 }
 
 TEST(MergerTest, SimpleConcatenation)
 {
-    Wire in0(4), in1(4), out(8);
-    Merger merger(&in0, &in1, &out);
+    Wire low(4), high(4), out(8);
+    Merger merger(&low, &high, &out);
     SignalSource src0(4), src1(4);
-    src0.addTarget(&in0);
-    src1.addTarget(&in1);
+    src0.addTarget(&low);
+    src1.addTarget(&high);
     src0.drive(LogicVector::FromInt(0b1010)); // low bits
     src1.drive(LogicVector::FromInt(0b1100)); // high bits
     // Propagate changes
-    EXPECT_TRUE(in0.notify());
-    EXPECT_TRUE(in1.notify());
-    // Expected: in1 << 4 | in0
+    EXPECT_TRUE(low.notify());
+    EXPECT_TRUE(high.notify());
+    // Expected: high << 4 | low
     LogicVector expected = LogicVector::FromInt(0b11001010);
     EXPECT_EQ(out.peek(), expected);
 }
 
 TEST(MergerTest, VaryingWidths)
 {
-    Wire in0(3), in1(5), out(8);
-    Merger merger(&in0, &in1, &out);
+    Wire low(3), high(5), out(8);
+    Merger merger(&low, &high, &out);
     SignalSource src0(3), src1(5);
-    src0.addTarget(&in0);
-    src1.addTarget(&in1);
+    src0.addTarget(&low);
+    src1.addTarget(&high);
     src0.drive(LogicVector::FromInt(0b101));
     src1.drive(LogicVector::FromInt(0b11011));
-    EXPECT_TRUE(in0.notify());
-    EXPECT_TRUE(in1.notify());
+    EXPECT_TRUE(low.notify());
+    EXPECT_TRUE(high.notify());
     LogicVector expected = LogicVector::FromInt(0b11011101);
     EXPECT_EQ(out.peek(), expected);
 }
@@ -57,11 +57,11 @@ TEST(MergerTest, VaryingWidths)
 TEST(MergerTest, ExhaustiveTruthTable)
 {
     const bitWidth_t bw = 2;
-    Wire in0(bw), in1(bw), out(2 * bw);
-    Merger merger(&in0, &in1, &out);
+    Wire low(bw), high(bw), out(2 * bw);
+    Merger merger(&low, &high, &out);
     SignalSource src0(bw), src1(bw);
-    src0.addTarget(&in0);
-    src1.addTarget(&in1);
+    src0.addTarget(&low);
+    src1.addTarget(&high);
     for (int a = 0; a < (1 << bw); ++a)
     {
         for (int b = 0; b < (1 << bw); ++b)
@@ -96,6 +96,6 @@ TEST(MergerTest, ChainedMergers)
 
 TEST(MergerTest, ConstructionFailsOnWidthMismatch)
 {
-    Wire in0(4), in1(4), out(7); // sum is 8, out is 7
-    EXPECT_THROW({ Merger m(&in0, &in1, &out); }, bit_width_mismatch);
+    Wire low(4), high(4), out(7); // sum is 8, out is 7
+    EXPECT_THROW({ Merger m(&low, &high, &out); }, bit_width_mismatch);
 }
