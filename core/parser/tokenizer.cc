@@ -45,6 +45,7 @@ namespace Pulse::Parser::VHDL
                 {"open", TokenType::Keyword}, {"component", TokenType::Keyword},
                 {"use", TokenType::Keyword}, {"library", TokenType::Keyword},
                 {"others", TokenType::Keyword}, {"all", TokenType::Keyword},
+                {"of", TokenType::Keyword},
 
                 {"std_logic", TokenType::StandardType}, {"std_logic_vector", TokenType::StandardType},
                 {"integer", TokenType::StandardType}, {"real", TokenType::StandardType},
@@ -358,6 +359,11 @@ namespace Pulse::Parser::VHDL
     size_t Tokenizer::size() const
     {
         return tokens.size();
+    }
+
+    void Tokenizer::reset()
+    {
+        currentIndex = 0;
     }
 
     bool Tokenizer::operator>>(Token& token)

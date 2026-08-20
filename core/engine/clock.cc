@@ -17,7 +17,7 @@ namespace Pulse::Engine
         {
             m_out.addTarget(out);
         }
-        catch (const bit_width_mismatch& e)
+        catch (const bit_width_mismatch&)
         {
             throw bit_width_mismatch("Clock output wire width is not 1", 1, out->width());
         }
