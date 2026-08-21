@@ -27,7 +27,7 @@ namespace Pulse::Parser::VHDL
     struct ASTNode { virtual ~ASTNode() = default; };
 
     /// Root node containing top-level entities and architectures
-    struct RootNode final : ASTNode
+    struct ASTRoot final : ASTNode
     {
         std::vector<std::unique_ptr<ASTNode>> children;
     };
@@ -185,13 +185,13 @@ namespace Pulse::Parser::VHDL
 
     class ASTBuilder
     {
-        RootNode root;
+        ASTRoot root;
 
     public:
         ASTBuilder(Tokenizer& tokenizer);
         ~ASTBuilder() = default;
 
-        RootNode& getRoot();
+        ASTRoot& getRoot();
         void printTree() const;
     };
 } // namespace Pulse::Parser::VHDL

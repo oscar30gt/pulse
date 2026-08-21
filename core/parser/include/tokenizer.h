@@ -65,9 +65,6 @@ namespace Pulse::Parser::VHDL
         /// @returns The number of total tokens in the token stream.
         size_t size() const;
 
-        /// Reset the stream extraction to the beginning of the token stream.
-        void reset();
-
         /// Overloaded stream extraction operator to retrieve the next token from the stream.
         /// @returns true if a token was successfully extracted, false if the end of the stream has been reached. 
         bool operator>>(Token& token);

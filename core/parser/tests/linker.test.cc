@@ -28,10 +28,10 @@ std::unique_ptr<EntityDeclaration> createDummyEntity(const std::string& name)
 
 TEST(LinkerTest, ResolvesEntities)
 {
-    RootNode root;
+    ASTRoot root;
     root.children.push_back(createDummyEntity("MyGate"));
 
-    std::vector<const RootNode*> astRoots = { &root };
+    std::vector<const ASTRoot*> astRoots = { &root };
     Linker linker;
     LinkedDesign design = linker.link(astRoots);
 
@@ -43,7 +43,7 @@ TEST(LinkerTest, ResolvesEntities)
 
 TEST(LinkerTest, ResolvesArchitecture)
 {
-    RootNode root;
+    ASTRoot root;
     
     // 1. Add Entity
     root.children.push_back(createDummyEntity("TopLevel"));
@@ -60,7 +60,7 @@ TEST(LinkerTest, ResolvesArchitecture)
 
     root.children.push_back(std::move(arch));
 
-    std::vector<const RootNode*> astRoots = { &root };
+    std::vector<const ASTRoot*> astRoots = { &root };
     Linker linker;
     LinkedDesign design = linker.link(astRoots);
 

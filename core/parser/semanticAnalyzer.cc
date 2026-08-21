@@ -1,9 +1,9 @@
-#include "SemanticAnalyzer.h"
+#include "semanticAnalyzer.h"
 #include <cmath>
 
 namespace Pulse::Parser::VHDL
 {
-    void SemanticAnalyzer::analyze(const RootNode& root)
+    void SemanticAnalyzer::analyze(const ASTRoot& root)
     {
         // 1. First pass: Register all available entities in the global scope
         registerEntities(root);
@@ -18,7 +18,7 @@ namespace Pulse::Parser::VHDL
         }
     }
 
-    void SemanticAnalyzer::registerEntities(const RootNode& root)
+    void SemanticAnalyzer::registerEntities(const ASTRoot& root)
     {
         for (const auto& child : root.children)
         {

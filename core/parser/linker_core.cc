@@ -2,7 +2,7 @@
 
 namespace Pulse::Parser::VHDL
 {
-    LinkedDesign Linker::link(const std::vector<const RootNode*>& astRoots)
+    LinkedDesign Linker::link(const std::vector<const ASTRoot*>& astRoots)
     {
         LinkedDesign design;
 
@@ -16,7 +16,7 @@ namespace Pulse::Parser::VHDL
         return design;
     }
 
-    void Linker::collectEntities(const std::vector<const RootNode*>& astRoots)
+    void Linker::collectEntities(const std::vector<const ASTRoot*>& astRoots)
     {
         m_globalEntities.clear();
 
@@ -38,7 +38,7 @@ namespace Pulse::Parser::VHDL
         }
     }
 
-    void Linker::resolveArchitectures(const std::vector<const RootNode*>& astRoots, LinkedDesign& outputDesign)
+    void Linker::resolveArchitectures(const std::vector<const ASTRoot*>& astRoots, LinkedDesign& outputDesign)
     {
         for (const auto* root : astRoots)
         {

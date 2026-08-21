@@ -9,7 +9,7 @@ namespace Pulse::Parser::VHDL::Tests
     {
     protected:
         SemanticAnalyzer analyzer;
-        RootNode root;
+        ASTRoot root;
 
         void SetUp() override 
         {

@@ -1,304 +1,535 @@
 #include "blueprintGenerator.h"
+
 #include <stdexcept>
-#include <algorithm>
-#include <cctype>
+#include <cassert>
 
 namespace Pulse::Parser::VHDL
 {
-    std::unordered_map<std::string, std::unique_ptr<Pulse::Parser::Blueprint>> 
-    BlueprintGenerator::generate(const LinkedDesign& design)
+    // =========================================================================
+    // Internal expression compiler
+    // =========================================================================
+
+    namespace
     {
-        std::unordered_map<std::string, std::unique_ptr<Pulse::Parser::Blueprint>> registry;
-        std::unordered_map<std::string, Pulse::Parser::Blueprint*> entityToBlueprint;
+        // -----------------------------------------------------------------------
+        // Helpers
+        // -----------------------------------------------------------------------
 
-        // Pass 1: Allocate blueprints and register ports/signals
-        for (const auto& arch : design.architectures)
+        std::unordered_map<std::string, Pulse::bitWidth_t>
+        buildWidthTable(const LinkedArchitecture& arch)
         {
-            auto bp = std::make_unique<Pulse::Parser::Blueprint>();
+            std::unordered_map<std::string, Pulse::bitWidth_t> table;
 
-            // Map target entity ports to blueprint
-            if (arch.targetEntity)
-            {
-                for (const auto& port : arch.targetEntity->ports)
-                {
-                    bp->addPort(port->portName, port->isInput);
-                    bp->addSignal(port->portName, port->width);
-                }
-                // For subgraph linking, map entity name to its blueprint
-                entityToBlueprint[arch.targetEntity->entityName] = bp.get();
-            }
+            for (const auto& port : arch.targetEntity->ports)
+                table[port->portName] = port->width;
 
-            // Map internal signals to blueprint
-            for (const auto* sig : arch.signals)
-            {
-                bp->addSignal(sig->signalName, sig->width);
-            }
+            for (const SignalDeclaration* sig : arch.signals)
+                table[sig->signalName] = sig->width;
 
-            registry[arch.architectureName] = std::move(bp);
+            return table;
         }
 
-        // Pass 2: Populate components, assignments, and resolve subgraphs
-        for (const auto& arch : design.architectures)
-        {
-            Pulse::Parser::Blueprint* bp = registry[arch.architectureName].get();
-            m_tempWireCounter = 0;
-            m_compCounter = 0;
+        // -----------------------------------------------------------------------
+        // ExprCompiler – recursive expression → blueprint component emitter
+        // -----------------------------------------------------------------------
 
-            // 1. Process Concurrent Assignments
-            for (const auto* assign : arch.assignments)
+        struct ExprCompiler
+        {
+            Blueprint&                                              bp;
+            const std::unordered_map<std::string, Pulse::bitWidth_t>& widths;
+            int                                                     counter = 0;
+
+            // ------------------------------------------------------------------
+            // Allocate a fresh temporary wire and register it in the blueprint.
+            // ------------------------------------------------------------------
+            std::string makeTmp(Pulse::bitWidth_t width, const std::string& prefix = "$tmp_")
             {
-                if (assign && assign->target)
+                std::string name = prefix + std::to_string(counter++);
+                bp.addSignal(name, width);
+                return name;
+            }
+
+            // ------------------------------------------------------------------
+            // Resolve the bit-width of an arbitrary LOGIC expression.
+            // ------------------------------------------------------------------
+            Pulse::bitWidth_t widthOf(const ASTNode* node)
+            {
+                if (auto lit = dynamic_cast<const LogicLiteralExpr*>(node))
+                    return lit->width;
+
+                if (auto ref = dynamic_cast<const SignalReference*>(node))
                 {
-                    // Build the expression tree, routing the final output to the target signal
-                    buildExpression(assign->value.get(), *bp, assign->target->signalName);
+                    if (!ref->low && !ref->high)
+                    {
+                        auto it = widths.find(ref->signalName);
+                        if (it != widths.end()) return it->second;
+                        throw std::runtime_error("BlueprintGenerator: unknown signal '" + ref->signalName + "'");
+                    }
+                    if (ref->low && !ref->high) return 1;
+                    if (ref->low && ref->high)
+                    {
+                        auto lo = dynamic_cast<const IntegerLiteralExpr*>(ref->low.get());
+                        auto hi = dynamic_cast<const IntegerLiteralExpr*>(ref->high.get());
+                        if (lo && hi)
+                            return static_cast<Pulse::bitWidth_t>(std::abs(hi->value - lo->value) + 1);
+                    }
+                    return 1;
+                }
+
+                if (auto bin = dynamic_cast<const BinaryOpExpr<ReturnType::LOGIC>*>(node))
+                {
+                    if (bin->op == "&")
+                        return widthOf(bin->left.get()) + widthOf(bin->right.get());
+                    return widthOf(bin->left.get());
+                }
+
+                if (auto un = dynamic_cast<const UnaryOpExpr<ReturnType::LOGIC>*>(node))
+                    return widthOf(un->operand.get());
+
+                if (auto we = dynamic_cast<const WhenElseExpr*>(node))
+                    return widthOf(we->defaultValue.get());
+
+                throw std::runtime_error("BlueprintGenerator: cannot determine width of expression node.");
+            }
+
+            // ------------------------------------------------------------------
+            // Main recursive compile entry point.
+            // If targetWire is non-empty, components output directly into it.
+            // ------------------------------------------------------------------
+            std::string compile(const ASTNode* node, const std::string& targetWire = "")
+            {
+                // ── Constant literal ────────────────────────────────────────────
+                if (auto lit = dynamic_cast<const LogicLiteralExpr*>(node))
+                {
+                    std::string out = targetWire.empty() ? makeTmp(lit->width, "$const_") : targetWire;
+                    LogicVector val{ lit->value, lit->unknownMask };
+                    bp.addComponent("$cst_" + std::to_string(counter++),
+                                    std::make_unique<ConstantInstance>(out, std::move(val)));
+                    return out;
+                }
+
+                // ── Signal reference (possibly sliced) ─────────────────────────
+                if (auto ref = dynamic_cast<const SignalReference*>(node))
+                    return compileSignalRef(ref, targetWire);
+
+                // ── Unary operation ────────────────────────────────────────────
+                if (auto un = dynamic_cast<const UnaryOpExpr<ReturnType::LOGIC>*>(node))
+                    return compileUnary(un, targetWire);
+
+                // ── Binary operation ───────────────────────────────────────────
+                if (auto bin = dynamic_cast<const BinaryOpExpr<ReturnType::LOGIC>*>(node))
+                    return compileBinary(bin, targetWire);
+
+                // ── When/Else expression ───────────────────────────────────────
+                if (auto we = dynamic_cast<const WhenElseExpr*>(node))
+                    return compileWhenElse(we, targetWire);
+
+                throw std::runtime_error("BlueprintGenerator: unrecognised expression node type.");
+            }
+
+            // ------------------------------------------------------------------
+            // Signal reference  (full / single-bit / range)
+            // ------------------------------------------------------------------
+            std::string compileSignalRef(const SignalReference* ref, const std::string& targetWire = "")
+            {
+                const std::string& base = ref->signalName;
+
+                // Full signal reference
+                if (!ref->low && !ref->high)
+                {
+                    if (!targetWire.empty() && targetWire != base)
+                    {
+                        bp.addComponent("$join_" + base + "_" + std::to_string(counter++),
+                                        std::make_unique<JoinInstance>(base, targetWire));
+                        return targetWire;
+                    }
+                    return base;
+                }
+
+                // Single-bit index
+                if (ref->low && !ref->high)
+                {
+                    auto idxExpr = dynamic_cast<const IntegerLiteralExpr*>(ref->low.get());
+                    if (!idxExpr)
+                        throw std::runtime_error("BlueprintGenerator: dynamic bit-index not supported.");
+
+                    auto it = widths.find(base);
+                    if (it == widths.end())
+                        throw std::runtime_error("BlueprintGenerator: unknown signal '" + base + "'");
+
+                    auto bit = static_cast<Pulse::bitWidth_t>(idxExpr->value);
+                    std::string out = targetWire.empty() ? makeTmp(1, "$split_") : targetWire;
+                    bp.addComponent("$sp_" + std::to_string(counter++),
+                                    std::make_unique<SplitterInstance>(base, out, bit, bit));
+                    return out;
+                }
+
+                // Range slice
+                {
+                    auto loExpr = dynamic_cast<const IntegerLiteralExpr*>(ref->low.get());
+                    auto hiExpr = dynamic_cast<const IntegerLiteralExpr*>(ref->high.get());
+                    if (!loExpr || !hiExpr)
+                        throw std::runtime_error("BlueprintGenerator: dynamic range slice not supported.");
+
+                    auto lo = static_cast<Pulse::bitWidth_t>(loExpr->value);
+                    auto hi = static_cast<Pulse::bitWidth_t>(hiExpr->value);
+                    Pulse::bitWidth_t w = static_cast<Pulse::bitWidth_t>(std::abs((int)hi - (int)lo) + 1);
+                    std::string out = targetWire.empty() ? makeTmp(w, "$split_") : targetWire;
+                    bp.addComponent("$sp_" + std::to_string(counter++),
+                                    std::make_unique<SplitterInstance>(base, out, hi, lo));
+                    return out;
                 }
             }
 
-            // 2. Process Resolved Instantiations (Subgraphs)
-            for (const auto& inst : arch.resolvedInstantiations)
+            // ------------------------------------------------------------------
+            // Unary operation
+            // ------------------------------------------------------------------
+            std::string compileUnary(const UnaryOpExpr<ReturnType::LOGIC>* un, const std::string& targetWire = "")
             {
-                Pulse::Parser::Blueprint* targetSubBp = nullptr;
-                if (inst.targetEntity)
+                std::string in  = compile(un->operand.get());
+                Pulse::bitWidth_t w = widthOf(un->operand.get());
+                std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
+
+                if (un->op == "not")
                 {
-                    targetSubBp = entityToBlueprint[inst.targetEntity->entityName];
+                    bp.addComponent("$not_" + std::to_string(counter++),
+                                    std::make_unique<NotGateInstance>(in, out));
+                }
+                else
+                {
+                    throw std::runtime_error("BlueprintGenerator: unsupported unary op '" + un->op + "'.");
+                }
+                return out;
+            }
+
+            // ------------------------------------------------------------------
+            // Binary operation
+            // ------------------------------------------------------------------
+            std::string compileBinary(const BinaryOpExpr<ReturnType::LOGIC>* bin, const std::string& targetWire = "")
+            {
+                std::string lhs = compile(bin->left.get());
+                std::string rhs = compile(bin->right.get());
+
+                // ── Logical / bitwise ──────────────────────────────────────────
+                static const struct { const char* op; Pulse::Engine::BinaryOp bop; }
+                logicOps[] = {
+                    { "and",  Pulse::Engine::BinaryOp::AND  },
+                    { "or",   Pulse::Engine::BinaryOp::OR   },
+                    { "xor",  Pulse::Engine::BinaryOp::XOR  },
+                    { "nand", Pulse::Engine::BinaryOp::NAND },
+                    { "nor",  Pulse::Engine::BinaryOp::NOR  },
+                    { "xnor", Pulse::Engine::BinaryOp::XNOR },
+                };
+                for (auto& entry : logicOps)
+                {
+                    if (bin->op == entry.op)
+                    {
+                        Pulse::bitWidth_t w = widthOf(bin->left.get());
+                        std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
+                        bp.addComponent("$gate_" + std::to_string(counter++),
+                                        std::make_unique<BinaryGateInstance>(lhs, rhs, out, entry.bop));
+                        return out;
+                    }
                 }
 
-                // Flatten expressions used in port mappings
-                std::unordered_map<std::string, std::string> mappedPorts;
+                // ── Concatenation ─────────────────────────────────────────────
+                if (bin->op == "&")
+                {
+                    Pulse::bitWidth_t w = widthOf(bin->left.get()) + widthOf(bin->right.get());
+                    std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
+                    bp.addComponent("$cat_" + std::to_string(counter++),
+                                    std::make_unique<ConcatenatorInstance>(rhs, lhs, out));
+                    return out;
+                }
+
+                // ── Shift operations ───────────────────────────────────────────
+                static const struct { const char* op; Pulse::Engine::ShiftOp sop; }
+                shiftOps[] = {
+                    { "sll", Pulse::Engine::ShiftOp::LogicalLeft    },
+                    { "srl", Pulse::Engine::ShiftOp::LogicalRight   },
+                    { "sra", Pulse::Engine::ShiftOp::ArithmeticRight },
+                    { "rol", Pulse::Engine::ShiftOp::RotateLeft     },
+                    { "ror", Pulse::Engine::ShiftOp::RotateRight    },
+                };
+                for (auto& entry : shiftOps)
+                {
+                    if (bin->op == entry.op)
+                    {
+                        Pulse::bitWidth_t w = widthOf(bin->left.get());
+                        std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
+                        bp.addComponent("$shft_" + std::to_string(counter++),
+                                        std::make_unique<ShifterInstance>(lhs, rhs, out, entry.sop));
+                        return out;
+                    }
+                }
+
+                // ── Arithmetic ────────────────────────────────────────────────
+                {
+                    Pulse::bitWidth_t w = widthOf(bin->left.get());
+                    std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
+                    if (bin->op == "+")
+                    {
+                        bp.addComponent("$add_" + std::to_string(counter++),
+                                        std::make_unique<AdderInstance>(lhs, rhs, out));
+                        return out;
+                    }
+                    if (bin->op == "-")
+                    {
+                        bp.addComponent("$sub_" + std::to_string(counter++),
+                                        std::make_unique<SubtractorInstance>(lhs, rhs, out));
+                        return out;
+                    }
+                    if (bin->op == "*")
+                    {
+                        bp.addComponent("$mul_" + std::to_string(counter++),
+                                        std::make_unique<MultiplicatorInstance>(lhs, rhs, out));
+                        return out;
+                    }
+                }
+
+                throw std::runtime_error("BlueprintGenerator: unsupported binary op '" + bin->op + "'.");
+            }
+
+            // ------------------------------------------------------------------
+            // When/Else  →  chain of ControlledBuffer instances
+            // ------------------------------------------------------------------
+            std::string compileWhenElse(const WhenElseExpr* we, const std::string& targetWire = "")
+            {
+                Pulse::bitWidth_t w = widthOf(we->defaultValue.get());
+                std::string finalOut = targetWire.empty() ? makeTmp(w, "$muxout_") : targetWire;
+
+                // Keep track of whether ANY previous condition was true
+                std::string anyPrevCond = makeTmp(1, "$any_prev_");
+                bp.addComponent("$cst_zero_" + std::to_string(counter++),
+                                std::make_unique<ConstantInstance>(anyPrevCond, LogicVector{0, 0}));
+
+                // Process each conditional branch
+                for (const auto& branch : we->branches)
+                {
+                    // Compile the condition into a 1-bit wire
+                    std::string rawCond = compileCondition(branch.condition.get());
+                    std::string valWire = compile(branch.value.get());
+
+                    // Enable this branch only if its condition is true AND no previous condition was true
+                    std::string notPrev = makeTmp(1, "$not_prev_");
+                    bp.addComponent("$not_" + std::to_string(counter++),
+                                    std::make_unique<NotGateInstance>(anyPrevCond, notPrev));
+                    
+                    std::string actualCond = makeTmp(1, "$actual_cond_");
+                    bp.addComponent("$and_" + std::to_string(counter++),
+                                    std::make_unique<BinaryGateInstance>(rawCond, notPrev, actualCond, Pulse::Engine::BinaryOp::AND));
+
+                    // Gate the value through a controlled buffer, driving finalOut directly
+                    bp.addComponent("$cbuf_" + std::to_string(counter++),
+                                    std::make_unique<ControlledBufferInstance>(valWire, finalOut, actualCond));
+
+                    // Update anyPrevCond = anyPrevCond OR rawCond
+                    std::string nextAny = makeTmp(1, "$any_prev_next_");
+                    bp.addComponent("$or_" + std::to_string(counter++),
+                                    std::make_unique<BinaryGateInstance>(anyPrevCond, rawCond, nextAny, Pulse::Engine::BinaryOp::OR));
+                    anyPrevCond = nextAny;
+                }
+
+                // Compile the default value
+                std::string defWire = compile(we->defaultValue.get());
+
+                // Condition for default value is NOT anyPrevCond
+                std::string defCond = makeTmp(1, "$def_cond_");
+                bp.addComponent("$not_def_" + std::to_string(counter++),
+                                std::make_unique<NotGateInstance>(anyPrevCond, defCond));
+
+                // Gate the default value and drive finalOut
+                bp.addComponent("$cbuf_def_" + std::to_string(counter++),
+                                std::make_unique<ControlledBufferInstance>(defWire, finalOut, defCond));
+
+                return finalOut;
+            }
+
+            // ------------------------------------------------------------------
+            // Condition expression  →  1-bit wire
+            // ------------------------------------------------------------------
+            std::string compileCondition(const ASTNode* node, const std::string& targetWire = "")
+            {
+                if (auto bin = dynamic_cast<const BinaryOpExpr<ReturnType::BOOLEAN>*>(node))
+                {
+                    if (bin->op == "and" || bin->op == "or")
+                    {
+                        std::string lhs = compileCondition(bin->left.get());
+                        std::string rhs = compileCondition(bin->right.get());
+                        std::string out = targetWire.empty() ? makeTmp(1, "$cond_") : targetWire;
+                        auto bop = (bin->op == "and") ? Pulse::Engine::BinaryOp::AND
+                                                      : Pulse::Engine::BinaryOp::OR;
+                        bp.addComponent("$cgate_" + std::to_string(counter++),
+                                        std::make_unique<BinaryGateInstance>(lhs, rhs, out, bop));
+                        return out;
+                    }
+
+                    static const struct { const char* op; Pulse::Engine::CompareOp cop; }
+                    cmpOps[] = {
+                        { "=",  Pulse::Engine::CompareOp::Equals           },
+                        { "/=", Pulse::Engine::CompareOp::NotEquals        },
+                        { "<",  Pulse::Engine::CompareOp::LessThan         },
+                        { "<=", Pulse::Engine::CompareOp::LessThanEqual    },
+                        { ">",  Pulse::Engine::CompareOp::GreaterThan      },
+                        { ">=", Pulse::Engine::CompareOp::GreaterThanEqual },
+                    };
+                    for (auto& entry : cmpOps)
+                    {
+                        if (bin->op == entry.op)
+                        {
+                            std::string lhs = compile(bin->left.get());
+                            std::string rhs = compile(bin->right.get());
+                            std::string out = targetWire.empty() ? makeTmp(1, "$cmp_") : targetWire;
+                            bp.addComponent("$cmp_" + std::to_string(counter++),
+                                            std::make_unique<ComparatorInstance>(
+                                                lhs, rhs, out, entry.cop,
+                                                Pulse::Engine::CompareMode::Unsigned));
+                            return out;
+                        }
+                    }
+
+                    throw std::runtime_error("BlueprintGenerator: unsupported boolean op '" + bin->op + "'.");
+                }
+
+                if (auto un = dynamic_cast<const UnaryOpExpr<ReturnType::BOOLEAN>*>(node))
+                {
+                    if (un->op == "not")
+                    {
+                        std::string in  = compileCondition(un->operand.get());
+                        std::string out = targetWire.empty() ? makeTmp(1, "$cnot_") : targetWire;
+                        bp.addComponent("$cnot_" + std::to_string(counter++),
+                                        std::make_unique<NotGateInstance>(in, out));
+                        return out;
+                    }
+                    throw std::runtime_error("BlueprintGenerator: unsupported unary boolean op '" + un->op + "'.");
+                }
+
+                return compile(node, targetWire);
+            }
+        };
+
+    } // anonymous namespace
+
+    // =========================================================================
+    // BlueprintGenerator::generate
+    // =========================================================================
+
+    std::unordered_map<BlueprintGenerator::EntityName, std::unique_ptr<Blueprint>>
+    BlueprintGenerator::generate(const LinkedDesign& design, std::string architectureName)
+    {
+        std::unordered_map<EntityName, std::unique_ptr<Blueprint>> result;
+
+        for (const LinkedArchitecture& arch : design.architectures)
+        {
+            if (arch.architectureName != architectureName)
+                continue;
+
+            const EntityDeclaration* entity = arch.targetEntity;
+            const std::string& entityName   = entity->entityName;
+
+            if (result.count(entityName))
+                continue;
+
+            auto bp = std::make_unique<Blueprint>();
+
+            // 1. Register entity ports
+            for (const auto& port : entity->ports)
+            {
+                bp->addPort(port->portName, port->isInput);
+                bp->addSignal(port->portName, port->width);
+            }
+
+            // 2. Register internal signals
+            for (const SignalDeclaration* sig : arch.signals)
+                bp->addSignal(sig->signalName, sig->width);
+
+            // 3. Compile concurrent signal assignments
+            auto widthTable = buildWidthTable(arch);
+            ExprCompiler compiler{ *bp, widthTable, 0 };
+
+            for (const SignalAssignment* asgn : arch.assignments)
+            {
+                const SignalReference* tgt = asgn->target.get();
+
+                if (!tgt->low && !tgt->high)
+                {
+                    // Full assignment: directly drive target wire
+                    compiler.compile(asgn->value.get(), tgt->signalName);
+                }
+                else
+                {
+                    // Partial assignment write-back
+                    std::string resultWire = compiler.compile(asgn->value.get());
+                    bp->addComponent(
+                        "$join_" + tgt->signalName + "_slice_" + std::to_string(compiler.counter++),
+                        std::make_unique<JoinInstance>(resultWire, tgt->signalName));
+                }
+            }
+
+            // 4. Emit component instantiations as SubgraphInstances
+            for (const ResolvedInstantiation& inst : arch.resolvedInstantiations)
+            {
+                std::unordered_map<std::string, std::string> portMap;
+
                 for (const auto& [portName, exprNode] : inst.portBindings)
                 {
-                    // Build the expression and grab the wire holding its result
-                    std::string wireName = buildExpression(exprNode, *bp, "");
-                    mappedPorts[portName] = wireName;
-                }
-
-                bp->addComponent(
-                    inst.instanceName, 
-                    std::make_unique<Pulse::Parser::SubgraphInstance>(targetSubBp, mappedPorts)
-                );
-            }
-        }
-
-        return registry;
-    }
-
-    std::string BlueprintGenerator::genTempWire(Pulse::Parser::Blueprint& bp, bitWidth_t width)
-    {
-        std::string name = "$wire_" + std::to_string(m_tempWireCounter++);
-        bp.addSignal(name, width);
-        return name;
-    }
-
-    std::string BlueprintGenerator::genCompName(const std::string& prefix)
-    {
-        return "$" + prefix + "_" + std::to_string(m_compCounter++);
-    }
-
-    std::string BlueprintGenerator::buildExpression(const ASTNode* node, Pulse::Parser::Blueprint& bp, const std::string& targetWire)
-    {
-        if (!node) return "";
-
-        // --- 1. Signal References ---
-        if (auto ref = dynamic_cast<const SignalReference*>(node))
-        {
-            std::string baseWire = ref->signalName;
-
-            // Handle slicing: A(5 downto 2) -> SplitterInstance
-            if (ref->high && ref->low)
-            {
-                bitWidth_t highIdx = evaluateStaticInteger(ref->high.get());
-                bitWidth_t lowIdx  = evaluateStaticInteger(ref->low.get());
-
-                std::string outWire = targetWire.empty() ? genTempWire(bp, highIdx - lowIdx + 1) : targetWire;
-                
-                bp.addComponent(genCompName("split"), 
-                    std::make_unique<Pulse::Parser::SplitterInstance>(baseWire, outWire, highIdx, lowIdx));
-                return outWire;
-            }
-
-            // If it's a direct signal but we need to assign it to targetWire (e.g., A <= B)
-            if (!targetWire.empty() && baseWire != targetWire)
-            {
-                bp.addComponent(genCompName("join"), 
-                    std::make_unique<Pulse::Parser::JoinInstance>(baseWire, targetWire));
-                return targetWire;
-            }
-
-            return baseWire;
-        }
-
-        // --- 2. Logic & Integer Literals ---
-        if (auto lit = dynamic_cast<const LogicLiteralExpr*>(node))
-        {
-            std::string outWire = targetWire.empty() ? genTempWire(bp, lit->width) : targetWire;
-            
-            // Create a ConstantInstance to drive the wire instead of returning the raw value string
-            // Requires LogicVector to accept the literal value (and potentially width/mask)
-            bp.addComponent(genCompName("const"), 
-                std::make_unique<Pulse::Parser::ConstantInstance>(outWire, lit->value));
-            
-            return outWire;
-        }
-
-        // --- 3. When Else Expressions ---
-        if (auto whenElse = dynamic_cast<const WhenElseExpr*>(node))
-        {
-            std::string outWire = targetWire.empty() ? genTempWire(bp, 0) : targetWire;
-            std::string aggregatedCondWire = ""; 
-            
-            for (const auto& branch : whenElse->branches)
-            {
-                std::string condWire = buildExpression(branch.condition.get(), bp, "");
-                std::string valWire = buildExpression(branch.value.get(), bp, "");
-                
-                // Add controlled buffer for the evaluated branch
-                bp.addComponent(genCompName("c_buf"), 
-                    std::make_unique<Pulse::Parser::ControlledBufferInstance>(valWire, outWire, condWire));
-
-                // Accumulate the used conditions (NOR'd later) if a default branch exists
-                if (whenElse->defaultValue)
-                {
-                    if (aggregatedCondWire.empty())
+                    if (auto ref = dynamic_cast<const SignalReference*>(exprNode))
                     {
-                        aggregatedCondWire = condWire;
+                        if (!ref->low && !ref->high)
+                        {
+                            portMap[portName] = ref->signalName;
+                        }
+                        else
+                        {
+                            std::string sliceWire = compiler.compileSignalRef(ref);
+                            portMap[portName] = sliceWire;
+                        }
                     }
                     else
                     {
-                        std::string nextAggWire = genTempWire(bp, 1);
-                        bp.addComponent(genCompName("or"), 
-                            std::make_unique<Pulse::Parser::BinaryGateInstance>(
-                                aggregatedCondWire, condWire, nextAggWire, Pulse::Engine::BinaryOp::OR));
-                        aggregatedCondWire = nextAggWire;
+                        std::string exprWire = compiler.compile(exprNode);
+                        portMap[portName] = exprWire;
                     }
                 }
+
+                bp->addComponent(inst.instanceName,
+                                 std::make_unique<SubgraphInstance>(nullptr, std::move(portMap)));
             }
 
-            if (whenElse->defaultValue)
-            {
-                std::string defValWire = buildExpression(whenElse->defaultValue.get(), bp, "");
-                std::string defaultEnableWire = genTempWire(bp, 1);
-                
-                // Default enable is active only if NO other branches triggered
-                bp.addComponent(genCompName("not"), 
-                    std::make_unique<Pulse::Parser::NotGateInstance>(aggregatedCondWire, defaultEnableWire));
-
-                bp.addComponent(genCompName("c_buf_def"), 
-                    std::make_unique<Pulse::Parser::ControlledBufferInstance>(defValWire, outWire, defaultEnableWire));
-            }
-
-            return outWire;
+            result[entityName] = std::move(bp);
         }
 
-        // --- 4. Binary Operations (LOGIC) ---
-        if (auto binOp = dynamic_cast<const BinaryOpExpr<ReturnType::LOGIC>*>(node))
+        // Pass 2: Patch SubgraphInstance::bp raw pointers
+        std::unordered_map<std::string, const LinkedArchitecture*> archByEntity;
+        for (const LinkedArchitecture& arch : design.architectures)
         {
-            std::string leftWire = buildExpression(binOp->left.get(), bp, "");
-            std::string rightWire = buildExpression(binOp->right.get(), bp, "");
-            std::string outWire = targetWire.empty() ? genTempWire(bp, 0) : targetWire;
-
-            // Make operator parsing case insensitive
-            std::string opStr = binOp->op;
-            std::transform(opStr.begin(), opStr.end(), opStr.begin(), ::toupper);
-
-            if (opStr == "AND" || opStr == "OR" || opStr == "XOR" || 
-                opStr == "NAND" || opStr == "NOR" || opStr == "XNOR")
-            {
-                Pulse::Engine::BinaryOp eOp = Pulse::Engine::BinaryOp::AND;
-                if (opStr == "OR")        eOp = Pulse::Engine::BinaryOp::OR;
-                else if (opStr == "XOR")  eOp = Pulse::Engine::BinaryOp::XOR;
-                else if (opStr == "NAND") eOp = Pulse::Engine::BinaryOp::NAND;
-                else if (opStr == "NOR")  eOp = Pulse::Engine::BinaryOp::NOR;
-                else if (opStr == "XNOR") eOp = Pulse::Engine::BinaryOp::XNOR;
-
-                bp.addComponent(genCompName("gate"), 
-                    std::make_unique<Pulse::Parser::BinaryGateInstance>(leftWire, rightWire, outWire, eOp));
-            }
-            else if (opStr == "+")
-            {
-                bp.addComponent(genCompName("add"), 
-                    std::make_unique<Pulse::Parser::AdderInstance>(leftWire, rightWire, outWire));
-            }
-            else if (opStr == "-")
-            {
-                bp.addComponent(genCompName("sub"), 
-                    std::make_unique<Pulse::Parser::SubtractorInstance>(leftWire, rightWire, outWire));
-            }
-            else if (opStr == "*")
-            {
-                bp.addComponent(genCompName("mul"), 
-                    std::make_unique<Pulse::Parser::MultiplicatorInstance>(leftWire, rightWire, outWire));
-            }
-            else if (opStr == "&") // Concatenation
-            {
-                bp.addComponent(genCompName("concat"), 
-                    std::make_unique<Pulse::Parser::ConcatenatorInstance>(rightWire, leftWire, outWire));
-            }
-            else if (opStr == "SLL" || opStr == "SRL" || opStr == "SRA" || opStr == "ROL" || opStr == "ROR")
-            {
-                Pulse::Engine::ShiftOp sOp = Pulse::Engine::ShiftOp::LogicalLeft;
-                if (opStr == "SRL")       sOp = Pulse::Engine::ShiftOp::LogicalRight;
-                else if (opStr == "SRA")  sOp = Pulse::Engine::ShiftOp::ArithmeticRight;
-                else if (opStr == "ROL")  sOp = Pulse::Engine::ShiftOp::RotateLeft;
-                else if (opStr == "ROR")  sOp = Pulse::Engine::ShiftOp::RotateRight;
-
-                bp.addComponent(genCompName("shift"),
-                    std::make_unique<Pulse::Parser::ShifterInstance>(leftWire, rightWire, outWire, sOp));
-            }
-
-            return outWire;
+            if (arch.architectureName == architectureName)
+                archByEntity[arch.targetEntity->entityName] = &arch;
         }
 
-        // --- 5. Binary Operations (BOOLEAN) ---
-        if (auto binOpBool = dynamic_cast<const BinaryOpExpr<ReturnType::BOOLEAN>*>(node))
+        for (auto& [entityName, bp] : result)
         {
-            std::string leftWire = buildExpression(binOpBool->left.get(), bp, "");
-            std::string rightWire = buildExpression(binOpBool->right.get(), bp, "");
-            std::string outWire = targetWire.empty() ? genTempWire(bp, 1) : targetWire;
+            auto archIt = archByEntity.find(entityName);
+            if (archIt == archByEntity.end()) continue;
 
-            Pulse::Engine::CompareOp cOp = Pulse::Engine::CompareOp::Equals;
-            std::string opStr = binOpBool->op;
+            const LinkedArchitecture& arch = *archIt->second;
 
-            if (opStr == "=")       cOp = Pulse::Engine::CompareOp::Equals;
-            else if (opStr == "/=") cOp = Pulse::Engine::CompareOp::NotEquals;
-            else if (opStr == "<")  cOp = Pulse::Engine::CompareOp::LessThan;
-            else if (opStr == "<=") cOp = Pulse::Engine::CompareOp::LessThanEqual;
-            else if (opStr == ">")  cOp = Pulse::Engine::CompareOp::GreaterThan;
-            else if (opStr == ">=") cOp = Pulse::Engine::CompareOp::GreaterThanEqual;
-
-            bp.addComponent(genCompName("comp"), 
-                std::make_unique<Pulse::Parser::ComparatorInstance>(
-                    leftWire, rightWire, outWire, cOp, Pulse::Engine::CompareMode::Unsigned));
-
-            return outWire;
-        }
-
-        // --- 6. Unary Operations ---
-        if (auto unOp = dynamic_cast<const UnaryOpExpr<ReturnType::LOGIC>*>(node))
-        {
-            std::string operandWire = buildExpression(unOp->operand.get(), bp, "");
-            std::string outWire = targetWire.empty() ? genTempWire(bp, 0) : targetWire;
-
-            std::string opStr = unOp->op;
-            std::transform(opStr.begin(), opStr.end(), opStr.begin(), ::toupper);
-
-            if (opStr == "NOT")
+            for (const ResolvedInstantiation& inst : arch.resolvedInstantiations)
             {
-                bp.addComponent(genCompName("not"), 
-                    std::make_unique<Pulse::Parser::NotGateInstance>(operandWire, outWire));
-            }
+                auto compIt = bp->components.find(inst.instanceName);
+                if (compIt == bp->components.end()) continue;
 
-            return outWire;
+                auto* subgraph = dynamic_cast<SubgraphInstance*>(compIt->second.get());
+                if (!subgraph) continue;
+
+                const std::string& targetEntityName = inst.targetEntity->entityName;
+                auto bpIt = result.find(targetEntityName);
+                if (bpIt != result.end())
+                    subgraph->bp = bpIt->second.get();
+            }
         }
 
-        return "";
+        return result;
     }
 
-    bitWidth_t BlueprintGenerator::evaluateStaticInteger(const ASTNode* node)
-    {
-        if (auto intLit = dynamic_cast<const IntegerLiteralExpr*>(node))
-        {
-            return static_cast<bitWidth_t>(intLit->value);
-        }
-        return 0;
-    }
 } // namespace Pulse::Parser::VHDL

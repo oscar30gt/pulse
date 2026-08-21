@@ -38,15 +38,15 @@ namespace Pulse::Parser::VHDL
         Linker() = default;
 
         // Links multiple source ASTs using non-owning pointers
-        LinkedDesign link(const std::vector<const RootNode*>& astRoots);
+        LinkedDesign link(const std::vector<const ASTRoot*>& astRoots);
 
         static void printLinkedDesign(const LinkedDesign& design);
 
     private:
         std::unordered_map<std::string, const EntityDeclaration*> m_globalEntities;
 
-        void collectEntities(const std::vector<const RootNode*>& astRoots);
-        void resolveArchitectures(const std::vector<const RootNode*>& astRoots, LinkedDesign& outputDesign);
+        void collectEntities(const std::vector<const ASTRoot*>& astRoots);
+        void resolveArchitectures(const std::vector<const ASTRoot*>& astRoots, LinkedDesign& outputDesign);
         
         void matchPortSignatures(const ComponentDeclaration* comp, const EntityDeclaration* entity);
     };

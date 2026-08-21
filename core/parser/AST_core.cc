@@ -1298,9 +1298,9 @@ namespace Pulse::Parser::VHDL
         /// @details Skips library/use clauses then dispatches to parseEntity() and
         ///          parseArchitecture() for every top-level construct found.
         /// @return The populated root node for the whole file.
-        RootNode parse(ParseContext& ctx)
+        ASTRoot parse(ParseContext& ctx)
         {
-            RootNode r;
+            ASTRoot r;
             while (!ctx.stream.eof())
             {
                 const std::string& v = peek(ctx).value;
@@ -1332,7 +1332,7 @@ namespace Pulse::Parser::VHDL
         root = parse(ctx);
     }
 
-    RootNode& ASTBuilder::getRoot()
+    ASTRoot& ASTBuilder::getRoot()
     {
         return root;
     }

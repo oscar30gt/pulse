@@ -361,11 +361,6 @@ namespace Pulse::Parser::VHDL
         return tokens.size();
     }
 
-    void Tokenizer::reset()
-    {
-        currentIndex = 0;
-    }
-
     bool Tokenizer::operator>>(Token& token)
     {
         if (currentIndex >= tokens.size())

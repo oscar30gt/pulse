@@ -14,7 +14,7 @@ namespace Pulse::Parser::VHDL
         SemanticAnalyzer() = default;
         
         // Traverses the AST and throws std::runtime_error on semantic violations
-        void analyze(const RootNode& root);
+        void analyze(const ASTRoot& root);
 
     private:
         struct SymbolInfo 
@@ -27,7 +27,7 @@ namespace Pulse::Parser::VHDL
         std::unordered_map<std::string, SymbolInfo> m_currentScopeSymbols;
         std::unordered_map<std::string, const ComponentDeclaration*> m_currentComponents;
 
-        void registerEntities(const RootNode& root);
+        void registerEntities(const ASTRoot& root);
         void analyzeArchitecture(const ArchitectureDeclaration* arch);
         void analyzeAssignment(const SignalAssignment* assignment);
         void analyzeInstantiation(const ComponentInstantiation* inst, const ArchitectureDeclaration* arch);

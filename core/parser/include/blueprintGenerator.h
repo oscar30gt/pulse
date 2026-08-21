@@ -9,28 +9,22 @@
 
 namespace Pulse::Parser::VHDL
 {
+    /// Untility class that generates Blueprints from a LinkedDesign.
+    /// A linked design is the final representation of a VHDL design before the whole design
+    /// is converted into a instantiable blueprint representation.
     class BlueprintGenerator
     {
     public:
         BlueprintGenerator() = default;
 
-        // Converts a LinkedDesign into a map of Blueprints, keyed by architecture name.
-        std::unordered_map<std::string, std::unique_ptr<Pulse::Parser::Blueprint>> 
-        generate(const LinkedDesign& design);
+        using EntityName = std::string;
 
-    private:
-        int m_tempWireCounter = 0;
-        int m_compCounter = 0;
-
-        std::string genTempWire(Pulse::Parser::Blueprint& bp, bitWidth_t width = 1);
-        std::string genCompName(const std::string& prefix);
-
-        // Recursively flattens an AST expression into hardware components.
-        // Returns the name of the wire containing the expression's result.
-        std::string buildExpression(const ASTNode* node, Pulse::Parser::Blueprint& bp, const std::string& targetWire);
-
-        // Helper to extract an integer literal for slicing/splitters
-        bitWidth_t evaluateStaticInteger(const ASTNode* node);
+        /// Converts a linked design into a set of blueprints. Each component architecture implementation
+        /// is converted into its own blueprint.
+        /// By default, the behavioral architecture is used to generate the blueprints. If a different architecture
+        /// is desired, it can be specified by passing the architecture name as the second argument.
+        std::unordered_map<EntityName, std::unique_ptr<Blueprint>>
+            generate(const LinkedDesign& design, std::string architectureName = "behavioral");
     };
 } // namespace Pulse::Parser::VHDL
 
