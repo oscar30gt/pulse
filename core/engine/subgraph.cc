@@ -7,11 +7,13 @@
 #include "shifter.h"
 #include "comparator.h"
 #include "splitter.h"
-#include "merger.h"
+#include "concatenator.h"
 #include "adder.h"
 #include "subtractor.h"
 #include "multiplicator.h"
 #include "controlledBuffer.h"
+#include "constant.h"
+#include <iostream>
 
 namespace Pulse::Engine
 {
@@ -46,6 +48,23 @@ namespace Pulse::Engine
             // Instantiate the component based on its type. Subgraph will take ownership of the created component.
             switch (component->type)
             {
+                // Join is a special case where we don't create a new component, but rather connect two existing wires.
+                case InstanceType::Join:
+                {
+                    auto* join = static_cast<JoinInstance*>(component.get());
+                    auto* emitter = findWire(join->emitter);
+                    auto* receiver = findWire(join->receiver);
+                    emitter->addTarget(receiver);
+                }
+
+                case InstanceType::Constant:
+                {
+                    auto* constant = static_cast<ConstantInstance*>(component.get());
+                    auto* out = findWire(constant->out);
+                    components.insert({ name, std::make_unique<Constant>(out, constant->value) });
+                }
+                break;
+
                 case InstanceType::BinaryGate:
                 {
                     auto* gate = static_cast<BinaryGateInstance*>(component.get());
@@ -61,8 +80,9 @@ namespace Pulse::Engine
                     auto* notGate = static_cast<NotGateInstance*>(component.get());
                     auto* in = findWire(notGate->in);
                     auto* out = findWire(notGate->out);
-                    components.insert({ name, std::make_unique<NOTGate>(in, out) });
+                    components.insert({ name, std::make_unique<NOTGate>(in, out) }); 
                 }
+                break;
 
                 case InstanceType::Shifter:
                 {
@@ -93,13 +113,13 @@ namespace Pulse::Engine
                 }
                 break;
 
-                case InstanceType::Merger:
+                case InstanceType::Concatenator:
                 {
-                    auto* merger = static_cast<MergerInstance*>(component.get());
-                    auto* low = findWire(merger->low);
-                    auto* high = findWire(merger->high);
-                    auto* out = findWire(merger->out);
-                    components.insert({ name, std::make_unique<Merger>(low, high, out) });
+                    auto* concatenator = static_cast<ConcatenatorInstance*>(component.get());
+                    auto* low = findWire(concatenator->low);
+                    auto* high = findWire(concatenator->high);
+                    auto* out = findWire(concatenator->out);
+                    components.insert({ name, std::make_unique<Concatenator>(low, high, out) });
                 }
                 break;
 

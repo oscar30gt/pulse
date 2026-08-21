@@ -19,7 +19,6 @@ namespace Pulse::Parser::VHDL
         Attribute,
         NumericLiteral,
         BitStringLiteral,
-        StringLiteral,
         CharacterLiteral,
         Operator,
         Delimiter,

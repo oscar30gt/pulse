@@ -1,4 +1,4 @@
-#include "ASTBuilder.h"
+#include "AST.h"
 
 #include <cctype>
 #include <cstring>
@@ -9,16 +9,14 @@ namespace Pulse::Parser::VHDL
 {
     namespace
     {
-        // -------------------------------------------------------------------
-        // Small helpers
-        // -------------------------------------------------------------------
+        // ===================================================================
+        // Utilities
+        // ===================================================================
 
-        std::string toLower(std::string s)
-        {
-            for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            return s;
-        }
-
+        /// @brief Parses a VHDL integer literal string into a 64-bit value.
+        /// @details Underscore separators (e.g. 1_000) are ignored per the VHDL standard.
+        /// @param raw The raw token text, possibly containing underscores.
+        /// @return The numeric value of the literal.
         int64_t parseIntegerLiteralText(const std::string& raw)
         {
             std::string digits;
@@ -28,11 +26,22 @@ namespace Pulse::Parser::VHDL
             return std::stoll(digits);
         }
 
+        // ===================================================================
+        // TokenStream
+        // ===================================================================
+
+        /// @brief Wraps a @ref Tokenizer with look-ahead buffering.
+        /// @details Tokens are pulled from the tokenizer on demand and cached in a
+        ///          deque so callers can peek arbitrarily far ahead without consuming
+        ///          tokens prematurely.
         class TokenStream
         {
         public:
             explicit TokenStream(Tokenizer& src) : m_src(src) { }
 
+            /// @brief Returns the token @p n positions ahead without consuming it.
+            /// @param n Zero-based look-ahead offset (0 = next token).
+            /// @return A reference to the peeked token, or a static EOF sentinel.
             const Token& peek(size_t n = 0)
             {
                 fill(n);
@@ -41,6 +50,8 @@ namespace Pulse::Parser::VHDL
                 return eofToken;
             }
 
+            /// @brief Consumes and returns the next token.
+            /// @throws std::runtime_error if the stream has ended.
             Token next()
             {
                 fill(0);
@@ -51,6 +62,7 @@ namespace Pulse::Parser::VHDL
                 return t;
             }
 
+            /// @brief Returns true when there are no more tokens to consume.
             bool eof()
             {
                 fill(0);
@@ -58,6 +70,8 @@ namespace Pulse::Parser::VHDL
             }
 
         private:
+            /// @brief Ensures at least @p n+1 tokens are in the buffer, pulling from the
+            ///        tokenizer until enough tokens are available or the source is exhausted.
             void fill(size_t n)
             {
                 while (m_buffer.size() <= n && !m_ended)
@@ -78,19 +92,27 @@ namespace Pulse::Parser::VHDL
             bool m_ended = false;
         };
 
-        // -------------------------------------------------------------------
-        // Internal bookkeeping for a declared signal/port. Never lives in the
-        // tree - only used to normalize/flatten bit and range accesses.
-        // -------------------------------------------------------------------
+        // ===================================================================
+        // SignalInfo / TypeSpec
+        // ===================================================================
+
+        /// @brief Internal bookkeeping for a declared signal or port.
+        /// @details Never appears in the AST. Used exclusively to normalise and
+        ///          flatten bit-select and range-select indices so that internal
+        ///          position 0 always refers to the rightmost bit of the declaration,
+        ///          regardless of whether the signal was declared with DOWNTO or TO.
         struct SignalInfo
         {
             Pulse::bitWidth_t width = 1;
-            bool isDownto = true;     // declaration direction (irrelevant for scalars)
-            int64_t declaredLow = 0;  // min(bound0, bound1)
-            int64_t declaredHigh = 0; // max(bound0, bound1)
-            bool isVector = false;
+            bool isDownto = true;     ///< True when declared as (high DOWNTO low).
+            int64_t declaredLow = 0;  ///< min(bound0, bound1) of the declaration.
+            int64_t declaredHigh = 0; ///< max(bound0, bound1) of the declaration.
+            bool isVector = false;    ///< False for plain STD_LOGIC scalars.
         };
 
+        /// @brief Intermediate result of parsing a VHDL type specification.
+        /// @details Used to carry type info from parseTypeSpec to its callers
+        ///          before the relevant @ref SignalInfo or @ref PortDeclaration is created.
         struct TypeSpec
         {
             Pulse::bitWidth_t width;
@@ -100,606 +122,770 @@ namespace Pulse::Parser::VHDL
             int64_t high;
         };
 
-        // -------------------------------------------------------------------
-        // The actual recursive-descent parser.
-        // -------------------------------------------------------------------
-        class Parser
+        // ===================================================================
+        // Parse Context & Forward Declarations
+        // ===================================================================
+
+        /// @brief Holds all transient state required during parsing.
+        struct ParseContext
         {
-        public:
-            explicit Parser(Tokenizer& tokenizer) : m_stream(tokenizer) { }
+            TokenStream stream;
 
-            RootNode parse()
+            /// @brief All signals and ports visible in the current architecture scope.
+            std::unordered_map<std::string, SignalInfo> symbols;
+
+            /// @brief Port metadata for every entity seen so far, keyed by entity name.
+            std::unordered_map<std::string, std::unordered_map<std::string, SignalInfo>> entityPortInfo;
+
+            explicit ParseContext(Tokenizer& tokenizer) : stream(tokenizer) {}
+        };
+
+        const Token& peek(ParseContext& ctx, size_t n = 0);
+        Token next(ParseContext& ctx);
+        Token expectValue(ParseContext& ctx, const char* v);
+        Token expectIdentifier(ParseContext& ctx);
+        [[noreturn]] void error(ParseContext& ctx, const std::string& msg);
+        void skipToSemicolon(ParseContext& ctx);
+        void parseEndClause(ParseContext& ctx);
+        bool matchesAny(const std::string& v, const char* const* opts, size_t n);
+
+        std::unique_ptr<EntityDeclaration> parseEntity(ParseContext& ctx);
+        std::unique_ptr<ComponentDeclaration> parseComponentDeclaration(ParseContext& ctx);
+        std::unique_ptr<ArchitectureDeclaration> parseArchitecture(ParseContext& ctx);
+        void parsePortList(ParseContext& ctx, std::vector<std::unique_ptr<PortDeclaration>>& ports, std::unordered_map<std::string, SignalInfo>& infoOut);
+        TypeSpec parseTypeSpec(ParseContext& ctx);
+        std::vector<std::unique_ptr<SignalDeclaration>> parseSignalDeclarations(ParseContext& ctx);
+        std::unique_ptr<ComponentInstantiation> parseInstantiation(ParseContext& ctx);
+        std::unique_ptr<SignalAssignment> parseSignalAssignment(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseAssignmentValue(ParseContext& ctx);
+
+        std::unique_ptr<IntegerLiteralExpr> makeIntLit(int64_t v);
+        int64_t flattenIndex(const SignalInfo& info, int64_t i);
+        std::unique_ptr<SignalReference> parseSignalReference(ParseContext& ctx);
+
+        int64_t parseConstIntExpr(ParseContext& ctx);
+        int64_t parseConstMul(ParseContext& ctx);
+        int64_t parseConstFactor(ParseContext& ctx);
+        int64_t evalConstAttribute(ParseContext& ctx, const std::string& signalName, std::string attr);
+
+        std::unique_ptr<ASTNode> parseIntegerExpr(ParseContext& ctx);
+        std::unique_ptr<ASTNode> parseIntMul(ParseContext& ctx);
+        std::unique_ptr<ASTNode> parseIntFactor(ParseContext& ctx);
+        AttributeKind attributeKindFromString(std::string s);
+
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseValueExpr(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseLogicalLevel(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseShiftLevel(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseAddingLevel(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseUnaryLevel(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseMultLevel(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parsePrimary(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::LOGIC>> wrapBinary(const std::string& op, std::unique_ptr<Expression<ReturnType::LOGIC>> left, std::unique_ptr<Expression<ReturnType::LOGIC>> right);
+
+        std::unique_ptr<Expression<ReturnType::BOOLEAN>> parseCondition(ParseContext& ctx);
+        std::unique_ptr<Expression<ReturnType::BOOLEAN>> parseBoolTerm(ParseContext& ctx);
+
+        std::unique_ptr<LogicLiteralExpr> parseLogicLiteralToken(ParseContext& ctx);
+        std::unique_ptr<LogicLiteralExpr> bitStringToLiteral(ParseContext& ctx, const std::string& raw);
+        std::unique_ptr<LogicLiteralExpr> charToLiteral(ParseContext& ctx, const std::string& raw);
+
+        // ===============================================================
+        // Token helpers
+        // ===============================================================
+
+        /// @brief Returns the token @p n positions ahead without consuming it.
+        const Token& peek(ParseContext& ctx, size_t n) { return ctx.stream.peek(n); }
+
+        /// @brief Consumes and returns the next token.
+        Token next(ParseContext& ctx) { return ctx.stream.next(); }
+
+        /// @brief Consumes the next token, throwing if its value is not @p v.
+        /// @param v The exact string the next token must match.
+        Token expectValue(ParseContext& ctx, const char* v)
+        {
+            if (peek(ctx).value != v)
+                error(ctx, "expected '" + std::string(v) + "' but got '" + peek(ctx).value + "'");
+            return next(ctx);
+        }
+
+        /// @brief Consumes the next token, throwing if it is not an identifier.
+        Token expectIdentifier(ParseContext& ctx)
+        {
+            if (peek(ctx).type != TokenType::Identifier)
+                error(ctx, "expected identifier but got '" + peek(ctx).value + "'");
+            return next(ctx);
+        }
+
+        /// @brief Throws a parse error at the current token position.
+        /// @param msg Human-readable description of what went wrong.
+        [[noreturn]] void error(ParseContext& ctx, const std::string& msg)
+        {
+            const Token& t = peek(ctx);
+            throw std::runtime_error("VHDL parse error at line " + std::to_string(t.line) +
+                ", column " + std::to_string(t.column) + ": " + msg);
+        }
+
+        /// @brief Discards tokens up to and including the next semicolon.
+        void skipToSemicolon(ParseContext& ctx)
+        {
+            while (!ctx.stream.eof() && peek(ctx).value != ";") next(ctx);
+            if (!ctx.stream.eof()) next(ctx);
+        }
+
+        /// @brief Parses and discards an "end [keyword] [name] ;" clause.
+        /// @details Every VHDL end-clause is structurally "end <trailing stuff> ;",
+        ///          so this simply skips tokens until the semicolon.
+        void parseEndClause(ParseContext& ctx)
+        {
+            expectValue(ctx, "end");
+            while (peek(ctx).value != ";") next(ctx);
+            expectValue(ctx, ";");
+        }
+
+        /// @brief Returns true when @p v equals any of the @p n strings in @p opts.
+        bool matchesAny(const std::string& v, const char* const* opts, size_t n)
+        {
+            for (size_t i = 0; i < n; ++i)
+                if (v == opts[i]) return true;
+            return false;
+        }
+
+        // ===============================================================
+        // Entity / architecture / component
+        // ===============================================================
+
+        /// @brief Parses a full VHDL entity declaration.
+        /// @details Registers the entity's port metadata in entityPortInfo so
+        ///          that the matching architecture can resolve signal widths later.
+        /// @return Ownership of the constructed EntityDeclaration node.
+        std::unique_ptr<EntityDeclaration> parseEntity(ParseContext& ctx)
+        {
+            expectValue(ctx, "entity");
+            std::string name = expectIdentifier(ctx).value;
+            expectValue(ctx, "is");
+
+            auto entity = std::make_unique<EntityDeclaration>();
+            entity->entityName = name;
+
+            std::unordered_map<std::string, SignalInfo> ports;
+            parsePortList(ctx, entity->ports, ports);
+            parseEndClause(ctx);
+
+            ctx.entityPortInfo[name] = std::move(ports);
+            return entity;
+        }
+
+        /// @brief Parses a component declaration inside an architecture.
+        /// @details Port info from component declarations is intentionally discarded;
+        ///          only the port names and directions are kept for instantiation checking.
+        /// @return Ownership of the constructed ComponentDeclaration node.
+        std::unique_ptr<ComponentDeclaration> parseComponentDeclaration(ParseContext& ctx)
+        {
+            expectValue(ctx, "component");
+            std::string name = expectIdentifier(ctx).value;
+            if (peek(ctx).value == "is") next(ctx);
+
+            auto comp = std::make_unique<ComponentDeclaration>();
+            comp->componentName = name;
+
+            std::unordered_map<std::string, SignalInfo> discarded;
+            parsePortList(ctx, comp->ports, discarded);
+            parseEndClause(ctx);
+            return comp;
+        }
+
+        /// @brief Parses an architecture body, including its declarative and statement parts.
+        /// @details Ports of the referenced entity are imported into symbols so
+        ///          that signal references inside the architecture body can be resolved.
+        ///          The declarative part allows signal and component declarations.
+        ///          The statement part allows concurrent signal assignments and
+        ///          component instantiations.
+        /// @return Ownership of the constructed ArchitectureDeclaration node.
+        std::unique_ptr<ArchitectureDeclaration> parseArchitecture(ParseContext& ctx)
+        {
+            expectValue(ctx, "architecture");
+            std::string archName = expectIdentifier(ctx).value;
+            expectValue(ctx, "of");
+            std::string entityName = expectIdentifier(ctx).value;
+            expectValue(ctx, "is");
+
+            auto arch = std::make_unique<ArchitectureDeclaration>();
+            arch->architectureName = archName;
+            arch->entityName = entityName;
+
+            auto it = ctx.entityPortInfo.find(entityName);
+            if (it == ctx.entityPortInfo.end())
+                error(ctx, "architecture references unknown entity '" + entityName + "'");
+
+            ctx.symbols = it->second; // ports are visible as signals inside the architecture
+
+            // --- Declarative part (between "is" and "begin") ---
+            while (true)
             {
-                RootNode r;
-                while (!m_stream.eof())
+                const std::string& v = peek(ctx).value;
+                if (v == "signal")
                 {
-                    const std::string& v = m_stream.peek().value;
-                    if (v == "library" || v == "use")
-                    {
-                        skipToSemicolon();
-                        continue;
-                    }
-                    if (v == "entity")
-                    {
-                        r.children.push_back(parseEntity());
-                        continue;
-                    }
-                    if (v == "architecture")
-                    {
-                        r.children.push_back(parseArchitecture());
-                        continue;
-                    }
-                    error("unexpected top-level token '" + v + "'");
+                    for (auto& decl : parseSignalDeclarations(ctx))
+                        arch->signals.push_back(std::move(decl));
                 }
-                return r;
-            }
-
-        private:
-            // ---------------------------------------------------------------
-            // Token helpers
-            // ---------------------------------------------------------------
-
-            const Token& peek(size_t n = 0) { return m_stream.peek(n); }
-            Token next() { return m_stream.next(); }
-
-            Token expectValue(const char* v)
-            {
-                if (peek().value != v)
-                    error("expected '" + std::string(v) + "' but got '" + peek().value + "'");
-                return next();
-            }
-
-            Token expectIdentifier()
-            {
-                if (peek().type != TokenType::Identifier)
-                    error("expected identifier but got '" + peek().value + "'");
-                return next();
-            }
-
-            [[noreturn]] void error(const std::string& msg)
-            {
-                const Token& t = peek();
-                throw std::runtime_error("VHDL parse error at line " + std::to_string(t.line) +
-                    ", column " + std::to_string(t.column) + ": " + msg);
-            }
-
-            void skipToSemicolon()
-            {
-                while (!m_stream.eof() && peek().value != ";") next();
-                if (!m_stream.eof()) next();
-            }
-
-            // Swallows "end [entity|architecture|component|<name>] ;" in one go -
-            // every valid VHDL "end" form is just "end" followed by arbitrary
-            // trailing tokens up to the semicolon.
-            void parseEndClause()
-            {
-                expectValue("end");
-                while (peek().value != ";") next();
-                expectValue(";");
-            }
-
-            // ---------------------------------------------------------------
-            // Entities / architectures / components
-            // ---------------------------------------------------------------
-
-            std::unique_ptr<EntityDeclaration> parseEntity()
-            {
-                expectValue("entity");
-                std::string name = expectIdentifier().value;
-                expectValue("is");
-
-                auto entity = std::make_unique<EntityDeclaration>();
-                entity->entityName = name;
-
-                std::unordered_map<std::string, SignalInfo> ports;
-                parsePortList(entity->ports, ports);
-                parseEndClause();
-
-                m_entityPortInfo[name] = std::move(ports);
-                return entity;
-            }
-
-            std::unique_ptr<ComponentDeclaration> parseComponentDeclaration()
-            {
-                expectValue("component");
-                std::string name = expectIdentifier().value;
-                if (peek().value == "is") next();
-
-                auto comp = std::make_unique<ComponentDeclaration>();
-                comp->componentName = name;
-
-                std::unordered_map<std::string, SignalInfo> discarded;
-                parsePortList(comp->ports, discarded);
-                parseEndClause();
-                return comp;
-            }
-
-            std::unique_ptr<ArchitectureDeclaration> parseArchitecture()
-            {
-                expectValue("architecture");
-                std::string archName = expectIdentifier().value;
-                expectValue("of");
-                std::string entityName = expectIdentifier().value;
-                expectValue("is");
-
-                auto arch = std::make_unique<ArchitectureDeclaration>();
-                arch->architectureName = archName;
-                arch->entityName = entityName;
-
-                auto it = m_entityPortInfo.find(entityName);
-                if (it == m_entityPortInfo.end())
-                    error("architecture references unknown entity '" + entityName + "'");
-
-                m_symbols = it->second; // ports are visible as signals inside the architecture
-
-                // Declarative part
-                while (true)
+                else if (v == "component")
                 {
-                    const std::string& v = peek().value;
-                    if (v == "signal")
-                    {
-                        for (auto& decl : parseSignalDeclarations())
-                            arch->signals.push_back(std::move(decl));
-                    }
-                    else if (v == "component")
-                    {
-                        arch->components.push_back(parseComponentDeclaration());
-                    }
-                    else if (v == "begin")
-                    {
-                        next();
-                        break;
-                    }
-                    else
-                    {
-                        error("unexpected token in architecture declarative part: '" + v + "'");
-                    }
+                    arch->components.push_back(parseComponentDeclaration(ctx));
                 }
-
-                // Statement part
-                while (true)
+                else if (v == "begin")
                 {
-                    if (peek().value == "end")
-                    {
-                        parseEndClause();
-                        break;
-                    }
-
-                    if (peek().type == TokenType::Identifier && peek(1).value == ":")
-                        arch->instantiations.push_back(parseInstantiation());
-                    else
-                        arch->assignments.push_back(parseSignalAssignment());
-                }
-
-                return arch;
-            }
-
-            void parsePortList(std::vector<std::unique_ptr<PortDeclaration>>& ports,
-                std::unordered_map<std::string, SignalInfo>& infoOut)
-            {
-                expectValue("port");
-                expectValue("(");
-                while (true)
-                {
-                    std::vector<std::string> names;
-                    names.push_back(expectIdentifier().value);
-                    while (peek().value == ",")
-                    {
-                        next();
-                        names.push_back(expectIdentifier().value);
-                    }
-                    expectValue(":");
-
-                    bool isInput;
-                    if (peek().value == "in") { next(); isInput = true; }
-                    else if (peek().value == "out") { next(); isInput = false; }
-                    else error("expected IN or OUT");
-
-                    TypeSpec spec = parseTypeSpec();
-
-                    for (auto& n : names)
-                    {
-                        auto pd = std::make_unique<PortDeclaration>();
-                        pd->portName = n;
-                        pd->width = spec.width;
-                        pd->isInput = isInput;
-                        ports.push_back(std::move(pd));
-
-                        infoOut[n] = SignalInfo{ spec.width, spec.isDownto, spec.low, spec.high, spec.isVector };
-                    }
-
-                    if (peek().value == ";")
-                    {
-                        next();
-                        if (peek().value == ")") break;
-                        continue;
-                    }
+                    next(ctx);
                     break;
                 }
-                expectValue(")");
-                expectValue(";");
+                else
+                {
+                    error(ctx, "unexpected token in architecture declarative part: '" + v + "'");
+                }
             }
 
-            TypeSpec parseTypeSpec()
+            // --- Statement part (between "begin" and "end") ---
+            while (true)
             {
-                Token t = next();
-                if (t.value == "std_logic")
-                    return TypeSpec{ 1, false, true, 0, 0 };
+                if (peek(ctx).value == "end")
+                {
+                    parseEndClause(ctx);
+                    break;
+                }
 
-                if (t.value != "std_logic_vector")
-                    error("expected STD_LOGIC or STD_LOGIC_VECTOR, got '" + t.value + "'");
-
-                expectValue("(");
-                int64_t first = parseConstIntExpr();
-
-                bool isDownto;
-                if (peek().value == "downto") { next(); isDownto = true; }
-                else if (peek().value == "to") { next(); isDownto = false; }
-                else { error("expected DOWNTO or TO"); }
-
-                int64_t second = parseConstIntExpr();
-                expectValue(")");
-
-                if (isDownto && first < second)
-                    error("vector declared with DOWNTO but first bound is less than second. Found: (" + std::to_string(first) + " downto " + std::to_string(second) + ")");
-                if (!isDownto && first > second)
-                    error("vector declared with TO but first bound is greater than second. Found: (" + std::to_string(first) + " to " + std::to_string(second) + ")");
-
-                int64_t low = std::min(first, second);
-                int64_t high = std::max(first, second);
-                int64_t width = high - low + 1;
-                if (width < 1 || width > 255)
-                    error("vector width out of range");
-
-                return TypeSpec{ static_cast<Pulse::bitWidth_t>(width), true, isDownto, low, high };
+                if (peek(ctx).type == TokenType::Identifier && peek(ctx, 1).value == ":")
+                    arch->instantiations.push_back(parseInstantiation(ctx));
+                else
+                    arch->assignments.push_back(parseSignalAssignment(ctx));
             }
 
-            // ---------------------------------------------------------------
-            // Signal declarations
-            // ---------------------------------------------------------------
+            return arch;
+        }
 
-            std::vector<std::unique_ptr<SignalDeclaration>> parseSignalDeclarations()
+        // ===============================================================
+        // Port list / type spec
+        // ===============================================================
+
+        /// @brief Parses a "port ( ... );" clause and populates @p ports and @p infoOut.
+        /// @param ports      Receives one PortDeclaration per declared port name.
+        /// @param infoOut    Receives the corresponding SignalInfo for each port name,
+        ///                   keyed by name (used for signal flattening later).
+        void parsePortList(ParseContext& ctx, std::vector<std::unique_ptr<PortDeclaration>>& ports,
+            std::unordered_map<std::string, SignalInfo>& infoOut)
+        {
+            expectValue(ctx, "port");
+            expectValue(ctx, "(");
+            while (true)
             {
-                expectValue("signal");
-
                 std::vector<std::string> names;
-                names.push_back(expectIdentifier().value);
-                while (peek().value == ",")
+                names.push_back(expectIdentifier(ctx).value);
+                while (peek(ctx).value == ",")
                 {
-                    next();
-                    names.push_back(expectIdentifier().value);
+                    next(ctx);
+                    names.push_back(expectIdentifier(ctx).value);
                 }
-                expectValue(":");
+                expectValue(ctx, ":");
 
-                TypeSpec spec = parseTypeSpec();
+                bool isInput;
+                if (peek(ctx).value == "in") { next(ctx); isInput = true; }
+                else if (peek(ctx).value == "out") { next(ctx); isInput = false; }
+                else error(ctx, "expected IN or OUT");
 
-                uint64_t initialValue = 0;
-                if (peek().value == ":=")
-                {
-                    next();
-                    auto lit = parseLogicLiteralToken();
-                    initialValue = lit->value;
-                }
-                expectValue(";");
+                TypeSpec spec = parseTypeSpec(ctx);
 
-                std::vector<std::unique_ptr<SignalDeclaration>> result;
                 for (auto& n : names)
                 {
-                    m_symbols[n] = SignalInfo{ spec.width, spec.isDownto, spec.low, spec.high, spec.isVector };
+                    auto pd = std::make_unique<PortDeclaration>();
+                    pd->portName = n;
+                    pd->width = spec.width;
+                    pd->isInput = isInput;
+                    ports.push_back(std::move(pd));
 
-                    auto decl = std::make_unique<SignalDeclaration>();
-                    decl->signalName = n;
-                    decl->width = spec.width;
-                    decl->initialValue = initialValue;
-                    result.push_back(std::move(decl));
+                    infoOut[n] = SignalInfo{ spec.width, spec.isDownto, spec.low, spec.high, spec.isVector };
                 }
-                return result;
+
+                if (peek(ctx).value == ";")
+                {
+                    next(ctx);
+                    if (peek(ctx).value == ")") break;
+                    continue;
+                }
+                break;
+            }
+            expectValue(ctx, ")");
+            expectValue(ctx, ";");
+        }
+
+        /// @brief Parses a VHDL type name: STD_LOGIC or STD_LOGIC_VECTOR(high DOWNTO/TO low).
+        /// @details Validates that the direction keyword matches the bound ordering so that
+        ///          malformed declarations are caught early.
+        /// @return A TypeSpec describing width, direction, and bounds.
+        TypeSpec parseTypeSpec(ParseContext& ctx)
+        {
+            Token t = next(ctx);
+            if (t.value == "std_logic")
+                return TypeSpec{ 1, false, true, 0, 0 };
+
+            if (t.value != "std_logic_vector")
+                error(ctx, "expected STD_LOGIC or STD_LOGIC_VECTOR, got '" + t.value + "'");
+
+            expectValue(ctx, "(");
+            int64_t first = parseConstIntExpr(ctx);
+
+            bool isDownto;
+            if (peek(ctx).value == "downto") { next(ctx); isDownto = true; }
+            else if (peek(ctx).value == "to") { next(ctx); isDownto = false; }
+            else { error(ctx, "expected DOWNTO or TO"); }
+
+            int64_t second = parseConstIntExpr(ctx);
+            expectValue(ctx, ")");
+
+            if (isDownto && first < second)
+                error(ctx, "vector declared with DOWNTO but first bound is less than second. Found: (" + std::to_string(first) + " downto " + std::to_string(second) + ")");
+            if (!isDownto && first > second)
+                error(ctx, "vector declared with TO but first bound is greater than second. Found: (" + std::to_string(first) + " to " + std::to_string(second) + ")");
+
+            int64_t low = std::min(first, second);
+            int64_t high = std::max(first, second);
+            int64_t width = high - low + 1;
+            if (width < 1 || width > 255)
+                error(ctx, "vector width out of range");
+
+            return TypeSpec{ static_cast<Pulse::bitWidth_t>(width), true, isDownto, low, high };
+        }
+
+        // ===============================================================
+        // Signal declarations
+        // ===============================================================
+
+        /// @brief Parses one "signal name [, name]* : type [:= value] ;" declaration.
+        /// @details All declared names share the same type and optional initial value.
+        ///          Each name is registered in symbols for later reference resolution.
+        /// @return A vector with one SignalDeclaration per name.
+        std::vector<std::unique_ptr<SignalDeclaration>> parseSignalDeclarations(ParseContext& ctx)
+        {
+            expectValue(ctx, "signal");
+
+            std::vector<std::string> names;
+            names.push_back(expectIdentifier(ctx).value);
+            while (peek(ctx).value == ",")
+            {
+                next(ctx);
+                names.push_back(expectIdentifier(ctx).value);
+            }
+            expectValue(ctx, ":");
+
+            TypeSpec spec = parseTypeSpec(ctx);
+
+            uint64_t initialValue = 0;
+            if (peek(ctx).value == ":=")
+            {
+                next(ctx);
+                auto lit = parseLogicLiteralToken(ctx);
+                initialValue = lit->value;
+            }
+            expectValue(ctx, ";");
+
+            std::vector<std::unique_ptr<SignalDeclaration>> result;
+            for (auto& n : names)
+            {
+                ctx.symbols[n] = SignalInfo{ spec.width, spec.isDownto, spec.low, spec.high, spec.isVector };
+
+                auto decl = std::make_unique<SignalDeclaration>();
+                decl->signalName = n;
+                decl->width = spec.width;
+                decl->initialValue = initialValue;
+                result.push_back(std::move(decl));
+            }
+            return result;
+        }
+
+        // ===============================================================
+        // Component instantiation
+        // ===============================================================
+
+        /// @brief Parses a labeled component instantiation statement.
+        /// @details Handles both the "label : ComponentName port map (...)" form and
+        ///          the "label : entity work.EntityName port map (...)" form.
+        ///          Library prefixes are silently ignored.
+        /// @return Ownership of the constructed ComponentInstantiation node.
+        std::unique_ptr<ComponentInstantiation> parseInstantiation(ParseContext& ctx)
+        {
+            std::string instName = expectIdentifier(ctx).value;
+            expectValue(ctx, ":");
+
+            if (peek(ctx).value == "entity") next(ctx); // "entity work.foo" form - library prefix ignored
+
+            std::string compName = expectIdentifier(ctx).value;
+            if (peek(ctx).value == ".") // library.component form
+            {
+                next(ctx);
+                compName = expectIdentifier(ctx).value;
             }
 
-            // ---------------------------------------------------------------
-            // Component instantiation
-            // ---------------------------------------------------------------
+            expectValue(ctx, "port");
+            expectValue(ctx, "map");
+            expectValue(ctx, "(");
 
-            std::unique_ptr<ComponentInstantiation> parseInstantiation()
+            auto inst = std::make_unique<ComponentInstantiation>();
+            inst->instanceName = instName;
+            inst->componentName = compName;
+
+            while (true)
             {
-                std::string instName = expectIdentifier().value;
-                expectValue(":");
+                std::string portName = expectIdentifier(ctx).value;
+                expectValue(ctx, "=>");
+                auto actual = parseSignalReference(ctx);
+                inst->portMaps[portName] = std::move(actual);
 
-                if (peek().value == "entity") next(); // "entity work.foo" form - library prefix ignored
+                if (peek(ctx).value == ",") { next(ctx); continue; }
+                break;
+            }
+            expectValue(ctx, ")");
+            expectValue(ctx, ";");
+            return inst;
+        }
 
-                std::string compName = expectIdentifier().value;
-                if (peek().value == ".") // library.component form
+        // ===============================================================
+        // Signal assignment   target <= value [when cond else value ...] ;
+        // ===============================================================
+
+        /// @brief Parses a concurrent signal assignment statement, including
+        ///        conditional (when/else) forms.
+        /// @return Ownership of the constructed SignalAssignment node.
+        std::unique_ptr<SignalAssignment> parseSignalAssignment(ParseContext& ctx)
+        {
+            auto target = parseSignalReference(ctx);
+            expectValue(ctx, "<=");
+            auto value = parseAssignmentValue(ctx);
+            expectValue(ctx, ";");
+
+            auto stmt = std::make_unique<SignalAssignment>();
+            stmt->target = std::move(target);
+            stmt->value = std::move(value);
+            return stmt;
+        }
+
+        /// @brief Parses the right-hand side of a signal assignment.
+        /// @details If the first value expression is followed by "when", a full
+        ///          WhenElseExpr chain is built. Otherwise the value is returned as-is.
+        ///
+        ///          Grammar:
+        ///          @code
+        ///          value { when cond else value } else value
+        ///          @endcode
+        /// @return The parsed expression (possibly a WhenElseExpr).
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseAssignmentValue(ParseContext& ctx)
+        {
+            auto first = parseValueExpr(ctx);
+
+            if (peek(ctx).value != "when")
+                return first;
+            next(ctx);
+
+            auto whenExpr = std::make_unique<WhenElseExpr>();
+            auto cond = parseCondition(ctx);
+            whenExpr->branches.push_back(WhenElseExpr::Branch{ std::move(first), std::move(cond) });
+
+            while (true)
+            {
+                expectValue(ctx, "else");
+                auto val = parseValueExpr(ctx);
+                if (peek(ctx).value == "when")
                 {
-                    next();
-                    compName = expectIdentifier().value;
+                    next(ctx);
+                    auto c = parseCondition(ctx);
+                    whenExpr->branches.push_back(WhenElseExpr::Branch{ std::move(val), std::move(c) });
                 }
-
-                expectValue("port");
-                expectValue("map");
-                expectValue("(");
-
-                auto inst = std::make_unique<ComponentInstantiation>();
-                inst->instanceName = instName;
-                inst->componentName = compName;
-
-                while (true)
+                else
                 {
-                    std::string portName = expectIdentifier().value;
-                    expectValue("=>");
-                    auto actual = parseSignalReference();
-                    inst->portMaps[portName] = std::move(actual);
-
-                    if (peek().value == ",") { next(); continue; }
+                    whenExpr->defaultValue = std::move(val);
                     break;
                 }
-                expectValue(")");
-                expectValue(";");
-                return inst;
             }
+            return whenExpr;
+        }
 
-            // ---------------------------------------------------------------
-            // Signal assignment ( target <= value [when cond else value ...]; )
-            // ---------------------------------------------------------------
+        // ===============================================================
+        // Signal references with flattened bit/range indexing
+        // ===============================================================
 
-            std::unique_ptr<SignalAssignment> parseSignalAssignment()
+        /// @brief Allocates a literal integer node with value @p v.
+        std::unique_ptr<IntegerLiteralExpr> makeIntLit(int64_t v)
+        {
+            auto n = std::make_unique<IntegerLiteralExpr>();
+            n->value = v;
+            return n;
+        }
+
+        /// @brief Maps a VHDL-level declaration index to a flat internal position.
+        /// @details Internal position 0 always corresponds to the bit written SECOND in
+        ///          the declaration range (i.e. the rightmost element, the LSB), regardless
+        ///          of whether the signal was declared with DOWNTO or TO.
+        ///
+        ///          For a DOWNTO declaration like (7 DOWNTO 0): internal = i - declaredLow
+        ///          For a TO declaration    like (0 TO 7):      internal = declaredHigh - i
+        ///
+        /// @param info The SignalInfo for the signal being indexed.
+        /// @param i    The VHDL-level index as written in the source.
+        /// @return The equivalent flat (LSB=0) internal index.
+        int64_t flattenIndex(const SignalInfo& info, int64_t i)
+        {
+            if (!info.isVector)
+                return 0;
+            return info.isDownto ? (i - info.declaredLow) : (info.declaredHigh - i);
+        }
+
+        /// @brief Parses a signal name with an optional bit-select or range-select.
+        /// @details If an index or range follows in parentheses, the bounds are flattened
+        ///          from VHDL declaration space into internal LSB=0 space via flattenIndex().
+        ///
+        ///          Grammar:
+        ///          @code
+        ///          identifier [ "(" index ")" | "(" high (DOWNTO|TO) low ")" ]
+        ///          @endcode
+        /// @return Ownership of the constructed SignalReference node.
+        std::unique_ptr<SignalReference> parseSignalReference(ParseContext& ctx)
+        {
+            Token nameTok = expectIdentifier(ctx);
+            auto it = ctx.symbols.find(nameTok.value);
+            if (it == ctx.symbols.end())
+                error(ctx, "undeclared signal '" + nameTok.value + "'");
+            const SignalInfo& info = it->second;
+
+            auto ref = std::make_unique<SignalReference>();
+            ref->signalName = nameTok.value;
+
+            if (peek(ctx).value == "(")
             {
-                auto target = parseSignalReference();
-                expectValue("<=");
-                auto value = parseAssignmentValue();
-                expectValue(";");
+                next(ctx);
+                int64_t firstIdx = parseConstIntExpr(ctx);
 
-                auto stmt = std::make_unique<SignalAssignment>();
-                stmt->target = std::move(target);
-                stmt->value = std::move(value);
-                return stmt;
-            }
+                bool isDownto = peek(ctx).value == "downto";
+                bool isTo = peek(ctx).value == "to";
 
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parseAssignmentValue()
-            {
-                auto first = parseValueExpr();
-
-                if (peek().value != "when")
-                    return first;
-                next();
-
-                auto whenExpr = std::make_unique<WhenElseExpr>();
-                auto cond = parseCondition();
-                whenExpr->branches.push_back(WhenElseExpr::Branch{ std::move(first), std::move(cond) });
-
-                while (true)
+                if (isDownto || isTo)
                 {
-                    expectValue("else");
-                    auto val = parseValueExpr();
-                    if (peek().value == "when")
-                    {
-                        next();
-                        auto c = parseCondition();
-                        whenExpr->branches.push_back(WhenElseExpr::Branch{ std::move(val), std::move(c) });
-                    }
-                    else
-                    {
-                        whenExpr->defaultValue = std::move(val);
-                        break;
-                    }
+                    next(ctx);
+                    int64_t secondIdx = parseConstIntExpr(ctx);
+
+                    if (isDownto && firstIdx < secondIdx)
+                        error(ctx, "vector declared with DOWNTO but first bound is less than second. Found: (" + std::to_string(firstIdx) + " downto " + std::to_string(secondIdx) + ")");
+                    if (isTo && firstIdx > secondIdx)
+                        error(ctx, "vector declared with TO but first bound is greater than second. Found: (" + std::to_string(firstIdx) + " to " + std::to_string(secondIdx) + ")");
+
+                    expectValue(ctx, ")");
+                    ref->high = makeIntLit(flattenIndex(info, firstIdx));
+                    ref->low = makeIntLit(flattenIndex(info, secondIdx));
                 }
-                return whenExpr;
+                else
+                {
+                    expectValue(ctx, ")");
+                    ref->low = makeIntLit(flattenIndex(info, firstIdx));
+                }
             }
 
-            // ---------------------------------------------------------------
-            // Signal references, with flattened bit/range indexing
-            // ---------------------------------------------------------------
+            return ref;
+        }
 
-            static std::unique_ptr<IntegerLiteralExpr> makeIntLit(int64_t v)
+        // ===============================================================
+        // Constant integer expressions (folded immediately)
+        // ===============================================================
+
+        /// @brief Parses and immediately evaluates a constant integer expression.
+        /// @details Handles additive operators at the top level, delegating
+        ///          multiplication and primaries to parseConstMul() / parseConstFactor().
+        /// @return The folded integer value.
+        int64_t parseConstIntExpr(ParseContext& ctx)
+        {
+            int64_t v = parseConstMul(ctx);
+            while (peek(ctx).value == "+" || peek(ctx).value == "-")
+            {
+                bool plus = (next(ctx).value == "+");
+                int64_t r = parseConstMul(ctx);
+                v = plus ? v + r : v - r;
+            }
+            return v;
+        }
+
+        /// @brief Parses and evaluates the multiplicative level of a constant expression.
+        /// @return The folded integer value for this sub-expression.
+        int64_t parseConstMul(ParseContext& ctx)
+        {
+            int64_t v = parseConstFactor(ctx);
+            while (peek(ctx).value == "*")
+            {
+                next(ctx);
+                v *= parseConstFactor(ctx);
+            }
+            return v;
+        }
+
+        /// @brief Parses and evaluates a constant primary: a numeric literal, a
+        ///        parenthesised expression, or a signal attribute (e.g. A'length).
+        /// @return The folded integer value for this primary.
+        int64_t parseConstFactor(ParseContext& ctx)
+        {
+            if (peek(ctx).value == "-") { next(ctx); return -parseConstFactor(ctx); }
+            if (peek(ctx).value == "+") { next(ctx); return parseConstFactor(ctx); }
+            if (peek(ctx).value == "(")
+            {
+                next(ctx);
+                int64_t v = parseConstIntExpr(ctx);
+                expectValue(ctx, ")");
+                return v;
+            }
+
+            Token t = next(ctx);
+            if (t.type == TokenType::NumericLiteral)
+                return parseIntegerLiteralText(t.value);
+
+            if (t.type == TokenType::Identifier)
+            {
+                if (peek(ctx).value == "'") next(ctx); // tokenizer may emit the tick separately
+                Token attrTok = next(ctx);
+                if (attrTok.type != TokenType::Attribute)
+                    error(ctx, "expected attribute after '" + t.value + "'");
+                return evalConstAttribute(ctx, t.value, attrTok.value);
+            }
+
+            error(ctx, "expected integer constant, got '" + t.value + "'");
+        }
+
+        /// @brief Evaluates a signal attribute expression to a concrete integer.
+        /// @details Recognised attributes: 'length, 'high, 'low, 'left, 'right.
+        /// @param signalName Name of the signal whose attribute is being queried.
+        /// @param attr       Attribute name, with or without the leading tick.
+        /// @return The integer value of the attribute for the given signal.
+        int64_t evalConstAttribute(ParseContext& ctx, const std::string& signalName, std::string attr)
+        {
+            if (!attr.empty() && attr.front() == '\'') attr.erase(0, 1);
+
+            auto it = ctx.symbols.find(signalName);
+            if (it == ctx.symbols.end())
+                error(ctx, "unknown signal in attribute expression: '" + signalName + "'");
+            const SignalInfo& info = it->second;
+
+            if (attr == "length") return info.width;
+            if (!info.isVector)
+                error(ctx, "'" + attr + " is not valid on scalar signal '" + signalName + "'");
+
+            if (attr == "high") return info.declaredHigh;
+            if (attr == "low") return info.declaredLow;
+            if (attr == "left") return info.isDownto ? info.declaredHigh : info.declaredLow;
+            if (attr == "right") return info.isDownto ? info.declaredLow : info.declaredHigh;
+
+            error(ctx, "unsupported attribute '" + attr + "'");
+        }
+
+        // ===============================================================
+        // Integer sub-expressions kept as AST (shift amounts, etc.)
+        // ===============================================================
+
+        /// @brief Parses an integer-valued expression and returns it as an AST subtree.
+        /// @details Unlike parseConstIntExpr, the result is not folded to a constant;
+        ///          it may reference signals at runtime (e.g. for shift amounts).
+        /// @return Ownership of the AST node for this expression.
+        std::unique_ptr<ASTNode> parseIntegerExpr(ParseContext& ctx)
+        {
+            auto v = parseIntMul(ctx);
+            while (peek(ctx).value == "+" || peek(ctx).value == "-")
+            {
+                std::string op = next(ctx).value;
+                auto r = parseIntMul(ctx);
+                auto node = std::make_unique<BinaryOpExpr<ReturnType::INTEGER>>();
+                node->op = op;
+                node->left = std::move(v);
+                node->right = std::move(r);
+                v = std::move(node);
+            }
+            return v;
+        }
+
+        /// @brief Parses the multiplicative level of an AST integer expression.
+        /// @return Ownership of the AST node for this sub-expression.
+        std::unique_ptr<ASTNode> parseIntMul(ParseContext& ctx)
+        {
+            auto v = parseIntFactor(ctx);
+            while (peek(ctx).value == "*")
+            {
+                next(ctx);
+                auto r = parseIntFactor(ctx);
+                auto node = std::make_unique<BinaryOpExpr<ReturnType::INTEGER>>();
+                node->op = "*";
+                node->left = std::move(v);
+                node->right = std::move(r);
+                v = std::move(node);
+            }
+            return v;
+        }
+
+        /// @brief Parses a primary integer expression into an AST node.
+        /// @details Handles four forms:
+        ///            - Unary minus:                   "-" factor
+        ///            - Parenthesised sub-expression:  "(" expr ")"
+        ///            - Numeric literal:               e.g. 42
+        ///            - Signal attribute:              ident "'" attr  (e.g. A'length)
+        ///            - Signal with subscript:         ident "(" ... ")" or plain ident
+        ///
+        /// @note The last form (plain signal / subscripted signal) is required to support
+        ///       shift amounts written as a signal slice, e.g. "A SLL B(5 DOWNTO 0)".
+        ///       In that case the subscript is already consumed by parseSignalReference(),
+        ///       and the resulting SignalReference is used directly as the shift amount.
+        ///       Without this branch, parsing "B(5 DOWNTO 0)" as the shift amount would
+        ///       fail because the parser would try to consume a tick-attribute after "B"
+        ///       and instead find "(", producing a spurious error.
+        /// @return Ownership of the AST node for this primary.
+        std::unique_ptr<ASTNode> parseIntFactor(ParseContext& ctx)
+        {
+            if (peek(ctx).value == "-")
+            {
+                next(ctx);
+                auto operand = parseIntFactor(ctx);
+                auto node = std::make_unique<UnaryOpExpr<ReturnType::INTEGER>>();
+                node->op = "-";
+                node->operand = std::move(operand);
+                return node;
+            }
+
+            if (peek(ctx).value == "(")
+            {
+                next(ctx);
+                auto e = parseIntegerExpr(ctx);
+                expectValue(ctx, ")");
+                return e;
+            }
+
+            Token t = next(ctx);
+
+            if (t.type == TokenType::NumericLiteral)
             {
                 auto n = std::make_unique<IntegerLiteralExpr>();
-                n->value = v;
+                n->value = parseIntegerLiteralText(t.value);
                 return n;
             }
 
-            // Converts a VHDL-level index into this signal's declaration into a
-            // flattened internal position, where internal position 0 always
-            // corresponds to the bit written SECOND in the declaration's range
-            // (i.e. the rightmost element), regardless of whether it was
-            // declared with DOWNTO or TO.
-            static int64_t flattenIndex(const SignalInfo& info, int64_t i)
+            if (t.type == TokenType::Identifier)
             {
-                if (!info.isVector)
-                    return 0;
-                return info.isDownto ? (i - info.declaredLow) : (info.declaredHigh - i);
-            }
+                // Two sub-cases for an identifier primary:
+                //
+                //   a) signal'attribute  — the token after the identifier is a tick,
+                //      or directly a TokenType::Attribute.  Produce an AttributeExpr.
+                //
+                //   b) signal reference  — the token after the identifier is "(" or
+                //      anything else (end of expression).  Parse the full signal
+                //      reference (including any subscript) and return it as-is.
+                //      This correctly handles shift amounts like "B(5 DOWNTO 0)".
 
-            std::unique_ptr<SignalReference> parseSignalReference()
-            {
-                Token nameTok = expectIdentifier();
-                auto it = m_symbols.find(nameTok.value);
-                if (it == m_symbols.end())
-                    error("undeclared signal '" + nameTok.value + "'");
-                const SignalInfo& info = it->second;
+                const bool nextIsTick = (peek(ctx).value == "'");
+                const bool nextIsAttr = (peek(ctx).type == TokenType::Attribute);
 
-                auto ref = std::make_unique<SignalReference>();
-                ref->signalName = nameTok.value;
-
-                if (peek().value == "(")
+                if (nextIsTick || nextIsAttr)
                 {
-                    next();
-                    int64_t firstIdx = parseConstIntExpr();
-
-                    bool isDownto = peek().value == "downto";
-                    bool isTo = peek().value == "to";
-
-                    if (isDownto || isTo)
-                    {
-                        next();
-                        int64_t secondIdx = parseConstIntExpr();
-
-                        if (isDownto && firstIdx < secondIdx)
-                            error("vector declared with DOWNTO but first bound is less than second. Found: (" + std::to_string(firstIdx) + " downto " + std::to_string(secondIdx) + ")");
-                        if (isTo && firstIdx > secondIdx)
-                            error("vector declared with TO but first bound is greater than second. Found: (" + std::to_string(firstIdx) + " to " + std::to_string(secondIdx) + ")");
-
-                        expectValue(")");
-                        ref->high = makeIntLit(flattenIndex(info, firstIdx));
-                        ref->low = makeIntLit(flattenIndex(info, secondIdx));
-                    }
-                    else
-                    {
-                        expectValue(")");
-                        ref->low = makeIntLit(flattenIndex(info, firstIdx));
-                    }
-                }
-
-                return ref;
-            }
-
-            // ---------------------------------------------------------------
-            // Constant integer expressions (range bounds, indices) - folded
-            // immediately since flattening needs concrete numbers.
-            // ---------------------------------------------------------------
-
-            int64_t parseConstIntExpr()
-            {
-                int64_t v = parseConstMul();
-                while (peek().value == "+" || peek().value == "-")
-                {
-                    bool plus = (next().value == "+");
-                    int64_t r = parseConstMul();
-                    v = plus ? v + r : v - r;
-                }
-                return v;
-            }
-
-            int64_t parseConstMul()
-            {
-                int64_t v = parseConstFactor();
-                while (peek().value == "*")
-                {
-                    next();
-                    v *= parseConstFactor();
-                }
-                return v;
-            }
-
-            int64_t parseConstFactor()
-            {
-                if (peek().value == "-") { next(); return -parseConstFactor(); }
-                if (peek().value == "+") { next(); return parseConstFactor(); }
-                if (peek().value == "(")
-                {
-                    next();
-                    int64_t v = parseConstIntExpr();
-                    expectValue(")");
-                    return v;
-                }
-
-                Token t = next();
-                if (t.type == TokenType::NumericLiteral)
-                    return parseIntegerLiteralText(t.value);
-
-                if (t.type == TokenType::Identifier)
-                {
-                    if (peek().value == "'") next(); // tokenizer may emit the tick separately
-                    Token attrTok = next();
+                    // Attribute form: signal'attr
+                    if (nextIsTick) next(ctx); // consume the tick if emitted separately
+                    Token attrTok = next(ctx);
                     if (attrTok.type != TokenType::Attribute)
-                        error("expected attribute after '" + t.value + "'");
-                    return evalConstAttribute(t.value, attrTok.value);
-                }
-
-                error("expected integer constant, got '" + t.value + "'");
-            }
-
-            int64_t evalConstAttribute(const std::string& signalName, std::string attr)
-            {
-                if (!attr.empty() && attr.front() == '\'') attr.erase(0, 1);
-                attr = toLower(attr);
-
-                auto it = m_symbols.find(signalName);
-                if (it == m_symbols.end())
-                    error("unknown signal in attribute expression: '" + signalName + "'");
-                const SignalInfo& info = it->second;
-
-                if (attr == "length") return info.width;
-                if (!info.isVector)
-                    error("'" + attr + " is not valid on scalar signal '" + signalName + "'");
-
-                if (attr == "high") return info.declaredHigh;
-                if (attr == "low") return info.declaredLow;
-                if (attr == "left") return info.isDownto ? info.declaredHigh : info.declaredLow;
-                if (attr == "right") return info.isDownto ? info.declaredLow : info.declaredHigh;
-
-                error("unsupported attribute '" + attr + "'");
-            }
-
-            // ---------------------------------------------------------------
-            // Integer sub-expressions kept as AST (shift amounts, etc.) -
-            // same grammar shape as parseConstIntExpr but not folded.
-            // ---------------------------------------------------------------
-
-            std::unique_ptr<ASTNode> parseIntegerExpr()
-            {
-                auto v = parseIntMul();
-                while (peek().value == "+" || peek().value == "-")
-                {
-                    std::string op = next().value;
-                    auto r = parseIntMul();
-                    auto node = std::make_unique<BinaryOpExpr<ReturnType::INTEGER>>();
-                    node->op = op;
-                    node->left = std::move(v);
-                    node->right = std::move(r);
-                    v = std::move(node);
-                }
-                return v;
-            }
-
-            std::unique_ptr<ASTNode> parseIntMul()
-            {
-                auto v = parseIntFactor();
-                while (peek().value == "*")
-                {
-                    next();
-                    auto r = parseIntFactor();
-                    auto node = std::make_unique<BinaryOpExpr<ReturnType::INTEGER>>();
-                    node->op = "*";
-                    node->left = std::move(v);
-                    node->right = std::move(r);
-                    v = std::move(node);
-                }
-                return v;
-            }
-
-            std::unique_ptr<ASTNode> parseIntFactor()
-            {
-                if (peek().value == "-")
-                {
-                    next();
-                    auto operand = parseIntFactor();
-                    auto node = std::make_unique<UnaryOpExpr<ReturnType::INTEGER>>();
-                    node->op = "-";
-                    node->operand = std::move(operand);
-                    return node;
-                }
-                if (peek().value == "(")
-                {
-                    next();
-                    auto e = parseIntegerExpr();
-                    expectValue(")");
-                    return e;
-                }
-
-                Token t = next();
-                if (t.type == TokenType::NumericLiteral)
-                {
-                    auto n = std::make_unique<IntegerLiteralExpr>();
-                    n->value = parseIntegerLiteralText(t.value);
-                    return n;
-                }
-
-                if (t.type == TokenType::Identifier)
-                {
-                    if (peek().value == "'") next();
-                    Token attrTok = next();
-                    if (attrTok.type != TokenType::Attribute)
-                        error("expected attribute after '" + t.value + "'");
+                        error(ctx, "expected attribute after '" + t.value + "'");
 
                     auto n = std::make_unique<AttributeExpr>();
                     n->kind = attributeKindFromString(attrTok.value);
@@ -708,338 +894,442 @@ namespace Pulse::Parser::VHDL
                     return n;
                 }
 
-                error("expected integer expression, got '" + t.value + "'");
-            }
+                // Plain signal reference (with optional subscript).
+                // We already consumed the identifier token, so we push it back by
+                // looking up the signal directly rather than calling parseSignalReference().
+                auto it = ctx.symbols.find(t.value);
+                if (it == ctx.symbols.end())
+                    error(ctx, "undeclared signal '" + t.value + "'");
+                const SignalInfo& info = it->second;
 
-            static AttributeKind attributeKindFromString(std::string s)
-            {
-                if (!s.empty() && s.front() == '\'') s.erase(0, 1);
-                s = toLower(s);
-                if (s == "left") return AttributeKind::Left;
-                if (s == "right") return AttributeKind::Right;
-                if (s == "low") return AttributeKind::Low;
-                if (s == "high") return AttributeKind::High;
-                if (s == "length") return AttributeKind::Length;
-                throw std::runtime_error("unsupported attribute '" + s + "'");
-            }
+                auto ref = std::make_unique<SignalReference>();
+                ref->signalName = t.value;
 
-            // ---------------------------------------------------------------
-            // LOGIC-valued expressions (signal assignment RHS)
-            //
-            // Precedence, low to high:
-            //   logical ops (and/or/nand/nor/xor/xnor)
-            //   shift/rotate ops (sll/srl/sla/sra/rol/ror)
-            //   adding ops (+ - &)
-            //   unary (+ - not)
-            //   multiplying (*)
-            //   primary (literal, signal ref, signed()/unsigned(), parens)
-            // ---------------------------------------------------------------
-
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parseValueExpr()
-            {
-                return parseLogicalLevel();
-            }
-
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parseLogicalLevel()
-            {
-                static const char* ops[] = { "and", "or", "nand", "nor", "xor", "xnor" };
-                auto left = parseShiftLevel();
-                while (matchesAny(peek().value, ops, 6))
+                if (peek(ctx).value == "(")
                 {
-                    std::string op = toLower(next().value);
-                    auto right = parseShiftLevel();
-                    left = wrapBinary(op, std::move(left), std::move(right));
-                }
-                return left;
-            }
+                    next(ctx);
+                    int64_t firstIdx = parseConstIntExpr(ctx);
 
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parseShiftLevel()
-            {
-                static const char* ops[] = { "sll", "srl", "sla", "sra", "rol", "ror" };
-                auto left = parseAddingLevel();
-                while (matchesAny(peek().value, ops, 6))
-                {
-                    std::string op = toLower(next().value);
-                    auto amount = parseIntegerExpr();
-                    auto node = std::make_unique<BinaryOpExpr<ReturnType::LOGIC>>();
-                    node->op = op;
-                    node->left = std::move(left);
-                    node->right = std::move(amount);
-                    left = std::move(node);
-                }
-                return left;
-            }
+                    bool isDownto = peek(ctx).value == "downto";
+                    bool isTo = peek(ctx).value == "to";
 
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parseAddingLevel()
-            {
-                auto left = parseUnaryLevel();
-                while (peek().value == "+" || peek().value == "-" || peek().value == "&")
-                {
-                    std::string op = next().value;
-                    auto right = parseUnaryLevel();
-                    left = wrapBinary(op, std::move(left), std::move(right));
-                }
-                return left;
-            }
+                    if (isDownto || isTo)
+                    {
+                        next(ctx);
+                        int64_t secondIdx = parseConstIntExpr(ctx);
 
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parseUnaryLevel()
-            {
-                if (peek().value == "not")
-                {
-                    next();
-                    auto operand = parseUnaryLevel();
-                    auto node = std::make_unique<UnaryOpExpr<ReturnType::LOGIC>>();
-                    node->op = "not";
-                    node->operand = std::move(operand);
-                    return node;
-                }
-                if (peek().value == "+" || peek().value == "-")
-                {
-                    std::string op = next().value;
-                    auto operand = parseUnaryLevel();
-                    auto node = std::make_unique<UnaryOpExpr<ReturnType::LOGIC>>();
-                    node->op = op;
-                    node->operand = std::move(operand);
-                    return node;
-                }
-                return parseMultLevel();
-            }
+                        if (isDownto && firstIdx < secondIdx)
+                            error(ctx, "slice DOWNTO but first bound is less than second. Found: (" + std::to_string(firstIdx) + " downto " + std::to_string(secondIdx) + ")");
+                        if (isTo && firstIdx > secondIdx)
+                            error(ctx, "slice TO but first bound is greater than second. Found: (" + std::to_string(firstIdx) + " to " + std::to_string(secondIdx) + ")");
 
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parseMultLevel()
-            {
-                auto left = parsePrimary();
-                while (peek().value == "*")
-                {
-                    next();
-                    auto right = parsePrimary();
-                    left = wrapBinary("*", std::move(left), std::move(right));
-                }
-                return left;
-            }
-
-            std::unique_ptr<Expression<ReturnType::LOGIC>> parsePrimary()
-            {
-                const Token& t = peek();
-
-                if (t.value == "(")
-                {
-                    next();
-                    auto e = parseValueExpr();
-                    expectValue(")");
-                    return e;
+                        expectValue(ctx, ")");
+                        ref->high = makeIntLit(flattenIndex(info, firstIdx));
+                        ref->low = makeIntLit(flattenIndex(info, secondIdx));
+                    }
+                    else
+                    {
+                        expectValue(ctx, ")");
+                        ref->low = makeIntLit(flattenIndex(info, firstIdx));
+                    }
                 }
 
-                if (t.value == "signed" || t.value == "unsigned")
-                {
-                    std::string fname = toLower(next().value);
-                    expectValue("(");
-                    auto arg = parseValueExpr();
-                    expectValue(")");
-
-                    auto node = std::make_unique<FunctionCallExpr<ReturnType::LOGIC>>();
-                    node->functionName = fname;
-                    node->arguments.push_back(std::move(arg));
-                    return node;
-                }
-
-                if (t.type == TokenType::BitStringLiteral || t.type == TokenType::CharacterLiteral)
-                    return parseLogicLiteralToken();
-
-                if (t.type == TokenType::Identifier)
-                    return parseSignalReference();
-
-                error("unexpected token in expression: '" + t.value + "'");
+                return ref;
             }
 
-            std::unique_ptr<Expression<ReturnType::LOGIC>> wrapBinary(
-                const std::string& op,
-                std::unique_ptr<Expression<ReturnType::LOGIC>> left,
-                std::unique_ptr<Expression<ReturnType::LOGIC>> right)
+            error(ctx, "expected integer expression, got '" + t.value + "'");
+        }
+
+        /// @brief Converts an attribute name string to the corresponding AttributeKind enum value.
+        /// @details The leading tick, if present, is stripped before comparison.
+        ///          Throws if the attribute name is not one of the standard VHDL signal attributes.
+        /// @param s The raw attribute string (e.g. "'length", "high").
+        /// @return The matching AttributeKind enumerator.
+        AttributeKind attributeKindFromString(std::string s)
+        {
+            if (!s.empty() && s.front() == '\'') s.erase(0, 1);
+            if (s == "left") return AttributeKind::Left;
+            if (s == "right") return AttributeKind::Right;
+            if (s == "low") return AttributeKind::Low;
+            if (s == "high") return AttributeKind::High;
+            if (s == "length") return AttributeKind::Length;
+            throw std::runtime_error("unsupported attribute '" + s + "'");
+        }
+
+        // ===============================================================
+        // LOGIC-valued expressions (signal assignment RHS)
+        // ===============================================================
+
+        /// @brief Entry point for a LOGIC-valued expression. Delegates to the lowest
+        ///        precedence level (logical operators).
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseValueExpr(ParseContext& ctx)
+        {
+            return parseLogicalLevel(ctx);
+        }
+
+        /// @brief Parses the logical operator level (and/or/nand/nor/xor/xnor).
+        /// @details Left-associative. All operands and results are LOGIC-typed.
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseLogicalLevel(ParseContext& ctx)
+        {
+            static const char* ops[] = { "and", "or", "nand", "nor", "xor", "xnor" };
+            auto left = parseShiftLevel(ctx);
+            while (matchesAny(peek(ctx).value, ops, 6))
             {
+                std::string op = next(ctx).value;
+                auto right = parseShiftLevel(ctx);
+                left = wrapBinary(op, std::move(left), std::move(right));
+            }
+            return left;
+        }
+
+        /// @brief Parses the shift/rotate operator level (sll/srl/sla/sra/rol/ror).
+        /// @details The right operand is an integer expression (not a LOGIC expression)
+        ///          because shift amounts are numeric, not bit-vectors.
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseShiftLevel(ParseContext& ctx)
+        {
+            static const char* ops[] = { "sll", "srl", "sla", "sra", "rol", "ror" };
+            auto left = parseAddingLevel(ctx);
+            while (matchesAny(peek(ctx).value, ops, 6))
+            {
+                std::string op = next(ctx).value;
+                auto amount = parseIntegerExpr(ctx);
                 auto node = std::make_unique<BinaryOpExpr<ReturnType::LOGIC>>();
+                node->op = op;
+                node->left = std::move(left);
+                node->right = std::move(amount);
+                left = std::move(node);
+            }
+            return left;
+        }
+
+        /// @brief Parses the adding operator level (+ - &).
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseAddingLevel(ParseContext& ctx)
+        {
+            auto left = parseUnaryLevel(ctx);
+            while (peek(ctx).value == "+" || peek(ctx).value == "-" || peek(ctx).value == "&")
+            {
+                std::string op = next(ctx).value;
+                auto right = parseUnaryLevel(ctx);
+                left = wrapBinary(op, std::move(left), std::move(right));
+            }
+            return left;
+        }
+
+        /// @brief Parses unary operators (not / + / -).
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseUnaryLevel(ParseContext& ctx)
+        {
+            if (peek(ctx).value == "not")
+            {
+                next(ctx);
+                auto operand = parseUnaryLevel(ctx);
+                auto node = std::make_unique<UnaryOpExpr<ReturnType::LOGIC>>();
+                node->op = "not";
+                node->operand = std::move(operand);
+                return node;
+            }
+            if (peek(ctx).value == "+" || peek(ctx).value == "-")
+            {
+                std::string op = next(ctx).value;
+                auto operand = parseUnaryLevel(ctx);
+                auto node = std::make_unique<UnaryOpExpr<ReturnType::LOGIC>>();
+                node->op = op;
+                node->operand = std::move(operand);
+                return node;
+            }
+            return parseMultLevel(ctx);
+        }
+
+        /// @brief Parses the multiplication level (*).
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parseMultLevel(ParseContext& ctx)
+        {
+            auto left = parsePrimary(ctx);
+            while (peek(ctx).value == "*")
+            {
+                next(ctx);
+                auto right = parsePrimary(ctx);
+                left = wrapBinary("*", std::move(left), std::move(right));
+            }
+            return left;
+        }
+
+        /// @brief Parses a primary LOGIC expression: parenthesised sub-expression,
+        ///        signed()/unsigned() cast, bit-string/character literal, or signal reference.
+        /// @details To add a new built-in function, follow the signed/unsigned pattern:
+        ///          check for the keyword in peek(), consume it, parse arguments,
+        ///          and emit a FunctionCallExpr node.
+        std::unique_ptr<Expression<ReturnType::LOGIC>> parsePrimary(ParseContext& ctx)
+        {
+            const Token& t = peek(ctx);
+
+            if (t.value == "(")
+            {
+                next(ctx);
+                auto e = parseValueExpr(ctx);
+                expectValue(ctx, ")");
+                return e;
+            }
+
+            if (t.value == "signed" || t.value == "unsigned")
+            {
+                std::string fname = next(ctx).value;
+                expectValue(ctx, "(");
+                auto arg = parseValueExpr(ctx);
+                expectValue(ctx, ")");
+
+                auto node = std::make_unique<FunctionCallExpr<ReturnType::LOGIC>>();
+                node->functionName = fname;
+                node->arguments.push_back(std::move(arg));
+                return node;
+            }
+
+            if (t.type == TokenType::BitStringLiteral ||
+                t.type == TokenType::CharacterLiteral)
+                return parseLogicLiteralToken(ctx);
+
+            if (t.type == TokenType::Identifier)
+                return parseSignalReference(ctx);
+
+            error(ctx, "unexpected token in expression: '" + t.value + "'");
+        }
+
+        /// @brief Constructs a BinaryOpExpr from an operator string and two sub-expressions.
+        /// @param op    The operator name (e.g. "and", "+", "sll").
+        /// @param left  Left operand.
+        /// @param right Right operand.
+        /// @return The constructed binary expression node.
+        std::unique_ptr<Expression<ReturnType::LOGIC>> wrapBinary(
+            const std::string& op,
+            std::unique_ptr<Expression<ReturnType::LOGIC>> left,
+            std::unique_ptr<Expression<ReturnType::LOGIC>> right)
+        {
+            auto node = std::make_unique<BinaryOpExpr<ReturnType::LOGIC>>();
+            node->op = op;
+            node->left = std::move(left);
+            node->right = std::move(right);
+            return node;
+        }
+
+        // ===============================================================
+        // BOOLEAN-valued expressions (when/else conditions)
+        // ===============================================================
+
+        /// @brief Parses a boolean condition expression for a when/else clause.
+        /// @details Handles logical combinations of relational comparisons.
+        ///          To add a new logical operator, extend the ops table below.
+        std::unique_ptr<Expression<ReturnType::BOOLEAN>> parseCondition(ParseContext& ctx)
+        {
+            static const char* ops[] = { "and", "or", "nand", "nor", "xor", "xnor" };
+            auto left = parseBoolTerm(ctx);
+            while (matchesAny(peek(ctx).value, ops, 6))
+            {
+                std::string op = next(ctx).value;
+                auto right = parseBoolTerm(ctx);
+                auto node = std::make_unique<BinaryOpExpr<ReturnType::BOOLEAN>>();
+                node->op = op;
+                node->left = std::move(left);
+                node->right = std::move(right);
+                left = std::move(node);
+            }
+            return left;
+        }
+
+        /// @brief Parses a boolean primary: a "not" term, a parenthesised condition,
+        ///        or a LOGIC expression followed by a relational operator and another
+        ///        LOGIC expression.
+        std::unique_ptr<Expression<ReturnType::BOOLEAN>> parseBoolTerm(ParseContext& ctx)
+        {
+            if (peek(ctx).value == "not")
+            {
+                next(ctx);
+                auto operand = parseBoolTerm(ctx);
+                auto node = std::make_unique<UnaryOpExpr<ReturnType::BOOLEAN>>();
+                node->op = "not";
+                node->operand = std::move(operand);
+                return node;
+            }
+            if (peek(ctx).value == "(")
+            {
+                next(ctx);
+                auto e = parseCondition(ctx);
+                expectValue(ctx, ")");
+                return e;
+            }
+
+            auto left = parseValueExpr(ctx);
+
+            static const char* relops[] = { "=", "/=", "<", "<=", ">", ">=" };
+            if (matchesAny(peek(ctx).value, relops, 6))
+            {
+                std::string op = next(ctx).value;
+                auto right = parseValueExpr(ctx);
+                auto node = std::make_unique<BinaryOpExpr<ReturnType::BOOLEAN>>();
                 node->op = op;
                 node->left = std::move(left);
                 node->right = std::move(right);
                 return node;
             }
 
-            static bool matchesAny(const std::string& v, const char* const* opts, size_t n)
+            error(ctx, "expected relational operator in condition");
+        }
+
+        // ===============================================================
+        // Literals
+        // ===============================================================
+
+        /// @brief Parses a single logic literal token (bit-string or character).
+        /// @details Dispatches to bitStringToLiteral() or charToLiteral() based on
+        ///          the token type.
+        /// @return Ownership of the constructed LogicLiteralExpr node.
+        std::unique_ptr<LogicLiteralExpr> parseLogicLiteralToken(ParseContext& ctx)
+        {
+            Token t = next(ctx);
+            if (t.type == TokenType::BitStringLiteral) return bitStringToLiteral(ctx, t.value);
+            if (t.type == TokenType::CharacterLiteral) return charToLiteral(ctx, t.value);
+            error(ctx, "expected a STD_LOGIC literal, got '" + t.value + "'");
+        }
+
+        /// @brief Converts a VHDL bit-string literal (e.g. b"1010", x"F", o"7") to a
+        ///        LogicLiteralExpr, preserving any unknown/don't-care bits in unknownMask.
+        /// @details Supports binary (b), octal (o), and hexadecimal (x) radix prefixes.
+        ///          Underscore separators inside the digit string are ignored.
+        ///          Unknown digit values (X/Z/U/W/-/L/H) set the corresponding mask bits.
+        /// @param raw The raw token text as returned by the tokenizer.
+        /// @return Ownership of the constructed literal node.
+        std::unique_ptr<LogicLiteralExpr> bitStringToLiteral(ParseContext& ctx, const std::string& raw)
+        {
+            size_t i = 0;
+            char radix = 'b';
+
+            if (i < raw.size() && std::isalpha(static_cast<unsigned char>(raw[i])))
             {
-                for (size_t i = 0; i < n; ++i)
-                    if (v == opts[i]) return true;
-                return false;
+                radix = static_cast<char>(static_cast<unsigned char>(raw[i]));
+                ++i;
             }
 
-            // ---------------------------------------------------------------
-            // BOOLEAN-valued expressions (when/else conditions)
-            // ---------------------------------------------------------------
-
-            std::unique_ptr<Expression<ReturnType::BOOLEAN>> parseCondition()
+            std::string digits;
+            size_t quote = raw.find('"', i);
+            if (quote != std::string::npos)
             {
-                static const char* ops[] = { "and", "or", "nand", "nor", "xor", "xnor" };
-                auto left = parseBoolTerm();
-                while (matchesAny(peek().value, ops, 6))
-                {
-                    std::string op = toLower(next().value);
-                    auto right = parseBoolTerm();
-                    auto node = std::make_unique<BinaryOpExpr<ReturnType::BOOLEAN>>();
-                    node->op = op;
-                    node->left = std::move(left);
-                    node->right = std::move(right);
-                    left = std::move(node);
-                }
-                return left;
+                size_t close = raw.rfind('"');
+                digits = raw.substr(quote + 1, close - quote - 1);
+            }
+            else
+            {
+                digits = raw.substr(i);
             }
 
-            std::unique_ptr<Expression<ReturnType::BOOLEAN>> parseBoolTerm()
+            int bitsPerDigit = (radix == 'x') ? 4 : (radix == 'o') ? 3 : 1;
+
+            uint64_t value = 0, mask = 0;
+            int width = 0;
+            for (char c : digits)
             {
-                if (peek().value == "not")
+                if (c == '_') continue;
+                char lc = static_cast<char>(static_cast<unsigned char>(c));
+
+                int digitVal = 0;
+                bool unknown = false;
+                if (radix == 'b')
                 {
-                    next();
-                    auto operand = parseBoolTerm();
-                    auto node = std::make_unique<UnaryOpExpr<ReturnType::BOOLEAN>>();
-                    node->op = "not";
-                    node->operand = std::move(operand);
-                    return node;
+                    if (lc == '0') digitVal = 0;
+                    else if (lc == '1') digitVal = 1;
+                    else unknown = true;
                 }
-                if (peek().value == "(")
+                else if (lc >= '0' && lc <= '9')
                 {
-                    next();
-                    auto e = parseCondition();
-                    expectValue(")");
-                    return e;
+                    digitVal = lc - '0';
                 }
-
-                auto left = parseValueExpr();
-
-                static const char* relops[] = { "=", "/=", "<", "<=", ">", ">=" };
-                if (matchesAny(peek().value, relops, 6))
+                else if (radix == 'x' && lc >= 'a' && lc <= 'f')
                 {
-                    std::string op = next().value;
-                    auto right = parseValueExpr();
-                    auto node = std::make_unique<BinaryOpExpr<ReturnType::BOOLEAN>>();
-                    node->op = op;
-                    node->left = std::move(left);
-                    node->right = std::move(right);
-                    return node;
-                }
-
-                error("expected relational operator in condition");
-            }
-
-            // ---------------------------------------------------------------
-            // Literals
-            // ---------------------------------------------------------------
-
-            std::unique_ptr<LogicLiteralExpr> parseLogicLiteralToken()
-            {
-                Token t = next();
-                if (t.type == TokenType::BitStringLiteral) return bitStringToLiteral(t.value);
-                if (t.type == TokenType::CharacterLiteral) return charToLiteral(t.value);
-                error("expected a STD_LOGIC literal, got '" + t.value + "'");
-            }
-
-            std::unique_ptr<LogicLiteralExpr> bitStringToLiteral(const std::string& raw)
-            {
-                size_t i = 0;
-                char radix = 'b';
-
-                if (i < raw.size() && std::isalpha(static_cast<unsigned char>(raw[i])))
-                {
-                    radix = static_cast<char>(std::tolower(static_cast<unsigned char>(raw[i])));
-                    ++i;
-                }
-
-                std::string digits;
-                size_t quote = raw.find('"', i);
-                if (quote != std::string::npos)
-                {
-                    size_t close = raw.rfind('"');
-                    digits = raw.substr(quote + 1, close - quote - 1);
+                    digitVal = lc - 'a' + 10;
                 }
                 else
                 {
-                    digits = raw.substr(i);
+                    unknown = true;
                 }
 
-                int bitsPerDigit = (radix == 'x') ? 4 : (radix == 'o') ? 3 : 1;
-
-                uint64_t value = 0, mask = 0;
-                int width = 0;
-                for (char c : digits)
+                for (int b = bitsPerDigit - 1; b >= 0; --b)
                 {
-                    if (c == '_') continue;
-                    char lc = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-                    int digitVal = 0;
-                    bool unknown = false;
-                    if (radix == 'b')
-                    {
-                        if (lc == '0') digitVal = 0;
-                        else if (lc == '1') digitVal = 1;
-                        else unknown = true;
-                    }
-                    else if (lc >= '0' && lc <= '9')
-                    {
-                        digitVal = lc - '0';
-                    }
-                    else if (radix == 'x' && lc >= 'a' && lc <= 'f')
-                    {
-                        digitVal = lc - 'a' + 10;
-                    }
-                    else
-                    {
-                        unknown = true;
-                    }
-
-                    for (int b = bitsPerDigit - 1; b >= 0; --b)
-                    {
-                        value <<= 1;
-                        mask <<= 1;
-                        if (unknown) mask |= 1ULL;
-                        else value |= static_cast<uint64_t>((digitVal >> b) & 1);
-                        ++width;
-                    }
+                    value <<= 1;
+                    mask <<= 1;
+                    if (unknown) mask |= 1ULL;
+                    else value |= static_cast<uint64_t>((digitVal >> b) & 1);
+                    ++width;
                 }
-
-                if (width > 64) error("bit string literal wider than 64 bits is not supported");
-
-                auto lit = std::make_unique<LogicLiteralExpr>();
-                lit->value = value;
-                lit->unknownMask = mask;
-                lit->width = static_cast<Pulse::bitWidth_t>(width);
-                return lit;
             }
 
-            std::unique_ptr<LogicLiteralExpr> charToLiteral(const std::string& raw)
+            if (width > 64) error(ctx, "bit string literal wider than 64 bits is not supported");
+
+            auto lit = std::make_unique<LogicLiteralExpr>();
+            lit->value = value;
+            lit->unknownMask = mask;
+            lit->width = static_cast<Pulse::bitWidth_t>(width);
+            return lit;
+        }
+
+        /// @brief Converts a VHDL character literal ('0', '1', 'X', etc.) to a
+        ///        one-bit LogicLiteralExpr.
+        /// @details '0' and '1' produce known values. Any other character (X/Z/U/W/-/L/H)
+        ///          is treated as an unknown bit (unknownMask = 1).
+        /// @param raw The raw token text, e.g. "'0'" or "1".
+        /// @return Ownership of the constructed literal node.
+        std::unique_ptr<LogicLiteralExpr> charToLiteral(ParseContext& ctx, const std::string& raw)
+        {
+            char c;
+            if (raw.size() >= 3 && raw.front() == '\'' && raw.back() == '\'') c = raw[1];
+            else if (!raw.empty()) c = raw[0];
+            else error(ctx, "empty character literal");
+
+            char lc = static_cast<char>(static_cast<unsigned char>(c));
+
+            auto lit = std::make_unique<LogicLiteralExpr>();
+            lit->width = 1;
+            if (lc == '0') { lit->value = 0; lit->unknownMask = 0; }
+            else if (lc == '1') { lit->value = 1; lit->unknownMask = 0; }
+            else { lit->value = 0; lit->unknownMask = 1; } // X/Z/U/W/-/L/H -> unknown
+            return lit;
+        }
+
+        // ===============================================================
+        // Main Parse Routine
+        // ===============================================================
+        
+        /// @brief Entry point. Parses an entire VHDL source file and returns its root node.
+        /// @details Skips library/use clauses then dispatches to parseEntity() and
+        ///          parseArchitecture() for every top-level construct found.
+        /// @return The populated root node for the whole file.
+        RootNode parse(ParseContext& ctx)
+        {
+            RootNode r;
+            while (!ctx.stream.eof())
             {
-                char c;
-                if (raw.size() >= 3 && raw.front() == '\'' && raw.back() == '\'') c = raw[1];
-                else if (!raw.empty()) c = raw[0];
-                else error("empty character literal");
-
-                char lc = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-                auto lit = std::make_unique<LogicLiteralExpr>();
-                lit->width = 1;
-                if (lc == '0') { lit->value = 0; lit->unknownMask = 0; }
-                else if (lc == '1') { lit->value = 1; lit->unknownMask = 0; }
-                else { lit->value = 0; lit->unknownMask = 1; } // X/Z/U/W/-/L/H -> unknown
-                return lit;
+                const std::string& v = peek(ctx).value;
+                if (v == "library" || v == "use")
+                {
+                    skipToSemicolon(ctx);
+                    continue;
+                }
+                if (v == "entity")
+                {
+                    r.children.push_back(parseEntity(ctx));
+                    continue;
+                }
+                if (v == "architecture")
+                {
+                    r.children.push_back(parseArchitecture(ctx));
+                    continue;
+                }
+                error(ctx, "unexpected top-level token '" + v + "'");
             }
+            return r;
+        }
 
-            // ---------------------------------------------------------------
-
-            TokenStream m_stream;
-            std::unordered_map<std::string, SignalInfo> m_symbols;
-            std::unordered_map<std::string, std::unordered_map<std::string, SignalInfo>> m_entityPortInfo;
-        };
     } // namespace
 
     ASTBuilder::ASTBuilder(Tokenizer& tokenizer)
     {
-        Parser parser(tokenizer);
-        root = parser.parse();
+        ParseContext ctx(tokenizer);
+        root = parse(ctx);
     }
 
     RootNode& ASTBuilder::getRoot()

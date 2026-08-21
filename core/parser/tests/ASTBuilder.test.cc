@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <sstream>
 #include <memory>
-#include "ASTBuilder.h"
+#include "AST.h"
 #include "Tokenizer.h"
 
 using namespace Pulse::Parser::VHDL;

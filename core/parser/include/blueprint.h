@@ -20,11 +20,13 @@ namespace Pulse::Parser
         Comparator,
         Splitter,
         NotGate,
-        Merger,
+        Concatenator,
         Adder,
         Subtractor,
         Multiplicator,
         ControlledBuffer,
+        Constant,
+        Join,
         Subgraph
     };
 
@@ -51,6 +53,27 @@ namespace Pulse::Parser
     protected:
         // Protected constructor prevents manual instantiation
         ComponentInstance(InstanceType t) : type(t) { }
+    };
+
+    /// Virual component that joins 2 signals
+    struct JoinInstance : ComponentInstance
+    {
+        std::string emitter;
+        std::string receiver;
+
+        JoinInstance(std::string emitter, std::string receiver)
+            : ComponentInstance(InstanceType::Join), emitter(emitter), receiver(receiver)
+        { }
+    };
+
+    struct ConstantInstance : ComponentInstance
+    {
+        std::string out;
+        LogicVector value;
+
+        ConstantInstance(std::string out, LogicVector value)
+            : ComponentInstance(InstanceType::Constant), out(out), value(value)
+        { }
     };
 
     /// Binary gate instance: NOT, AND, OR, XOR, NAND, NOR, XNOR
@@ -109,13 +132,13 @@ namespace Pulse::Parser
         { }
     };
 
-    /// Merger (concatenator) instance
-    struct MergerInstance : ComponentInstance
+    /// Concatenator instance (high&low)
+    struct ConcatenatorInstance : ComponentInstance
     {
         std::string low, high, out;
 
-        MergerInstance(std::string low, std::string high, std::string out)
-            : ComponentInstance(InstanceType::Merger), low(low), high(high), out(out)
+        ConcatenatorInstance(std::string low, std::string high, std::string out)
+            : ComponentInstance(InstanceType::Concatenator), low(low), high(high), out(out)
         { }
     };
 

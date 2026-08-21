@@ -237,7 +237,7 @@ namespace Pulse::Parser::VHDL
             throw std::runtime_error("Tokenizer: unterminated string literal.");
 
         advance(source, index, currentLine, currentColumn);
-        tokens.push_back({ TokenType::StringLiteral, source.substr(start, index - start), startLine, startColumn });
+        tokens.push_back({ TokenType::BitStringLiteral, source.substr(start, index - start), startLine, startColumn });
         return true;
     }
 

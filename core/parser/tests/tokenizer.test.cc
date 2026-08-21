@@ -409,7 +409,7 @@ TEST(Tokenizer_StringLiterals, SimpleStringLiteral)
 {
     auto tokens = tokenize("\"hello\"");
     ASSERT_EQ(tokens.size(), 1u);
-    EXPECT_EQ(tokens[0].type,  TokenType::StringLiteral);
+    EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
     EXPECT_EQ(tokens[0].value, "\"hello\"");
 }
 
@@ -417,7 +417,7 @@ TEST(Tokenizer_StringLiterals, EmptyString)
 {
     auto tokens = tokenize("\"\"");
     ASSERT_EQ(tokens.size(), 1u);
-    EXPECT_EQ(tokens[0].type,  TokenType::StringLiteral);
+    EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
     EXPECT_EQ(tokens[0].value, "\"\"");
 }
 

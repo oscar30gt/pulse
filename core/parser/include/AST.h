@@ -192,6 +192,7 @@ namespace Pulse::Parser::VHDL
         ~ASTBuilder() = default;
 
         RootNode& getRoot();
+        void printTree() const;
     };
 } // namespace Pulse::Parser::VHDL
 
