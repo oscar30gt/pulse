@@ -13,7 +13,6 @@
 #include "multiplicator.h"
 #include "controlledBuffer.h"
 #include "constant.h"
-#include <iostream>
 
 namespace Pulse::Engine
 {
@@ -90,7 +89,7 @@ namespace Pulse::Engine
                     auto* in = findWire(shifter->in);
                     auto* shamt = findWire(shifter->shamt);
                     auto* out = findWire(shifter->out);
-                    components.insert({ name, std::make_unique<Shifter>(in, out, shamt, shifter->op) });
+                    components.insert({ name, std::make_unique<Shifter>(in, shamt, out, shifter->op) });
                 }
                 break;
 

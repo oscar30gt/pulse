@@ -12,7 +12,7 @@ END ENTITY mux_4x32;
 ARCHITECTURE behavioral OF mux_4x32 IS
 BEGIN
 
-    _out <= in0 WHEN ((sel = "00") and (sel = "00")) ELSE
+    _out <= in0 WHEN sel = "00" ELSE
             in1 WHEN sel = "01" ELSE
             in2 WHEN sel = "10" ELSE
             in3;

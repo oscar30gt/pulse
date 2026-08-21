@@ -1,4 +1,5 @@
 #include "shifter.h"
+#include <iostream>
 
 namespace Pulse::Engine
 {
