@@ -1,11 +1,11 @@
-#include "merger.h"
+#include "concatenator.h"
 
 namespace Pulse::Engine
 {
-    Merger::Merger(Wire* low, Wire* high, Wire* out)
+    Concatenator::Concatenator(Wire* low, Wire* high, Wire* out)
         : Component({ {"low", low}, {"high", high} }, { {"out", out} }),
-        m_low(low->width(), this, &Merger::recalculate),
-        m_high(high->width(), this, &Merger::recalculate),
+        m_low(low->width(), this, &Concatenator::recalculate),
+        m_high(high->width(), this, &Concatenator::recalculate),
         m_out(low->width() + high->width())
     {
         m_low.addSource(low);
@@ -18,13 +18,13 @@ namespace Pulse::Engine
         }
         catch (const bit_width_mismatch& e)
         {
-            throw bit_width_mismatch("Merger construction failed: " + std::string(e.what()));
+            throw bit_width_mismatch("Concatenator construction failed: " + std::string(e.what()));
         }
     }
 
-    Merger::~Merger() = default;
+    Concatenator::~Concatenator() = default;
 
-    bool Merger::recalculate(ttl_t ttl)
+    bool Concatenator::recalculate(ttl_t ttl)
     {
         LogicVector lessSignificant = m_low.pull();
         LogicVector moreSignificant = m_high.pull();
