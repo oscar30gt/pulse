@@ -32,6 +32,10 @@ namespace Pulse::Parser::VHDL
         void printNode(const ASTNode* node, const std::string& prefix, bool isLast);
         void printExpression(const ASTNode* expr, const std::string& prefix, bool isLast);
         void printSignalReference(const SignalReference* ref, const std::string& prefix, bool isLast);
+        void printSequentialStatement(const SequentialStatement* stmt, const std::string& prefix, bool isLast);
+        void printProcessStatement(const ProcessStatement* proc, const std::string& prefix, bool isLast);
+        void printIfStatement(const IfStatement* ifStmt, const std::string& prefix, bool isLast);
+        void printWaitForStatement(const WaitForStatement* wait, const std::string& prefix, bool isLast);
 
         void printPortDeclaration(const PortDeclaration* port,
             const std::string& prefix, bool isLast)
@@ -202,6 +206,106 @@ namespace Pulse::Parser::VHDL
             }
         }
 
+        void printWaitForStatement(const WaitForStatement* wait, const std::string& prefix, bool isLast)
+        {
+            printBranch(prefix, isLast);
+            std::cout << KEYWORD << "WAIT FOR: " << VALUE << wait->durationNs << RESET << " ns\n";
+        }
+
+        void printIfStatement(const IfStatement* ifStmt, const std::string& prefix, bool isLast)
+        {
+            printBranch(prefix, isLast);
+            std::cout << KEYWORD << "IF (" << VALUE << ifStmt->branches.size()
+                << KEYWORD << " branch" << (ifStmt->branches.size() != 1 ? "es" : "")
+                << (ifStmt->elseBody.empty() ? "" : " + else") << ")" << RESET << "\n";
+
+            std::string nextPrefix = prefix + (isLast ? TREE_SPACE : TREE_VERT);
+
+            for (size_t i = 0; i < ifStmt->branches.size(); ++i)
+            {
+                const auto& branch = ifStmt->branches[i];
+                bool isLastBranch = (i == ifStmt->branches.size() - 1) && ifStmt->elseBody.empty();
+
+                printBranch(nextPrefix, isLastBranch);
+                std::cout << KEYWORD << (i == 0 ? "if" : "elsif") << ":" << RESET << "\n";
+                std::string branchPrefix = nextPrefix + (isLastBranch ? TREE_SPACE : TREE_VERT);
+
+                printBranch(branchPrefix, false);
+                std::cout << KEYWORD << "condition:" << RESET << "\n";
+                printExpression(branch.condition.get(), branchPrefix + TREE_VERT, true);
+
+                bool hasBody = !branch.body.empty();
+                if (hasBody)
+                {
+                    printBranch(branchPrefix, true);
+                    std::cout << KEYWORD << "body:" << RESET << "\n";
+                    std::string bodyPrefix = branchPrefix + TREE_SPACE;
+                    for (size_t j = 0; j < branch.body.size(); ++j)
+                        printSequentialStatement(branch.body[j].get(), bodyPrefix, j == branch.body.size() - 1);
+                }
+            }
+
+            if (!ifStmt->elseBody.empty())
+            {
+                printBranch(nextPrefix, true);
+                std::cout << KEYWORD << "else:" << RESET << "\n";
+                std::string elsePrefix = nextPrefix + TREE_SPACE;
+                for (size_t j = 0; j < ifStmt->elseBody.size(); ++j)
+                    printSequentialStatement(ifStmt->elseBody[j].get(), elsePrefix, j == ifStmt->elseBody.size() - 1);
+            }
+        }
+
+        void printSequentialStatement(const SequentialStatement* stmt, const std::string& prefix, bool isLast)
+        {
+            if (!stmt)
+            {
+                printBranch(prefix, isLast);
+                std::cout << DIM << "<null statement>" << RESET << "\n";
+                return;
+            }
+
+            if (auto assign = dynamic_cast<const SignalAssignment*>(stmt))
+                printSignalAssignment(assign, prefix, isLast);
+            else if (auto ifStmt = dynamic_cast<const IfStatement*>(stmt))
+                printIfStatement(ifStmt, prefix, isLast);
+            else if (auto wait = dynamic_cast<const WaitForStatement*>(stmt))
+                printWaitForStatement(wait, prefix, isLast);
+            else
+            {
+                printBranch(prefix, isLast);
+                std::cout << DIM << "<Unknown SequentialStatement>" << RESET << "\n";
+            }
+        }
+
+        void printProcessStatement(const ProcessStatement* proc, const std::string& prefix, bool isLast)
+        {
+            printBranch(prefix, isLast);
+            std::cout << KEYWORD << "PROCESS";
+            if (!proc->label.empty())
+                std::cout << ": " << IDENT << proc->label;
+            std::cout << RESET << "\n";
+
+            std::string nextPrefix = prefix + (isLast ? TREE_SPACE : TREE_VERT);
+
+            // Sensitivity list
+            bool hasBody = !proc->body.empty();
+            if (!proc->sensitivityList.empty())
+            {
+                printBranch(nextPrefix, !hasBody);
+                std::cout << KEYWORD << "sensitivity (" << VALUE << proc->sensitivityList.size() << KEYWORD << "):" << RESET;
+                for (const auto& sig : proc->sensitivityList)
+                    std::cout << " " << IDENT << sig << RESET;
+                std::cout << "\n";
+            }
+
+            // Body statements
+            if (hasBody)
+            {
+                for (size_t i = 0; i < proc->body.size(); ++i)
+                    printSequentialStatement(proc->body[i].get(), nextPrefix, i == proc->body.size() - 1);
+            }
+        }
+
         void printArchitectureDeclaration(const ArchitectureDeclaration* arch,
             const std::string& prefix, bool isLast)
         {
@@ -215,11 +319,12 @@ namespace Pulse::Parser::VHDL
             bool hasComponents = !arch->components.empty();
             bool hasInstantiations = !arch->instantiations.empty();
             bool hasAssignments = !arch->assignments.empty();
+            bool hasProcesses = !arch->processes.empty();
 
             // Signals
             if (hasSignals)
             {
-                bool isLastSection = !hasComponents && !hasInstantiations && !hasAssignments;
+                bool isLastSection = !hasComponents && !hasInstantiations && !hasAssignments && !hasProcesses;
                 printBranch(nextPrefix, isLastSection);
                 std::cout << KEYWORD << "Signals (" << VALUE << arch->signals.size() << KEYWORD << ")" << RESET << "\n";
                 std::string sigPrefix = nextPrefix + (isLastSection ? TREE_SPACE : TREE_VERT);
@@ -234,7 +339,7 @@ namespace Pulse::Parser::VHDL
             // Components
             if (hasComponents)
             {
-                bool isLastSection = !hasInstantiations && !hasAssignments;
+                bool isLastSection = !hasInstantiations && !hasAssignments && !hasProcesses;
                 printBranch(nextPrefix, isLastSection);
                 std::cout << KEYWORD << "Components (" << VALUE << arch->components.size() << KEYWORD << ")" << RESET << "\n";
                 std::string compPrefix = nextPrefix + (isLastSection ? TREE_SPACE : TREE_VERT);
@@ -249,7 +354,7 @@ namespace Pulse::Parser::VHDL
             // Instantiations
             if (hasInstantiations)
             {
-                bool isLastSection = !hasAssignments;
+                bool isLastSection = !hasAssignments && !hasProcesses;
                 printBranch(nextPrefix, isLastSection);
                 std::cout << KEYWORD << "Instantiations (" << VALUE << arch->instantiations.size() << KEYWORD << ")" << RESET << "\n";
                 std::string instPrefix = nextPrefix + (isLastSection ? TREE_SPACE : TREE_VERT);
@@ -264,14 +369,29 @@ namespace Pulse::Parser::VHDL
             // Assignments
             if (hasAssignments)
             {
-                printBranch(nextPrefix, true);
+                bool isLastSection = !hasProcesses;
+                printBranch(nextPrefix, isLastSection);
                 std::cout << KEYWORD << "Assignments (" << VALUE << arch->assignments.size() << KEYWORD << ")" << RESET << "\n";
-                std::string assignPrefix = nextPrefix + TREE_SPACE;
+                std::string assignPrefix = nextPrefix + (isLastSection ? TREE_SPACE : TREE_VERT);
 
                 for (size_t i = 0; i < arch->assignments.size(); ++i)
                 {
                     bool lastAssignment = (i == arch->assignments.size() - 1);
                     printSignalAssignment(arch->assignments[i].get(), assignPrefix, lastAssignment);
+                }
+            }
+
+            // Processes
+            if (hasProcesses)
+            {
+                printBranch(nextPrefix, true);
+                std::cout << KEYWORD << "Processes (" << VALUE << arch->processes.size() << KEYWORD << ")" << RESET << "\n";
+                std::string procPrefix = nextPrefix + TREE_SPACE;
+
+                for (size_t i = 0; i < arch->processes.size(); ++i)
+                {
+                    bool lastProc = (i == arch->processes.size() - 1);
+                    printProcessStatement(arch->processes[i].get(), procPrefix, lastProc);
                 }
             }
         }
@@ -298,6 +418,8 @@ namespace Pulse::Parser::VHDL
                 printComponentDeclaration(comp, prefix, isLast);
             else if (auto inst = dynamic_cast<const ComponentInstantiation*>(node))
                 printComponentInstantiation(inst, prefix, isLast);
+            else if (auto proc = dynamic_cast<const ProcessStatement*>(node))
+                printProcessStatement(proc, prefix, isLast);
             else if (auto assign = dynamic_cast<const SignalAssignment*>(node))
                 printSignalAssignment(assign, prefix, isLast);
             else

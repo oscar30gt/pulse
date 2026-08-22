@@ -3,6 +3,7 @@
 
 #include "AST.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <stdexcept>
 
@@ -26,11 +27,17 @@ namespace Pulse::Parser::VHDL
         std::unordered_map<std::string, const EntityDeclaration*> m_globalEntities;
         std::unordered_map<std::string, SymbolInfo> m_currentScopeSymbols;
         std::unordered_map<std::string, const ComponentDeclaration*> m_currentComponents;
+        std::unordered_set<std::string> m_processLabels; ///< Process labels seen in the current architecture
 
         void registerEntities(const ASTRoot& root);
         void analyzeArchitecture(const ArchitectureDeclaration* arch);
         void analyzeAssignment(const SignalAssignment* assignment);
         void analyzeInstantiation(const ComponentInstantiation* inst, const ArchitectureDeclaration* arch);
+        void analyzeProcess(const ProcessStatement* proc);
+        void analyzeSequentialBody(const std::vector<std::unique_ptr<SequentialStatement>>& body);
+        void analyzeSequentialStatement(const SequentialStatement* stmt);
+        void analyzeIfStatement(const IfStatement* ifStmt);
+        void analyzeCondition(const Expression<ReturnType::BOOLEAN>* cond);
 
         // Helper to recursively determine the bit-width of an expression
         Pulse::bitWidth_t evaluateWidth(const ASTNode* expr);

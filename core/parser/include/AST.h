@@ -67,10 +67,11 @@ namespace Pulse::Parser::VHDL
     struct ComponentDeclaration;
     struct SignalAssignment;
     struct ComponentInstantiation;
+    struct ProcessStatement;
 
     /// Declaration of an architecture in VHDL.
-    /// Architectures support multiple signals, components, assignments, and instantiations.
-    /// [TODO]: For now, processes are not supported.
+    /// Architectures support multiple signals, components, assignments,
+    /// instantiations, and processes.
     struct ArchitectureDeclaration : ASTNode
     {
         std::string architectureName; ///< Name of the architecture
@@ -80,6 +81,7 @@ namespace Pulse::Parser::VHDL
         std::vector<std::unique_ptr<ComponentDeclaration>> components;      ///< Components declared in the architecture
         std::vector<std::unique_ptr<SignalAssignment>> assignments;         ///< Signal assignments in the order they were parsed
         std::vector<std::unique_ptr<ComponentInstantiation>> instantiations;///< Component instantiations in the order they were parsed
+        std::vector<std::unique_ptr<ProcessStatement>> processes;           ///< Process statements in the order they were parsed
     };
 
     /// Declaration of a signal in VHDL.
@@ -120,8 +122,12 @@ namespace Pulse::Parser::VHDL
         ReturnType returnType = R;  ///< Type this expression evaluates to.
     };
 
+    /// Base class for sequential statements that can appear inside a process body.
+    /// Concrete types: SignalAssignment, IfStatement, WaitForStatement.
+    struct SequentialStatement : ASTNode {};
+
     /// signal_name(4 downto 0) <= x"00AA"
-    struct SignalAssignment final : ASTNode
+    struct SignalAssignment final : SequentialStatement
     {
         std::unique_ptr<SignalReference> target;    ///< Target signal reference for the assignment
         std::unique_ptr<Expression<ReturnType::LOGIC>> value;   ///< Value expression to be assigned to the target
@@ -213,6 +219,39 @@ namespace Pulse::Parser::VHDL
 
         std::vector<Branch> branches;   ///< List of "when" branches in the order they must be evaluated.
         std::unique_ptr<Expression<ReturnType::LOGIC>> defaultValue; ///< Default value expression to be returned if no conditions evaluate to true (optional)
+    };
+
+    // --------------------------------------------------------------------------------------------
+
+    /// wait for <integer> ns;
+    /// Pauses simulation for the given number of nanoseconds.
+    struct WaitForStatement final : SequentialStatement
+    {
+        int64_t durationNs = 0; ///< Duration of the wait in nanoseconds
+    };
+
+    /// if/elsif/else statement inside a process.
+    struct IfStatement final : SequentialStatement
+    {
+        /// A single if / elsif branch
+        struct Branch
+        {
+            std::unique_ptr<Expression<ReturnType::BOOLEAN>> condition; ///< Condition of this branch
+            std::vector<std::unique_ptr<SequentialStatement>> body;     ///< Statements to execute when the condition is true
+        };
+
+        std::vector<Branch> branches;                                    ///< if + zero or more elsif branches, in order
+        std::vector<std::unique_ptr<SequentialStatement>> elseBody;      ///< Statements to execute in the else clause (may be empty)
+    };
+
+    /// A VHDL process statement.
+    /// Processes contain a sensitivity list, local signal declarations,
+    /// and a sequential body (signal assignments, if/else, wait for).
+    struct ProcessStatement final : ASTNode
+    {
+        std::string label;                                              ///< Optional process label (empty if unlabeled)
+        std::vector<std::string> sensitivityList;                       ///< Names of signals in the sensitivity list (may be empty)
+        std::vector<std::unique_ptr<SequentialStatement>> body;         ///< Sequential statements in the process body
     };
 
     // --------------------------------------------------------------------------------------------

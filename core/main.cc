@@ -39,42 +39,8 @@ int main(int argc, char* argv[])
 {
     try
     {
-        auto mux = pipeline("mux.vhdl");
-        auto alu = pipeline("alu.vhdl");
-
-        Linker linker;
-        auto linkedGraph = linker.link({ &mux, &alu });
-        Linker::printLinkedDesign(linkedGraph);
-
-        BlueprintGenerator blueprintGenerator;
-        auto blueprints = blueprintGenerator.generate(linkedGraph);
-        for (const auto& [archName, blueprint] : blueprints)
-        {
-            std::cout << "Blueprint for architecture: " << archName << std::endl;
-            blueprint->print(std::cout);
-        }
-
-        auto aluBp = blueprints.find("alu")->second.get();
-        
-        Wire a(32), b(32), sel(2), out(32);
-        SignalSource sourceA(32), sourceB(32), sourceSel(2);
-        sourceA.addTarget(&a);
-        sourceB.addTarget(&b);
-        sourceSel.addTarget(&sel);
-
-        Subgraph aluSubgraph(*aluBp, {{"a", &a}, {"b", &b}, {"sel", &sel}}, {{"res", &out}});
-
-        sourceA.drive(LogicVector::FromInt(0b0010));
-        sourceB.drive(LogicVector::FromInt(0b1010));
-
-        sourceSel.drive(LogicVector::FromInt(0));
-        std::cout << "Output: " << out.peek().str() << std::endl;
-        sourceSel.drive(LogicVector::FromInt(1));
-        std::cout << "Output: " << out.peek().str() << std::endl;
-        sourceSel.drive(LogicVector::FromInt(2));
-        std::cout << "Output: " << out.peek().str() << std::endl;
-        sourceSel.drive(LogicVector::FromInt(3));
-        std::cout << "Output: " << out.peek().str() << std::endl;
+        auto clock = pipeline("clock.vhdl");
+        clock.print();
     }
     catch (const std::exception& e)
     {

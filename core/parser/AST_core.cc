@@ -159,6 +159,12 @@ namespace Pulse::Parser::VHDL
         std::unique_ptr<SignalAssignment> parseSignalAssignment(ParseContext& ctx);
         std::unique_ptr<Expression<ReturnType::LOGIC>> parseAssignmentValue(ParseContext& ctx);
 
+        std::unique_ptr<ProcessStatement> parseProcess(ParseContext& ctx, const std::string& label);
+        std::unique_ptr<SequentialStatement> parseSequentialStatement(ParseContext& ctx);
+        std::unique_ptr<IfStatement> parseIfStatement(ParseContext& ctx);
+        std::unique_ptr<WaitForStatement> parseWaitFor(ParseContext& ctx);
+        std::vector<std::unique_ptr<SequentialStatement>> parseSequentialBody(ParseContext& ctx);
+
         std::unique_ptr<IntegerLiteralExpr> makeIntLit(int64_t v);
         int64_t flattenIndex(const SignalInfo& info, int64_t i);
         std::unique_ptr<SignalReference> parseSignalReference(ParseContext& ctx);
@@ -352,10 +358,29 @@ namespace Pulse::Parser::VHDL
                     break;
                 }
 
+                // Labeled process: "label : process ..."
                 if (peek(ctx).type == TokenType::Identifier && peek(ctx, 1).value == ":")
+                {
+                    const std::string label = peek(ctx).value;
+                    if (peek(ctx, 2).value == "process")
+                    {
+                        next(ctx); // consume label
+                        next(ctx); // consume ':'
+                        arch->processes.push_back(parseProcess(ctx, label));
+                        continue;
+                    }
                     arch->instantiations.push_back(parseInstantiation(ctx));
-                else
-                    arch->assignments.push_back(parseSignalAssignment(ctx));
+                    continue;
+                }
+
+                // Unlabeled process
+                if (peek(ctx).value == "process")
+                {
+                    arch->processes.push_back(parseProcess(ctx, ""));
+                    continue;
+                }
+
+                arch->assignments.push_back(parseSignalAssignment(ctx));
             }
 
             return arch;
@@ -603,6 +628,162 @@ namespace Pulse::Parser::VHDL
                 }
             }
             return whenExpr;
+        }
+
+        // ===============================================================
+        // Process statements
+        // ===============================================================
+
+        /// @brief Parses a VHDL process statement.
+        /// @details Grammar:
+        /// @code
+        ///   [label :] process [(sensitivity_list)]
+        ///   begin
+        ///     { sequential_statement }
+        ///   end process [label] ;
+        /// @endcode
+        /// @param label The label attached to the process (empty string if none).
+        /// @return Ownership of the constructed ProcessStatement node.
+        std::unique_ptr<ProcessStatement> parseProcess(ParseContext& ctx, const std::string& label)
+        {
+            expectValue(ctx, "process");
+
+            auto proc = std::make_unique<ProcessStatement>();
+            proc->label = label;
+
+            // Optional sensitivity list
+            if (peek(ctx).value == "(")
+            {
+                next(ctx); // consume '('
+                while (peek(ctx).value != ")")
+                {
+                    Token sig = expectIdentifier(ctx);
+                    // Validate that the signal is known
+                    if (ctx.symbols.find(sig.value) == ctx.symbols.end())
+                        error(ctx, "undeclared signal '" + sig.value + "' in sensitivity list");
+                    proc->sensitivityList.push_back(sig.value);
+                    if (peek(ctx).value == ",") next(ctx);
+                }
+                expectValue(ctx, ")");
+            }
+
+            // Optional 'is' keyword (VHDL-2008 style)
+            if (peek(ctx).value == "is") next(ctx);
+
+            expectValue(ctx, "begin");
+
+            proc->body = parseSequentialBody(ctx);
+
+            // "end process [label] ;"
+            expectValue(ctx, "end");
+            if (peek(ctx).value == "process") next(ctx);
+            if (peek(ctx).type == TokenType::Identifier) next(ctx); // optional label
+            expectValue(ctx, ";");
+
+            return proc;
+        }
+
+        /// @brief Parses zero or more sequential statements until a terminating keyword.
+        /// @details Terminating keywords are: end, else, elsif.
+        /// @return A vector of owned SequentialStatement nodes.
+        std::vector<std::unique_ptr<SequentialStatement>> parseSequentialBody(ParseContext& ctx)
+        {
+            std::vector<std::unique_ptr<SequentialStatement>> stmts;
+            while (true)
+            {
+                const std::string& v = peek(ctx).value;
+                if (v == "end" || v == "else" || v == "elsif")
+                    break;
+                stmts.push_back(parseSequentialStatement(ctx));
+            }
+            return stmts;
+        }
+
+        /// @brief Parses a single sequential statement inside a process body.
+        /// @details Dispatches to the appropriate sub-parser based on the next token:
+        ///          - "if"   -> parseIfStatement()
+        ///          - "wait" -> parseWaitFor()
+        ///          - otherwise an identifier starting a signal assignment
+        /// @return Ownership of the constructed statement node.
+        std::unique_ptr<SequentialStatement> parseSequentialStatement(ParseContext& ctx)
+        {
+            const std::string& v = peek(ctx).value;
+
+            if (v == "if")
+                return parseIfStatement(ctx);
+
+            if (v == "wait")
+                return parseWaitFor(ctx);
+
+            // Signal assignment: identifier <= expr ;
+            return parseSignalAssignment(ctx);
+        }
+
+        /// @brief Parses an if/elsif/else statement.
+        /// @details Grammar:
+        /// @code
+        ///   if cond then body
+        ///   { elsif cond then body }
+        ///   [ else body ]
+        ///   end if ;
+        /// @endcode
+        /// @return Ownership of the constructed IfStatement node.
+        std::unique_ptr<IfStatement> parseIfStatement(ParseContext& ctx)
+        {
+            auto ifStmt = std::make_unique<IfStatement>();
+
+            expectValue(ctx, "if");
+            {
+                IfStatement::Branch branch;
+                branch.condition = parseCondition(ctx);
+                expectValue(ctx, "then");
+                branch.body = parseSequentialBody(ctx);
+                ifStmt->branches.push_back(std::move(branch));
+            }
+
+            while (peek(ctx).value == "elsif")
+            {
+                next(ctx); // consume 'elsif'
+                IfStatement::Branch branch;
+                branch.condition = parseCondition(ctx);
+                expectValue(ctx, "then");
+                branch.body = parseSequentialBody(ctx);
+                ifStmt->branches.push_back(std::move(branch));
+            }
+
+            if (peek(ctx).value == "else")
+            {
+                next(ctx); // consume 'else'
+                ifStmt->elseBody = parseSequentialBody(ctx);
+            }
+
+            expectValue(ctx, "end");
+            expectValue(ctx, "if");
+            expectValue(ctx, ";");
+
+            return ifStmt;
+        }
+
+        /// @brief Parses a "wait for <integer> ns ;" statement.
+        /// @details Only nanosecond durations are supported.
+        /// @return Ownership of the constructed WaitForStatement node.
+        std::unique_ptr<WaitForStatement> parseWaitFor(ParseContext& ctx)
+        {
+            expectValue(ctx, "wait");
+            expectValue(ctx, "for");
+
+            int64_t duration = parseConstIntExpr(ctx);
+
+            // Expect the "ns" unit identifier
+            Token unit = next(ctx);
+            if (unit.value != "ns")
+                error(ctx, "expected 'ns' after wait duration, got '" + unit.value + "'");
+
+            expectValue(ctx, ";");
+
+            auto stmt = std::make_unique<WaitForStatement>();
+            stmt->durationNs = duration;
+            return stmt;
         }
 
         // ===============================================================
