@@ -13,18 +13,11 @@ Tokenizer makeTokenizer(const std::string& vhdl)
     return Tokenizer(inputStream);
 }
 
-// Test fixture for common setup
-class ASTBuilderTest : public ::testing::Test
-{
-protected:
-    void SetUp() override {}
-};
-
 // ============================================================================
 // VALID RANGES - should parse without error
 // ============================================================================
 
-TEST_F(ASTBuilderTest, ValidDowntoRangeSimple)
+TEST(ASTBuilderTest, ValidDowntoRangeSimple)
 {
     std::string vhdl = R"(
         entity test is
@@ -43,13 +36,12 @@ TEST_F(ASTBuilderTest, ValidDowntoRangeSimple)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
-        auto& root = builder.getRoot();
+        auto root = VHDLtoAST(tokenizer);
         EXPECT_GE(root.children.size(), 2);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidToRangeSimple)
+TEST(ASTBuilderTest, ValidToRangeSimple)
 {
     std::string vhdl = R"(
         entity test is
@@ -67,13 +59,12 @@ TEST_F(ASTBuilderTest, ValidToRangeSimple)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
-        auto& root = builder.getRoot();
+        auto root = VHDLtoAST(tokenizer);
         EXPECT_GE(root.children.size(), 2);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidDowntoRangeSubset)
+TEST(ASTBuilderTest, ValidDowntoRangeSubset)
 {
     std::string vhdl = R"(
         entity test is
@@ -90,11 +81,11 @@ TEST_F(ASTBuilderTest, ValidDowntoRangeSubset)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidToRangeSubset)
+TEST(ASTBuilderTest, ValidToRangeSubset)
 {
     std::string vhdl = R"(
         entity test is
@@ -111,11 +102,11 @@ TEST_F(ASTBuilderTest, ValidToRangeSubset)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidSingleBitAccess)
+TEST(ASTBuilderTest, ValidSingleBitAccess)
 {
     std::string vhdl = R"(
         entity test is
@@ -132,11 +123,11 @@ TEST_F(ASTBuilderTest, ValidSingleBitAccess)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidFullSignalReference)
+TEST(ASTBuilderTest, ValidFullSignalReference)
 {
     std::string vhdl = R"(
         entity test is
@@ -153,11 +144,11 @@ TEST_F(ASTBuilderTest, ValidFullSignalReference)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidDowntoRangeEqual)
+TEST(ASTBuilderTest, ValidDowntoRangeEqual)
 {
     std::string vhdl = R"(
         entity test is
@@ -174,11 +165,11 @@ TEST_F(ASTBuilderTest, ValidDowntoRangeEqual)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidToRangeEqual)
+TEST(ASTBuilderTest, ValidToRangeEqual)
 {
     std::string vhdl = R"(
         entity test is
@@ -195,11 +186,11 @@ TEST_F(ASTBuilderTest, ValidToRangeEqual)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidMultipleAssignmentsWithRanges)
+TEST(ASTBuilderTest, ValidMultipleAssignmentsWithRanges)
 {
     std::string vhdl = R"(
         entity test is
@@ -222,7 +213,7 @@ TEST_F(ASTBuilderTest, ValidMultipleAssignmentsWithRanges)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
@@ -230,7 +221,7 @@ TEST_F(ASTBuilderTest, ValidMultipleAssignmentsWithRanges)
 // INVALID RANGES - should throw error
 // ============================================================================
 
-TEST_F(ASTBuilderTest, InvalidDowntoRangeReversed)
+TEST(ASTBuilderTest, InvalidDowntoRangeReversed)
 {
     std::string vhdl = R"(
         entity test is
@@ -247,11 +238,11 @@ TEST_F(ASTBuilderTest, InvalidDowntoRangeReversed)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidToRangeReversed)
+TEST(ASTBuilderTest, InvalidToRangeReversed)
 {
     std::string vhdl = R"(
         entity test is
@@ -268,11 +259,11 @@ TEST_F(ASTBuilderTest, InvalidToRangeReversed)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidDowntoNegativeBounds)
+TEST(ASTBuilderTest, InvalidDowntoNegativeBounds)
 {
     std::string vhdl = R"(
         entity test is
@@ -289,11 +280,11 @@ TEST_F(ASTBuilderTest, InvalidDowntoNegativeBounds)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidToNegativeBounds)
+TEST(ASTBuilderTest, InvalidToNegativeBounds)
 {
     std::string vhdl = R"(
         entity test is
@@ -310,11 +301,11 @@ TEST_F(ASTBuilderTest, InvalidToNegativeBounds)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidDowntoRangeHigherFirst)
+TEST(ASTBuilderTest, InvalidDowntoRangeHigherFirst)
 {
     std::string vhdl = R"(
         entity test is
@@ -331,11 +322,11 @@ TEST_F(ASTBuilderTest, InvalidDowntoRangeHigherFirst)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidToRangeLowerFirst)
+TEST(ASTBuilderTest, InvalidToRangeLowerFirst)
 {
     std::string vhdl = R"(
         entity test is
@@ -352,11 +343,11 @@ TEST_F(ASTBuilderTest, InvalidToRangeLowerFirst)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidDowntoWithLargeInversion)
+TEST(ASTBuilderTest, InvalidDowntoWithLargeInversion)
 {
     std::string vhdl = R"(
         entity test is
@@ -373,11 +364,11 @@ TEST_F(ASTBuilderTest, InvalidDowntoWithLargeInversion)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidToWithLargeInversion)
+TEST(ASTBuilderTest, InvalidToWithLargeInversion)
 {
     std::string vhdl = R"(
         entity test is
@@ -394,7 +385,7 @@ TEST_F(ASTBuilderTest, InvalidToWithLargeInversion)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
@@ -402,7 +393,7 @@ TEST_F(ASTBuilderTest, InvalidToWithLargeInversion)
 // ERROR MESSAGE VALIDATION - ensure proper error messages
 // ============================================================================
 
-TEST_F(ASTBuilderTest, DowntoErrorMessageContainsDetails)
+TEST(ASTBuilderTest, DowntoErrorMessageContainsDetails)
 {
     std::string vhdl = R"(
         entity test is
@@ -420,7 +411,7 @@ TEST_F(ASTBuilderTest, DowntoErrorMessageContainsDetails)
     auto tokenizer = makeTokenizer(vhdl);
     try
     {
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
         FAIL() << "Expected std::runtime_error";
     }
     catch (const std::runtime_error& e)
@@ -432,7 +423,7 @@ TEST_F(ASTBuilderTest, DowntoErrorMessageContainsDetails)
     }
 }
 
-TEST_F(ASTBuilderTest, ToErrorMessageContainsDetails)
+TEST(ASTBuilderTest, ToErrorMessageContainsDetails)
 {
     std::string vhdl = R"(
         entity test is
@@ -450,7 +441,7 @@ TEST_F(ASTBuilderTest, ToErrorMessageContainsDetails)
     auto tokenizer = makeTokenizer(vhdl);
     try
     {
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
         FAIL() << "Expected std::runtime_error";
     }
     catch (const std::runtime_error& e)
@@ -466,7 +457,7 @@ TEST_F(ASTBuilderTest, ToErrorMessageContainsDetails)
 // EDGE CASES AND BOUNDARY CONDITIONS
 // ============================================================================
 
-TEST_F(ASTBuilderTest, ValidDowntoZeroBased)
+TEST(ASTBuilderTest, ValidDowntoZeroBased)
 {
     std::string vhdl = R"(
         entity test is
@@ -483,11 +474,11 @@ TEST_F(ASTBuilderTest, ValidDowntoZeroBased)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidToZeroBased)
+TEST(ASTBuilderTest, ValidToZeroBased)
 {
     std::string vhdl = R"(
         entity test is
@@ -504,11 +495,11 @@ TEST_F(ASTBuilderTest, ValidToZeroBased)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidDowntoNegativeIndices)
+TEST(ASTBuilderTest, ValidDowntoNegativeIndices)
 {
     std::string vhdl = R"(
         entity test is
@@ -526,11 +517,11 @@ TEST_F(ASTBuilderTest, ValidDowntoNegativeIndices)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ValidToNegativeIndices)
+TEST(ASTBuilderTest, ValidToNegativeIndices)
 {
     std::string vhdl = R"(
         entity test is
@@ -548,11 +539,11 @@ TEST_F(ASTBuilderTest, ValidToNegativeIndices)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, InvalidDowntoWithNegativeIndices)
+TEST(ASTBuilderTest, InvalidDowntoWithNegativeIndices)
 {
     std::string vhdl = R"(
         entity test is
@@ -569,11 +560,11 @@ TEST_F(ASTBuilderTest, InvalidDowntoWithNegativeIndices)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, InvalidToWithNegativeIndices)
+TEST(ASTBuilderTest, InvalidToWithNegativeIndices)
 {
     std::string vhdl = R"(
         entity test is
@@ -590,7 +581,7 @@ TEST_F(ASTBuilderTest, InvalidToWithNegativeIndices)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
@@ -598,7 +589,7 @@ TEST_F(ASTBuilderTest, InvalidToWithNegativeIndices)
 // COMPLEX SIGNAL HANDLING
 // ============================================================================
 
-TEST_F(ASTBuilderTest, MultipleSignalsWithDifferentRangeDirections)
+TEST(ASTBuilderTest, MultipleSignalsWithDifferentRangeDirections)
 {
     std::string vhdl = R"(
         entity test is
@@ -619,11 +610,11 @@ TEST_F(ASTBuilderTest, MultipleSignalsWithDifferentRangeDirections)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, NestedComponentWithRanges)
+TEST(ASTBuilderTest, NestedComponentWithRanges)
 {
     std::string vhdl = R"(
         entity test is
@@ -653,11 +644,11 @@ TEST_F(ASTBuilderTest, NestedComponentWithRanges)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, InvalidRangeInComponentMapping)
+TEST(ASTBuilderTest, InvalidRangeInComponentMapping)
 {
     std::string vhdl = R"(
         entity test is
@@ -681,7 +672,7 @@ TEST_F(ASTBuilderTest, InvalidRangeInComponentMapping)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
@@ -689,7 +680,7 @@ TEST_F(ASTBuilderTest, InvalidRangeInComponentMapping)
 // EXPRESSION EVALUATION WITH RANGES
 // ============================================================================
 
-TEST_F(ASTBuilderTest, ValidRangeWithExpressions)
+TEST(ASTBuilderTest, ValidRangeWithExpressions)
 {
     std::string vhdl = R"(
         entity test is
@@ -706,11 +697,11 @@ TEST_F(ASTBuilderTest, ValidRangeWithExpressions)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, InvalidRangeWithExpressions)
+TEST(ASTBuilderTest, InvalidRangeWithExpressions)
 {
     std::string vhdl = R"(
         entity test is
@@ -727,7 +718,7 @@ TEST_F(ASTBuilderTest, InvalidRangeWithExpressions)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
@@ -735,7 +726,7 @@ TEST_F(ASTBuilderTest, InvalidRangeWithExpressions)
 // CONDITIONAL ASSIGNMENTS WITH RANGES
 // ============================================================================
 
-TEST_F(ASTBuilderTest, ValidWhenElseWithRanges)
+TEST(ASTBuilderTest, ValidWhenElseWithRanges)
 {
     std::string vhdl = R"(
         entity test is
@@ -753,11 +744,11 @@ TEST_F(ASTBuilderTest, ValidWhenElseWithRanges)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, InvalidWhenElseWithRanges)
+TEST(ASTBuilderTest, InvalidWhenElseWithRanges)
 {
     std::string vhdl = R"(
         entity test is
@@ -775,7 +766,7 @@ TEST_F(ASTBuilderTest, InvalidWhenElseWithRanges)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
@@ -783,7 +774,7 @@ TEST_F(ASTBuilderTest, InvalidWhenElseWithRanges)
 // ASCII BOUNDARY TESTS (ensure error checking isn't off-by-one)
 // ============================================================================
 
-TEST_F(ASTBuilderTest, DowntoExactlyEqualBounds)
+TEST(ASTBuilderTest, DowntoExactlyEqualBounds)
 {
     std::string vhdl = R"(
         entity test is
@@ -800,11 +791,11 @@ TEST_F(ASTBuilderTest, DowntoExactlyEqualBounds)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, ToExactlyEqualBounds)
+TEST(ASTBuilderTest, ToExactlyEqualBounds)
 {
     std::string vhdl = R"(
         entity test is
@@ -821,11 +812,11 @@ TEST_F(ASTBuilderTest, ToExactlyEqualBounds)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_NO_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     });
 }
 
-TEST_F(ASTBuilderTest, DowntoOffByOne)
+TEST(ASTBuilderTest, DowntoOffByOne)
 {
     std::string vhdl = R"(
         entity test is
@@ -842,11 +833,11 @@ TEST_F(ASTBuilderTest, DowntoOffByOne)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }
 
-TEST_F(ASTBuilderTest, ToOffByOne)
+TEST(ASTBuilderTest, ToOffByOne)
 {
     std::string vhdl = R"(
         entity test is
@@ -863,6 +854,6 @@ TEST_F(ASTBuilderTest, ToOffByOne)
 
     auto tokenizer = makeTokenizer(vhdl);
     EXPECT_THROW({
-        ASTBuilder builder(tokenizer);
+        auto root = VHDLtoAST(tokenizer);
     }, std::runtime_error);
 }

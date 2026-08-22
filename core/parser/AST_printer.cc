@@ -461,23 +461,23 @@ namespace Pulse::Parser::VHDL
         }
     } // anonymous namespace
 
-    void ASTBuilder::printTree() const
+    void ASTRoot::print() const
     {
         std::cout << "\n" << DIM << std::string(60, '=') << "\n";
         std::cout << "VHDL AST Tree" << "\n";
         std::cout << std::string(60, '=') << RESET << "\n\n";
 
-        if (root.children.empty())
+        if (children.empty())
         {
             std::cout << DIM << "  <empty AST>" << RESET << "\n\n";
             return;
         }
 
         std::cout << KEYWORD << "ROOT" << RESET << "\n";
-        for (size_t i = 0; i < root.children.size(); ++i)
+        for (size_t i = 0; i < children.size(); ++i)
         {
-            bool isLast = (i == root.children.size() - 1);
-            printNode(root.children[i].get(), "", isLast);
+            bool isLast = (i == children.size() - 1);
+            printNode(children[i].get(), "", isLast);
         }
 
         std::cout << "\n" << DIM << std::string(60, '=') << RESET << "\n\n";

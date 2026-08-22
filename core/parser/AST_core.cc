@@ -1326,14 +1326,11 @@ namespace Pulse::Parser::VHDL
 
     } // namespace
 
-    ASTBuilder::ASTBuilder(Tokenizer& tokenizer)
+    [[nodiscard]]
+    ASTRoot VHDLtoAST(Tokenizer& tokenizer)
     {
         ParseContext ctx(tokenizer);
-        root = parse(ctx);
+        return parse(ctx);
     }
-
-    ASTRoot& ASTBuilder::getRoot()
-    {
-        return root;
-    }
+    
 } // namespace Pulse::Parser::VHDL

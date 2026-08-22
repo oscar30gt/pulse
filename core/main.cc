@@ -28,10 +28,9 @@ Pulse::Parser::VHDL::ASTRoot pipeline(std::string filename)
     }
 
     Tokenizer tokenizer(inputFile);
-    ASTBuilder astBuilder(tokenizer);
+    auto root = VHDLtoAST(tokenizer);
 
     SemanticAnalyzer semanticAnalyzer;
-    auto root = std::move(astBuilder.getRoot());
     semanticAnalyzer.analyze(root);
     return root;
 }
