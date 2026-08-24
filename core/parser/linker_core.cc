@@ -73,6 +73,12 @@ namespace Pulse::Parser::VHDL
                     linkedArch.assignments.push_back(assignment.get());
                 }
 
+                // Populate non-owning observer pointers for processes
+                for (const auto& proc : arch->processes)
+                {
+                    linkedArch.processes.push_back(proc.get());
+                }
+
                 // Map local components to verify declarations before stripping them
                 std::unordered_map<std::string, const ComponentDeclaration*> localComponents;
                 for (const auto& comp : arch->components)

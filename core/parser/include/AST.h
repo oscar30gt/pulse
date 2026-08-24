@@ -223,11 +223,11 @@ namespace Pulse::Parser::VHDL
 
     // --------------------------------------------------------------------------------------------
 
-    /// wait for <integer> ns;
-    /// Pauses simulation for the given number of nanoseconds.
+    /// wait for <integer> [fs | ps | ns | us | ms];
+    /// Pauses simulation for the given duration (stored in femtoseconds).
     struct WaitForStatement final : SequentialStatement
     {
-        int64_t durationNs = 0; ///< Duration of the wait in nanoseconds
+        uint64_t durationFs = 0; ///< Duration of the wait in femtoseconds
     };
 
     /// if/elsif/else statement inside a process.

@@ -24,6 +24,7 @@ namespace Pulse::Parser::VHDL
         std::vector<const SignalDeclaration*> signals;
         std::vector<const SignalAssignment*> assignments;
         std::vector<ResolvedInstantiation> resolvedInstantiations;
+        std::vector<const ProcessStatement*> processes;
     };
 
     struct LinkedDesign

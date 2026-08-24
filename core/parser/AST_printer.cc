@@ -209,7 +209,7 @@ namespace Pulse::Parser::VHDL
         void printWaitForStatement(const WaitForStatement* wait, const std::string& prefix, bool isLast)
         {
             printBranch(prefix, isLast);
-            std::cout << KEYWORD << "WAIT FOR: " << VALUE << wait->durationNs << RESET << " ns\n";
+            std::cout << KEYWORD << "WAIT FOR: " << VALUE << wait->durationFs << RESET << " fs\n";
         }
 
         void printIfStatement(const IfStatement* ifStmt, const std::string& prefix, bool isLast)

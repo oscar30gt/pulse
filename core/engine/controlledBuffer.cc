@@ -1,5 +1,5 @@
 #include "controlledBuffer.h"
-#include <iostream>
+
 namespace Pulse::Engine
 {
     ControlledBuffer::ControlledBuffer(Wire* in, Wire* enable, Wire* out)

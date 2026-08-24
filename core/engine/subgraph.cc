@@ -55,6 +55,7 @@ namespace Pulse::Engine
                     auto* receiver = findWire(join->receiver);
                     emitter->addTarget(receiver);
                 }
+                break;
 
                 case InstanceType::Constant:
                 {
@@ -79,7 +80,7 @@ namespace Pulse::Engine
                     auto* notGate = static_cast<NotGateInstance*>(component.get());
                     auto* in = findWire(notGate->in);
                     auto* out = findWire(notGate->out);
-                    components.insert({ name, std::make_unique<NOTGate>(in, out) }); 
+                    components.insert({ name, std::make_unique<NOTGate>(in, out) });
                 }
                 break;
 
@@ -159,6 +160,48 @@ namespace Pulse::Engine
                     auto* enable = findWire(buffer->enable);
                     auto* out = findWire(buffer->out);
                     components.insert({ name, std::make_unique<ControlledBuffer>(in, enable, out) });
+                }
+                break;
+
+                case InstanceType::Process:
+                {
+                    auto* process = static_cast<ProcessInstance*>(component.get());
+
+                    // Map the process's ports to the parent subgraph's wires
+                    PortInitializer inPorts, outPorts;
+
+                    for (const auto& portName : process->inPorts)
+                    {
+                        Wire* parentWire = findWire(portName);
+                        if (!parentWire)
+                            throw std::runtime_error("Process construction failed: Input port '" + portName + "' not found in parent subgraph.");
+                        inPorts.emplace_back(portName, parentWire);
+                    }
+
+                    for (const auto& portName : process->outPorts)
+                    {
+                        Wire* parentWire = findWire(portName);
+                        if (!parentWire)
+                            throw std::runtime_error("Process construction failed: Output port '" + portName + "' not found in parent subgraph.");
+                        outPorts.emplace_back(portName, parentWire);
+                    }
+
+                    if (process->sensList.empty())
+                    {
+                        components.insert({ name, std::make_unique<SequentialProcessBox>(inPorts, outPorts, std::move(process->instructions)) });
+                    }
+                    else
+                    {
+                        std::vector<Wire*> sensList;
+                        for (const auto& sensName : process->sensList)
+                        {
+                            Wire* sensWire = findWire(sensName);
+                            if (!sensWire)
+                                throw std::runtime_error("Process construction failed: Sensitivity list wire '" + sensName + "' not found in parent subgraph.");
+                            sensList.push_back(sensWire);
+                        }
+                        components.insert({ name, std::make_unique<CombinationalProcessBox>(inPorts, outPorts, std::move(process->instructions), sensList) });
+                    }
                 }
                 break;
 

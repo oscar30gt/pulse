@@ -37,6 +37,7 @@ namespace Pulse::Parser::VHDL
     {
         m_currentScopeSymbols.clear();
         m_currentComponents.clear();
+        m_processLabels.clear();
 
         // Ensure the architecture binds to a valid entity
         auto it = m_globalEntities.find(arch->entityName);
@@ -80,6 +81,12 @@ namespace Pulse::Parser::VHDL
         for (const auto& inst : arch->instantiations)
         {
             analyzeInstantiation(inst.get(), arch);
+        }
+
+        // Analyze processes
+        for (const auto& proc : arch->processes)
+        {
+            analyzeProcess(proc.get());
         }
     }
 
@@ -213,5 +220,109 @@ namespace Pulse::Parser::VHDL
         }
         
         throw std::runtime_error("Semantic Error: Unable to determine expression width.");
+    }
+
+    namespace
+    {
+        bool hasWaitStatements(const std::vector<std::unique_ptr<SequentialStatement>>& body)
+        {
+            for (const auto& stmt : body)
+            {
+                if (dynamic_cast<const WaitForStatement*>(stmt.get()))
+                {
+                    return true;
+                }
+                if (auto ifStmt = dynamic_cast<const IfStatement*>(stmt.get()))
+                {
+                    for (const auto& branch : ifStmt->branches)
+                    {
+                        if (hasWaitStatements(branch.body))
+                        {
+                            return true;
+                        }
+                    }
+                    if (hasWaitStatements(ifStmt->elseBody))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    void SemanticAnalyzer::analyzeProcess(const ProcessStatement* proc)
+    {
+        if (!proc->label.empty())
+        {
+            if (m_processLabels.find(proc->label) != m_processLabels.end())
+            {
+                throw std::runtime_error("Semantic Error: Duplicate process label '" + proc->label + "'");
+            }
+            m_processLabels.insert(proc->label);
+        }
+
+        bool hasSensList = !proc->sensitivityList.empty();
+        bool hasWait = hasWaitStatements(proc->body);
+
+        if (hasSensList && hasWait)
+        {
+            throw std::runtime_error("Semantic Error: Process cannot have both a sensitivity list and wait statements.");
+        }
+
+        for (const auto& sigName : proc->sensitivityList)
+        {
+            if (m_currentScopeSymbols.find(sigName) == m_currentScopeSymbols.end())
+            {
+                throw std::runtime_error("Semantic Error: Undeclared signal '" + sigName + "' in process sensitivity list.");
+            }
+        }
+
+        analyzeSequentialBody(proc->body);
+    }
+
+    void SemanticAnalyzer::analyzeSequentialBody(const std::vector<std::unique_ptr<SequentialStatement>>& body)
+    {
+        for (const auto& stmt : body)
+        {
+            analyzeSequentialStatement(stmt.get());
+        }
+    }
+
+    void SemanticAnalyzer::analyzeSequentialStatement(const SequentialStatement* stmt)
+    {
+        if (auto asgn = dynamic_cast<const SignalAssignment*>(stmt))
+        {
+            analyzeAssignment(asgn);
+        }
+        else if (auto ifStmt = dynamic_cast<const IfStatement*>(stmt))
+        {
+            analyzeIfStatement(ifStmt);
+        }
+        else if (auto waitStmt = dynamic_cast<const WaitForStatement*>(stmt))
+        {
+            if (waitStmt->durationFs < 0)
+            {
+                throw std::runtime_error("Semantic Error: Wait duration cannot be negative.");
+            }
+        }
+    }
+
+    void SemanticAnalyzer::analyzeIfStatement(const IfStatement* ifStmt)
+    {
+        for (const auto& branch : ifStmt->branches)
+        {
+            analyzeCondition(branch.condition.get());
+            analyzeSequentialBody(branch.body);
+        }
+        if (!ifStmt->elseBody.empty())
+        {
+            analyzeSequentialBody(ifStmt->elseBody);
+        }
+    }
+
+    void SemanticAnalyzer::analyzeCondition(const Expression<ReturnType::BOOLEAN>* cond)
+    {
+        (void)cond;
     }
 } // namespace Pulse::Parser::VHDL

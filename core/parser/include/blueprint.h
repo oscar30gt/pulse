@@ -12,6 +12,7 @@
 #include "gates.h"
 #include "shifter.h"
 #include "comparator.h"
+#include "processBox.h"
 
 namespace Pulse::Parser
 {
@@ -40,6 +41,7 @@ namespace Pulse::Parser
         ControlledBuffer,
         Constant,
         Join,
+        Process,
         Subgraph
     };
 
@@ -195,6 +197,27 @@ namespace Pulse::Parser
         { }
     };
 
+    /// VHDL process instance. A process is an abstraction of a sequential block of code that can be executed in a simulation.
+    /// @note No port mapping is required for a process. It must be instantiated inside a subgraph that contains signals
+    /// with the same names as the process's input and output ports.
+    /// This is because a process is just an abstraction that is single-instantiated in a subgraph. Multiple gates can be instantiated
+    /// inside a subgraph, but a process is a single block of code that just abstracts the logic of a sequential block of code.
+    /// This is a design choice and could be changed in the future.
+    struct ProcessInstance : ComponentInstance
+    {
+        /// Sensitivity list of the process (signals that trigger the process)
+        /// Empty for processes whose execution is managed via "wait" statements.
+        std::vector<std::string> sensList;
+        
+        std::vector<std::string> inPorts;
+        std::vector<std::string> outPorts;
+        std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions;
+
+        ProcessInstance(std::vector<std::string> inPorts, std::vector<std::string> outPorts, std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions)
+            : ComponentInstance(InstanceType::Process), inPorts(std::move(inPorts)), outPorts(std::move(outPorts)), instructions(std::move(instructions))
+        { }
+    };
+
     /// Instance of a nested subgraph
     struct SubgraphInstance : ComponentInstance
     {
@@ -294,9 +317,9 @@ namespace Pulse::Parser
         os << "========================================\n";
     }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-//// PRINTER //////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    //// PRINTER //////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
 
     inline std::string binaryOpToString(Pulse::Engine::BinaryOp op)
     {
@@ -455,6 +478,57 @@ namespace Pulse::Parser
                     << "      value: " << constant->value.str() << " -> out: " << constant->out << "\n";
                 break;
             }
+            case InstanceType::Process:
+            {
+                auto proc = static_cast<const ProcessInstance*>(comp);
+                os << "[Process]\n"
+                    << "      inPorts (" << proc->inPorts.size() << "): ";
+                for (size_t i = 0; i < proc->inPorts.size(); ++i)
+                {
+                    os << proc->inPorts[i] << (i + 1 < proc->inPorts.size() ? ", " : "");
+                }
+                os << "\n      outPorts (" << proc->outPorts.size() << "): ";
+                for (size_t i = 0; i < proc->outPorts.size(); ++i)
+                {
+                    os << proc->outPorts[i] << (i + 1 < proc->outPorts.size() ? ", " : "");
+                }
+                os << "\n      Instructions (" << proc->instructions.size() << "):\n";
+                for (size_t i = 0; i < proc->instructions.size(); ++i)
+                {
+                    const auto* inst = proc->instructions[i].get();
+                    os << "        [" << i << "] ";
+                    if (auto assign = dynamic_cast<const Pulse::Engine::ProcessInstructionAssignment*>(inst))
+                    {
+                        os << "ASSIGN: " << assign->targetPort << " <= " << assign->sourcePort << "\n";
+                    }
+                    else if (auto branch = dynamic_cast<const Pulse::Engine::ProcessInstructionBranch*>(inst))
+                    {
+                        os << "BRANCH: if " << branch->conditionPort << "== 0 (Else skip " << branch->branchLength << " instructions)\n";
+                    }
+                    else if (auto branchAlways = dynamic_cast<const Pulse::Engine::ProcessInstructionBranchAlways*>(inst))
+                    {
+                        os << "BRANCH_ALWAYS: skip " << branchAlways->branchLength << " instructions\n";
+                    }
+                    else if (auto wait = dynamic_cast<const Pulse::Engine::ProcessInstructionWait*>(inst))
+                    {
+                        os << "WAIT: " << wait->waitTime << " fs\n";
+                    }
+                    else
+                    {
+                        os << "UNKNOWN INSTRUCTION\n";
+                    }
+                }
+                break;
+            }
+
+            case InstanceType::Join:
+            {
+                auto join = static_cast<const JoinInstance*>(comp);
+                os << "[Join]\n"
+                    << "      emitter: " << join->emitter << " -> receiver: " << join->receiver << "\n";
+                break;
+            }
+
             default:
                 os << "[Unknown InstanceType]\n";
                 break;

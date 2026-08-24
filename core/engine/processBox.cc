@@ -1,5 +1,4 @@
 #include "processBox.h"
-#include <iostream>
 
 namespace Pulse::Engine
 {
@@ -13,7 +12,14 @@ namespace Pulse::Engine
         for (const auto& [outportName, outWire] : outPorts) if (outWire)
         {
             outputSrcs.emplace(outportName, SignalSource(outWire->width()));
-            outputSrcs[outportName].addTarget(outWire);
+
+            try {
+                outputSrcs.at(outportName).addTarget(outWire);
+            }
+            catch (const std::exception& e)
+            {
+                throw std::runtime_error("ProcessBox construction failed: Unable to connect output port '" + outportName + "' to its wire. " + e.what());
+            }
         }
     }
 
@@ -59,15 +65,15 @@ namespace Pulse::Engine
             if (auto* assign = dynamic_cast<ProcessInstructionAssignment*>(instPtr))
             {
                 auto value = getPort(assign->sourcePort)->peek();
-                outputSrcs[assign->targetPort].drive(value);
+                outputSrcs.at(assign->targetPort).drive(value);
             }
 
             else if (auto* branch = dynamic_cast<ProcessInstructionBranch*>(instPtr))
             {
                 bool conditionValue = (bool)(getPort(branch->conditionPort)->peek());
-                if (conditionValue)
+                if (!conditionValue)
                 {
-                    m_instructionPointer += branch->branchLength; // Skip if true
+                    m_instructionPointer += branch->branchLength; // Skip if false
                 }
             }
 
@@ -75,6 +81,11 @@ namespace Pulse::Engine
             {
                 if ((m_waitCounter = wait->waitTime) != 0)
                     break; // <- Only exit. If no waits are found, the process will run indefinitely. (developer's responsibility to avoid infinite loops)
+            }
+
+            else if (auto* branchAlways = dynamic_cast<ProcessInstructionBranchAlways*>(instPtr))
+            {
+                m_instructionPointer += branchAlways->branchLength; // Unconditionally skip
             }
 
             m_instructionPointer++;
@@ -137,10 +148,15 @@ namespace Pulse::Engine
             else if (auto* branch = dynamic_cast<ProcessInstructionBranch*>(instPtr))
             {
                 bool conditionValue = (bool)(getPort(branch->conditionPort)->peek());
-                if (conditionValue)
+                if (!conditionValue)
                 {
-                    instructionPointer += branch->branchLength; // Skip if true
+                    instructionPointer += branch->branchLength; // Skip if false
                 }
+            }
+
+            else if (auto* branchAlways = dynamic_cast<ProcessInstructionBranchAlways*>(instPtr))
+            {
+                instructionPointer += branchAlways->branchLength; // Unconditionally skip
             }
 
             instructionPointer++;

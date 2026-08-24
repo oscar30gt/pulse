@@ -23,7 +23,12 @@ namespace Pulse::Engine
     struct ProcessInstructionBranch : public ProcessInstruction
     {
         std::string conditionPort;
-        size_t branchLength; /// Amount of instructions to skip if condition is true (conditionPort is 1)
+        size_t branchLength; /// Amount of instructions to skip if condition is false (conditionPort is 0)
+    };
+
+    struct ProcessInstructionBranchAlways : public ProcessInstruction
+    {
+        size_t branchLength; /// Amount of instructions to skip unconditionally
     };
 
     // --------------------------------------------------------------------------------------------

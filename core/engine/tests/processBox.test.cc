@@ -177,7 +177,7 @@ TEST(CombinationalProcessBoxTest, BranchTakenSkipsInstructions)
 
     auto branch = std::make_unique<ProcessInstructionBranch>();
     branch->conditionPort = "cond";
-    branch->branchLength  = 1; // skip 1 instruction when cond=1
+    branch->branchLength  = 1; // skip 1 instruction when cond=0
 
     auto assign = std::make_unique<ProcessInstructionAssignment>();
     assign->sourcePort = "a";
@@ -190,7 +190,7 @@ TEST(CombinationalProcessBoxTest, BranchTakenSkipsInstructions)
     CombinationalProcessBox box({ {"a", &inA}, {"cond", &inCond} }, { {"y", &outY} }, std::move(instructions), { &inA, &inCond });
 
     srcA.drive(LogicVector::FromBool(1));
-    srcCond.drive(LogicVector::FromBool(1)); // condition true → skip assignment
+    srcCond.drive(LogicVector::FromBool(0)); // condition false → skip assignment
     box.update();
 
     EXPECT_EQ(outY.peek().bit(0), 'Z'); // assignment was skipped; output unchanged
@@ -229,7 +229,7 @@ TEST(CombinationalProcessBoxTest, BranchSkipsMultipleInstructions)
 
     srcA.drive(LogicVector::FromBool(1));
     srcB.drive(LogicVector::FromBool(1));
-    srcCond.drive(LogicVector::FromBool(1)); // skip both assignments
+    srcCond.drive(LogicVector::FromBool(0)); // skip both assignments
     box.update();
 
     EXPECT_EQ(outX.peek().bit(0), 'Z');
@@ -261,15 +261,15 @@ TEST(CombinationalProcessBoxTest, ConditionalAssignmentBothPaths)
 
     CombinationalProcessBox box({ {"a", &inA}, {"cond", &inCond} }, { {"y", &outY} }, std::move(instructions), { &inA, &inCond });
 
-    // Path 1: cond=0, a=1 → assignment runs → y=1
+    // Path 1: cond=1, a=1 → assignment runs → y=1
     srcA.drive(LogicVector::FromBool(1));
-    srcCond.drive(LogicVector::FromBool(0));
+    srcCond.drive(LogicVector::FromBool(1));
     box.update();
     EXPECT_EQ((bool)outY.peek(), true);
 
-    // Path 2: cond=1, a=0 → assignment skipped → y stays 1
+    // Path 2: cond=0, a=0 → assignment skipped → y stays 1
     srcA.drive(LogicVector::FromBool(0));
-    srcCond.drive(LogicVector::FromBool(1));
+    srcCond.drive(LogicVector::FromBool(0));
     box.update();
     EXPECT_EQ((bool)outY.peek(), true); // output unchanged since assignment was skipped
 }
@@ -430,8 +430,8 @@ TEST(SequentialProcessBoxTest, WaitThenBranchThenAssign)
     srcA.addTarget(&inA);
     srcCond.addTarget(&inCond);
 
-    srcA.drive(LogicVector::FromBool(1));
-    srcCond.drive(LogicVector::FromBool(1)); // condition true → skip
+    srcA.drive(LogicVector::FromInt(1));
+    srcCond.drive(LogicVector::FromBool(false)); // condition false → skip
 
     auto wait = std::make_unique<ProcessInstructionWait>();
     wait->waitTime = 2;

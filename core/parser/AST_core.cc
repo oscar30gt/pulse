@@ -764,8 +764,7 @@ namespace Pulse::Parser::VHDL
             return ifStmt;
         }
 
-        /// @brief Parses a "wait for <integer> ns ;" statement.
-        /// @details Only nanosecond durations are supported.
+        /// @brief Parses a "wait for <integer> [fs | ps | ns | us | ms] ;" statement.
         /// @return Ownership of the constructed WaitForStatement node.
         std::unique_ptr<WaitForStatement> parseWaitFor(ParseContext& ctx)
         {
@@ -774,15 +773,21 @@ namespace Pulse::Parser::VHDL
 
             int64_t duration = parseConstIntExpr(ctx);
 
-            // Expect the "ns" unit identifier
+            // Expect a time unit: fs, ps, ns, us, ms
             Token unit = next(ctx);
-            if (unit.value != "ns")
-                error(ctx, "expected 'ns' after wait duration, got '" + unit.value + "'");
+            int64_t multiplier = 0;
+            if (unit.value == "fs") multiplier = 1LL;
+            else if (unit.value == "ps") multiplier = 1000LL;
+            else if (unit.value == "ns") multiplier = 1000000LL;
+            else if (unit.value == "us") multiplier = 1000000000LL;
+            else if (unit.value == "ms") multiplier = 1000000000000LL;
+            else
+                error(ctx, "expected time unit (fs, ps, ns, us, ms) after wait duration, got '" + unit.value + "'");
 
             expectValue(ctx, ";");
 
             auto stmt = std::make_unique<WaitForStatement>();
-            stmt->durationNs = duration;
+            stmt->durationFs = duration * multiplier;
             return stmt;
         }
 

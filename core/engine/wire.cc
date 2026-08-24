@@ -1,5 +1,4 @@
 #include "wire.h"
-
 #include <stdexcept>
 
 namespace Pulse::Engine

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <string>
 #include <sstream>
@@ -40,7 +41,32 @@ int main(int argc, char* argv[])
     try
     {
         auto clock = pipeline("clock.vhdl");
-        clock.print();
+        // clock.print();
+
+        Linker linker;
+        auto linkedDesign = linker.link({ &clock });
+        // Linker::printLinkedDesign(linkedDesign);
+
+        BlueprintGenerator blueprintGenerator;
+        auto blueprints = blueprintGenerator.generate(linkedDesign);
+
+        for (const auto& [entityName, bp] : blueprints)
+        {
+            std::cout << "Blueprint for entity: " << entityName << std::endl;
+            bp->print();
+        }
+
+        auto bp = blueprints.find("clock")->second.get();
+
+        Wire outWire(1);
+        Subgraph graph(*bp, {}, { {"clk_out", &outWire} });
+        for (int i = 0; i < 100000; ++i)
+        {
+            graph.update();
+            std::cout << "Time: " << std::setw(5) << std::setfill('0') << std::right << i
+                << "fs, clk_out: " << outWire.peek().str()
+                << std::endl;
+        }
     }
     catch (const std::exception& e)
     {

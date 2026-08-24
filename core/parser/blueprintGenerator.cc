@@ -406,6 +406,146 @@ namespace Pulse::Parser::VHDL
 
                 return compile(node, targetWire);
             }
+
+            // ------------------------------------------------------------------
+            // Helper to add a port to a port list without duplicates
+            // ------------------------------------------------------------------
+            static void addPortIfMissing(std::vector<std::string>& ports, const std::string& name)
+            {
+                if (std::find(ports.begin(), ports.end(), name) == ports.end())
+                {
+                    ports.push_back(name);
+                }
+            }
+
+            // ------------------------------------------------------------------
+            // Compile sequential statements in a process body into ProcessInstructions
+            // ------------------------------------------------------------------
+            void compileSequentialStatements(
+                const std::vector<std::unique_ptr<SequentialStatement>>& stmts,
+                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>>& outInstructions,
+                std::vector<std::string>& inPorts,
+                std::vector<std::string>& outPorts)
+            {
+                for (const auto& stmt : stmts)
+                {
+                    if (auto asgn = dynamic_cast<const SignalAssignment*>(stmt.get()))
+                    {
+                        const SignalReference* tgt = asgn->target.get();
+                        std::string valWire = compile(asgn->value.get());
+                        std::string tgtName = tgt->signalName;
+
+                        auto inst = std::make_unique<Pulse::Engine::ProcessInstructionAssignment>();
+                        inst->sourcePort = valWire;
+                        inst->targetPort = tgtName;
+
+                        addPortIfMissing(inPorts, valWire);
+                        addPortIfMissing(outPorts, tgtName);
+
+                        outInstructions.push_back(std::move(inst));
+                    }
+                    else if (auto waitStmt = dynamic_cast<const WaitForStatement*>(stmt.get()))
+                    {
+                        auto inst = std::make_unique<Pulse::Engine::ProcessInstructionWait>();
+                        inst->waitTime = waitStmt->durationFs;
+                        outInstructions.push_back(std::move(inst));
+                    }
+                    else if (auto ifStmt = dynamic_cast<const IfStatement*>(stmt.get()))
+                    {
+                        compileIfStatement(ifStmt, outInstructions, inPorts, outPorts);
+                    }
+                    else
+                    {
+                        throw std::runtime_error("BlueprintGenerator: unsupported sequential statement in process.");
+                    }
+                }
+            }
+
+            // ------------------------------------------------------------------
+            // Compile IfStatement (if / elsif / else)
+            // ------------------------------------------------------------------
+            void compileIfStatement(
+                const IfStatement* ifStmt,
+                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>>& outInstructions,
+                std::vector<std::string>& inPorts,
+                std::vector<std::string>& outPorts)
+            {
+                struct CompiledBranch
+                {
+                    std::string notCondWire;
+                    std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions;
+                };
+
+                std::vector<CompiledBranch> compiledBranches;
+                compiledBranches.reserve(ifStmt->branches.size());
+
+                for (const auto& branch : ifStmt->branches)
+                {
+                    std::string condWire = compileCondition(branch.condition.get());
+                    addPortIfMissing(inPorts, condWire);
+
+                    std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> branchInsts;
+                    compileSequentialStatements(branch.body, branchInsts, inPorts, outPorts);
+
+                    compiledBranches.push_back({ condWire, std::move(branchInsts) });
+                }
+
+                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> compiledElse;
+                if (!ifStmt->elseBody.empty())
+                {
+                    compileSequentialStatements(ifStmt->elseBody, compiledElse, inPorts, outPorts);
+                }
+
+                size_t numBranches = compiledBranches.size();
+                size_t elseSize = compiledElse.size();
+
+                // Compute block sizes and suffix sizes for jump calculations
+                std::vector<size_t> blockSize(numBranches, 0);
+                for (size_t i = 0; i < numBranches; ++i)
+                {
+                    bool hasFollowing = (i + 1 < numBranches) || (elseSize > 0);
+                    blockSize[i] = 1 + compiledBranches[i].instructions.size() + (hasFollowing ? 1 : 0);
+                }
+
+                std::vector<size_t> suffixSize(numBranches + 1, 0);
+                suffixSize[numBranches] = elseSize;
+                for (size_t i = numBranches; i > 0; --i)
+                {
+                    suffixSize[i - 1] = blockSize[i - 1] + suffixSize[i];
+                }
+
+                // Emit instructions
+                for (size_t i = 0; i < numBranches; ++i)
+                {
+                    bool hasFollowing = (i + 1 < numBranches) || (elseSize > 0);
+
+                    // 1. Conditional branch: if condition is false (notCond is 1), skip this branch's body (+ exit jump if present)
+                    auto condBranch = std::make_unique<Pulse::Engine::ProcessInstructionBranch>();
+                    condBranch->conditionPort = compiledBranches[i].notCondWire;
+                    condBranch->branchLength = compiledBranches[i].instructions.size() + (hasFollowing ? 1 : 0);
+                    outInstructions.push_back(std::move(condBranch));
+
+                    // 2. Branch body
+                    for (auto& inst : compiledBranches[i].instructions)
+                    {
+                        outInstructions.push_back(std::move(inst));
+                    }
+
+                    // 3. Unconditional exit jump to skip to the end of the entire if/elsif/else
+                    if (hasFollowing)
+                    {
+                        auto exitJump = std::make_unique<Pulse::Engine::ProcessInstructionBranchAlways>();
+                        exitJump->branchLength = suffixSize[i + 1];
+                        outInstructions.push_back(std::move(exitJump));
+                    }
+                }
+
+                // 4. Else body
+                for (auto& inst : compiledElse)
+                {
+                    outInstructions.push_back(std::move(inst));
+                }
+            }
         };
 
     } // anonymous namespace
@@ -494,6 +634,29 @@ namespace Pulse::Parser::VHDL
 
                 bp->addComponent(inst.instanceName,
                                  std::make_unique<SubgraphInstance>(nullptr, std::move(portMap)));
+            }
+
+            // 5. Compile processes
+            for (const ProcessStatement* proc : arch.processes)
+            {
+                std::vector<std::string> inPorts;
+                std::vector<std::string> outPorts;
+                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions;
+
+                compiler.compileSequentialStatements(proc->body, instructions, inPorts, outPorts);
+
+                std::string procName = proc->label.empty()
+                    ? ("$proc_" + std::to_string(compiler.counter++))
+                    : proc->label;
+
+                bp->addComponent(
+                    procName,
+                    std::make_unique<ProcessInstance>(
+                        std::move(inPorts),
+                        std::move(outPorts),
+                        std::move(instructions)
+                    )
+                );
             }
 
             result[entityName] = std::move(bp);

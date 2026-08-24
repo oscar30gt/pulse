@@ -258,7 +258,8 @@ namespace Pulse::Parser::VHDL
 
             size_t totalSections = (!arch.signals.empty() ? 1 : 0) + 
                                    (!arch.assignments.empty() ? 1 : 0) + 
-                                   (!arch.resolvedInstantiations.empty() ? 1 : 0);
+                                   (!arch.resolvedInstantiations.empty() ? 1 : 0) +
+                                   (!arch.processes.empty() ? 1 : 0);
             size_t currentSection = 0;
 
             // Signals Section
@@ -372,6 +373,29 @@ namespace Pulse::Parser::VHDL
                         }
                         isLastStack.pop_back();
                     }
+                    isLastStack.pop_back();
+                }
+                isLastStack.pop_back();
+            }
+
+            // Processes Section
+            if (!arch.processes.empty())
+            {
+                currentSection++;
+                bool isLastSec = (currentSection == totalSections);
+
+                isLastStack.push_back(isLastSec);
+                printIndent(isLastStack);
+                std::cout << Color::Section << "Processes " << Color::Label << "(" << std::to_string(arch.processes.size()) << ")" << Color::Reset << "\n";
+
+                for (size_t i = 0; i < arch.processes.size(); ++i)
+                {
+                    bool isLastProc = (i == arch.processes.size() - 1);
+                    const auto* proc = arch.processes[i];
+
+                    isLastStack.push_back(isLastProc);
+                    printIndent(isLastStack);
+                    std::cout << Color::Node << "PROCESS: " << Color::Reset << (proc->label.empty() ? "<unlabeled>" : proc->label) << "\n";
                     isLastStack.pop_back();
                 }
                 isLastStack.pop_back();
