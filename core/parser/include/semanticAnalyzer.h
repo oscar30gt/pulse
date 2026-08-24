@@ -13,7 +13,7 @@ namespace Pulse::Parser::VHDL
     {
     public:
         SemanticAnalyzer() = default;
-        
+
         // Traverses the AST and throws std::runtime_error on semantic violations
         void analyze(const ASTRoot& root);
 

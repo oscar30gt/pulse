@@ -38,7 +38,11 @@ namespace Pulse::Engine
     ISignalReceiver::~ISignalReceiver()
     {
         while (!m_sources.empty())
-            (*m_sources.begin())->removeTarget(this);
+        {
+            auto* source = *m_sources.begin();
+            source->removeTarget(this);
+            m_sources.erase(source);
+        }
     }
 
     void ISignalReceiver::addSourceInternal(ISignalEmitter* source)
@@ -99,7 +103,11 @@ namespace Pulse::Engine
     ISignalEmitter::~ISignalEmitter()
     {
         while (!m_targets.empty())
-            (*m_targets.begin())->removeSource(this);
+        {
+            auto* target = *m_targets.begin();
+            target->removeSource(this);
+            m_targets.erase(target);
+        }
     }
 
     void ISignalEmitter::addTargetInternal(ISignalReceiver* target)
