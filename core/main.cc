@@ -105,7 +105,7 @@ int main(int argc, char* argv[])
         auto bp = blueprints.find(topEntity);
         if (bp == blueprints.end())
             throw std::runtime_error("Top-level entity '" + topEntity + "' not found. Ensure it exists or provide another entity using the --top option.");
-        
+
         Subgraph graph(*bp->second.get(), {}, {});
         Pulse::Waveform::WaveformRecorder recorder(graph.takeSnapshot());
 
@@ -251,7 +251,8 @@ void getFilenamesFromProjectPath(const std::string& projectPath, bool recursive,
 {
     for (const auto& entry : std::filesystem::recursive_directory_iterator(projectPath))
     {
-        if (entry.is_regular_file() && entry.path().extension() == ".vhd")
+        if (entry.is_regular_file() &&
+            (entry.path().extension() == ".vhd" || entry.path().extension() == ".vhdl"))
         {
             sources.push_back(entry.path());
         }

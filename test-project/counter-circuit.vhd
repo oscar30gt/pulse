@@ -1,10 +1,10 @@
-ENTITY counterCircuit IS
+ENTITY top IS
     PORT (
         x : OUT STD_LOGIC;
     );
-END ENTITY counterCircuit;
+END ENTITY top;
 
-ARCHITECTURE behavioral OF counterCircuit IS
+ARCHITECTURE behavioral OF top IS
 
     COMPONENT clock
         PORT (
