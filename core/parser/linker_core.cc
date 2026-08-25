@@ -2,7 +2,7 @@
 
 namespace Pulse::Parser::VHDL
 {
-    LinkedDesign Linker::link(const std::vector<const ASTRoot*>& astRoots)
+    LinkedDesign Linker::link(const std::vector<ASTRoot>& astRoots)
     {
         LinkedDesign design;
 
@@ -16,15 +16,13 @@ namespace Pulse::Parser::VHDL
         return design;
     }
 
-    void Linker::collectEntities(const std::vector<const ASTRoot*>& astRoots)
+    void Linker::collectEntities(const std::vector<ASTRoot>& astRoots)
     {
         m_globalEntities.clear();
 
-        for (const auto* root : astRoots)
+        for (const auto& root : astRoots)
         {
-            if (!root) continue;
-
-            for (const auto& child : root->children)
+            for (const auto& child : root.children)
             {
                 if (auto entity = dynamic_cast<const EntityDeclaration*>(child.get()))
                 {
@@ -38,13 +36,11 @@ namespace Pulse::Parser::VHDL
         }
     }
 
-    void Linker::resolveArchitectures(const std::vector<const ASTRoot*>& astRoots, LinkedDesign& outputDesign)
+    void Linker::resolveArchitectures(const std::vector<ASTRoot>& astRoots, LinkedDesign& outputDesign)
     {
-        for (const auto* root : astRoots)
+        for (const auto& root : astRoots)
         {
-            if (!root) continue;
-
-            for (const auto& child : root->children)
+            for (const auto& child : root.children)
             {
                 auto arch = dynamic_cast<const ArchitectureDeclaration*>(child.get());
                 if (!arch) continue;

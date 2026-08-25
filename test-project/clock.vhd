@@ -19,7 +19,7 @@ BEGIN
         ELSE
             clk_out_internal <= '0';
         END IF;
-        WAIT FOR 5 fs;
+        WAIT FOR 10 fs;
     END PROCESS;
 
 END ARCHITECTURE behavioral;

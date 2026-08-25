@@ -31,7 +31,8 @@ TEST(LinkerTest, ResolvesEntities)
     ASTRoot root;
     root.children.push_back(createDummyEntity("MyGate"));
 
-    std::vector<const ASTRoot*> astRoots = { &root };
+    std::vector<ASTRoot> astRoots;
+    astRoots.push_back(std::move(root));
     Linker linker;
     LinkedDesign design = linker.link(astRoots);
 
@@ -60,7 +61,8 @@ TEST(LinkerTest, ResolvesArchitecture)
 
     root.children.push_back(std::move(arch));
 
-    std::vector<const ASTRoot*> astRoots = { &root };
+    std::vector<ASTRoot> astRoots;
+    astRoots.push_back(std::move(root));
     Linker linker;
     LinkedDesign design = linker.link(astRoots);
 

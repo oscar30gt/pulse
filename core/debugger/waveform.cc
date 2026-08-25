@@ -288,7 +288,7 @@ namespace Pulse::Waveform
         // for terminals that do not report a size.
         Size terminalSize()
         {
-#ifdef _WIN32
+            #ifdef _WIN32
             CONSOLE_SCREEN_BUFFER_INFO info{};
             if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info))
             {
@@ -297,30 +297,30 @@ namespace Pulse::Waveform
                     static_cast<size_t>(info.srWindow.Bottom - info.srWindow.Top + 1)
                 };
             }
-#else
+            #else
             winsize info{};
             if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &info) == 0 && info.ws_col && info.ws_row)
             {
                 return { info.ws_col, info.ws_row };
             }
-#endif
+            #endif
             return {};
         }
 
         bool interactive()
         {
-#ifdef _WIN32
+            #ifdef _WIN32
             DWORD inputMode{}, outputMode{};
             return GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &inputMode)
                 && GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &outputMode);
-#else
+            #else
             return isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
-#endif
+            #endif
         }
 
         // Read one navigation event. Platform-specific implementations below
         // both block while idle and report terminal resize events.
-#ifdef _WIN32
+        #ifdef _WIN32
         Key readKey()
         {
             HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
@@ -354,7 +354,7 @@ namespace Pulse::Waveform
                 }
             }
         }
-#else
+        #else
         class RawTerminal
         {
             termios old{};
@@ -426,7 +426,7 @@ namespace Pulse::Waveform
                 default: return Key::none;
             }
         }
-#endif
+        #endif
 
         // Draw one complete frame. The metadata panel and timeline are kept
         // independent so the separator remains stable as values change.
@@ -448,8 +448,8 @@ namespace Pulse::Waveform
                     valueWidth = std::max(
                         valueWidth,
                         row.wave->width == 1
-                            ? size_t{ 1 }
-                            : std::min<size_t>(18, (row.wave->width + 3) / 4 + 2));
+                        ? size_t{ 1 }
+                    : std::min<size_t>(18, (row.wave->width + 3) / 4 + 2));
                 }
             }
 
@@ -466,8 +466,8 @@ namespace Pulse::Waveform
             std::cout << "\033[2K"
                 << dim << fit("", nameWidth)
                 << ' ' << fit("", typeWidth)
-                << ' ' << rightFit(cursor == end ? "" : std::to_string(cursor), valueWidth)
-                << " │ Time " << start << ".." << visibleEnd << reset << '\n';
+                << ' ' << rightFit(cursor == end ? "" : std::to_string(cursor), valueWidth - 2) << "fs"
+                << " │ Time " << start << ".." << (visibleEnd - 1) << reset << '\n';
             for (size_t i = firstRow; i < rows.size() && i < firstRow + visibleRows; ++i)
             {
                 const Row& row = rows[i];
@@ -513,7 +513,7 @@ namespace Pulse::Waveform
                     name,
                     Wave{ state.first, type, {{ state.second, 0 }} });
             }
-        };
+            };
 
         add(snapshot.inputs, SignalType::Input);
         add(snapshot.outputs, SignalType::Output);
@@ -571,20 +571,20 @@ namespace Pulse::Waveform
             return;
         }
 
-#ifdef _WIN32
+        #ifdef _WIN32
         SetConsoleOutputCP(CP_UTF8);
         DWORD outputMode{};
         const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
         GetConsoleMode(output, &outputMode);
         SetConsoleMode(output, outputMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-#else
+        #else
         RawTerminal raw;
-        struct sigaction action{};
+        struct sigaction action { };
         action.sa_handler = onTerminalResize;
         sigemptyset(&action.sa_mask);
-        struct sigaction oldAction{};
+        struct sigaction oldAction { };
         sigaction(SIGWINCH, &action, &oldAction);
-#endif
+        #endif
 
         std::cout << "\033[?1049h\033[H" << std::flush;
         uint64_t time = startTime;
@@ -669,10 +669,10 @@ namespace Pulse::Waveform
         }
 
         std::cout << "\033[0m\033[?1049l" << std::flush;
-#ifdef _WIN32
+        #ifdef _WIN32
         SetConsoleMode(output, outputMode);
-#else
+        #else
         sigaction(SIGWINCH, &oldAction, nullptr);
-#endif
+        #endif
     }
 }
