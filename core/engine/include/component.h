@@ -16,6 +16,7 @@ namespace Pulse::Engine
     /// A component port has no inherent width. The internal circuit does.
     class Component
     {
+    protected:
         using PortMap = std::unordered_map<std::string, Wire*>;
         PortMap m_inSignals;
         PortMap m_outSignals;

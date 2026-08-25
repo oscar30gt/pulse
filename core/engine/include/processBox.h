@@ -65,6 +65,12 @@ namespace Pulse::Engine
         uint64_t waitTime; /// in femtoseconds (max before overflow: around 5 hours)
     };
 
+    /// Wait forever instruction. Will pause the processBox indefinitely.
+    struct ProcessInstructionWaitForever : public ProcessInstruction
+    {
+        // No additional members needed; the presence of this instruction indicates an indefinite wait.
+    };
+
     /// A sequential process executing instructions in order, with the ability to wait
     /// for a certain amount of time or until a signal changes before proceeding to the next instruction.
     class SequentialProcessBox : public ProcessBox
@@ -74,6 +80,9 @@ namespace Pulse::Engine
 
         /// Counter for the wait instruction.
         uint64_t m_waitCounter;
+
+        /// Flag indicating if the process is currently in a wait-forever state.
+        bool m_waitingForever;
 
         /// Continues the execution of the process from the current instruction pointer
         /// until a wait instruction is encountered.

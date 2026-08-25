@@ -163,6 +163,7 @@ namespace Pulse::Parser::VHDL
         std::unique_ptr<SequentialStatement> parseSequentialStatement(ParseContext& ctx);
         std::unique_ptr<IfStatement> parseIfStatement(ParseContext& ctx);
         std::unique_ptr<WaitForStatement> parseWaitFor(ParseContext& ctx);
+        std::unique_ptr<WaitForeverStatement> parseWaitForever(ParseContext& ctx);
         std::vector<std::unique_ptr<SequentialStatement>> parseSequentialBody(ParseContext& ctx);
 
         std::unique_ptr<IntegerLiteralExpr> makeIntLit(int64_t v);
@@ -702,7 +703,8 @@ namespace Pulse::Parser::VHDL
         /// @brief Parses a single sequential statement inside a process body.
         /// @details Dispatches to the appropriate sub-parser based on the next token:
         ///          - "if"   -> parseIfStatement()
-        ///          - "wait" -> parseWaitFor()
+        ///          - "wait" -> parseWaitForever()
+        ///          - "wait for" -> parseWaitFor()
         ///          - otherwise an identifier starting a signal assignment
         /// @return Ownership of the constructed statement node.
         std::unique_ptr<SequentialStatement> parseSequentialStatement(ParseContext& ctx)
@@ -712,8 +714,14 @@ namespace Pulse::Parser::VHDL
             if (v == "if")
                 return parseIfStatement(ctx);
 
-            if (v == "wait")
-                return parseWaitFor(ctx);
+            if (v == "wait") {
+                if (peek(ctx, 1).value == "for") 
+                    return parseWaitFor(ctx);
+                else if (peek(ctx, 1).value == ";") 
+                    return parseWaitForever(ctx);
+                else
+                    error(ctx, "unexpected token after 'wait': '" + peek(ctx, 1).value + "'");
+            }
 
             // Signal assignment: identifier <= expr ;
             return parseSignalAssignment(ctx);
@@ -789,6 +797,16 @@ namespace Pulse::Parser::VHDL
             auto stmt = std::make_unique<WaitForStatement>();
             stmt->durationFs = duration * multiplier;
             return stmt;
+        }
+
+        /// @brief Parses a "wait ;" statement that waits forever.
+        /// @return Ownership of the constructed WaitForeverStatement node.
+        std::unique_ptr<WaitForeverStatement> parseWaitForever(ParseContext& ctx)
+        {
+            expectValue(ctx, "wait");
+            expectValue(ctx, ";");
+
+            return std::make_unique<WaitForeverStatement>();
         }
 
         // ===============================================================

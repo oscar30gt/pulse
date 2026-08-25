@@ -213,8 +213,8 @@ namespace Pulse::Parser
         std::vector<std::string> outPorts;
         std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions;
 
-        ProcessInstance(std::vector<std::string> inPorts, std::vector<std::string> outPorts, std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions)
-            : ComponentInstance(InstanceType::Process), inPorts(std::move(inPorts)), outPorts(std::move(outPorts)), instructions(std::move(instructions))
+        ProcessInstance(std::vector<std::string> inPorts, std::vector<std::string> outPorts, std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions, std::vector<std::string> sensList = {})
+            : ComponentInstance(InstanceType::Process), inPorts(std::move(inPorts)), outPorts(std::move(outPorts)), instructions(std::move(instructions)), sensList(std::move(sensList))
         { }
     };
 
@@ -481,8 +481,13 @@ namespace Pulse::Parser
             case InstanceType::Process:
             {
                 auto proc = static_cast<const ProcessInstance*>(comp);
-                os << "[Process]\n"
-                    << "      inPorts (" << proc->inPorts.size() << "): ";
+                os << "[Process]";
+                os << "\n      sensitivity (" << proc->sensList.size() << "): ";
+                for (size_t i = 0; i < proc->sensList.size(); ++i)
+                {
+                    os << proc->sensList[i] << (i + 1 < proc->sensList.size() ? ", " : "");
+                }
+                os << "\n      inPorts (" << proc->inPorts.size() << "): ";
                 for (size_t i = 0; i < proc->inPorts.size(); ++i)
                 {
                     os << proc->inPorts[i] << (i + 1 < proc->inPorts.size() ? ", " : "");
@@ -503,7 +508,7 @@ namespace Pulse::Parser
                     }
                     else if (auto branch = dynamic_cast<const Pulse::Engine::ProcessInstructionBranch*>(inst))
                     {
-                        os << "BRANCH: if " << branch->conditionPort << "== 0 (Else skip " << branch->branchLength << " instructions)\n";
+                        os << "BRANCH: if " << branch->conditionPort << " == 0 (Else skip " << branch->branchLength << " instructions)\n";
                     }
                     else if (auto branchAlways = dynamic_cast<const Pulse::Engine::ProcessInstructionBranchAlways*>(inst))
                     {
@@ -512,6 +517,10 @@ namespace Pulse::Parser
                     else if (auto wait = dynamic_cast<const Pulse::Engine::ProcessInstructionWait*>(inst))
                     {
                         os << "WAIT: " << wait->waitTime << " fs\n";
+                    }
+                    else if (auto waitForever = dynamic_cast<const Pulse::Engine::ProcessInstructionWaitForever*>(inst))
+                    {
+                        os << "WAIT_FOREVER\n";
                     }
                     else
                     {

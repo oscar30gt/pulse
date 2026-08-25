@@ -33,13 +33,17 @@ namespace Pulse::Engine
         std::vector<std::unique_ptr<ProcessInstruction>> instructions
     ) : ProcessBox(inPorts, outPorts, std::move(instructions)),
         m_waitCounter(0),
-        m_instructionPointer(0)
+        m_instructionPointer(0),
+        m_waitingForever(false)
     { }
 
     SequentialProcessBox::~SequentialProcessBox() = default;
 
     void SequentialProcessBox::update()
     {
+        if (m_waitingForever)
+            return;
+
         if (m_waitCounter > 0)
         {
             m_waitCounter--;
@@ -81,6 +85,12 @@ namespace Pulse::Engine
             {
                 if ((m_waitCounter = wait->waitTime) != 0)
                     break; // <- Only exit. If no waits are found, the process will run indefinitely. (developer's responsibility to avoid infinite loops)
+            }
+
+            else if (auto* waitForever = dynamic_cast<ProcessInstructionWaitForever*>(instPtr))
+            {
+                m_waitingForever = true;
+                break; // <- Only exit. If no waits are found, the process will run indefinitely. (developer's responsibility to avoid infinite loops)
             }
 
             else if (auto* branchAlways = dynamic_cast<ProcessInstructionBranchAlways*>(instPtr))

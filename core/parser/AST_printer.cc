@@ -7,7 +7,7 @@
 namespace Pulse::Parser::VHDL
 {
     namespace
-    {   
+    {
         // ANSI Color Escape Sequences
         constexpr const char* RESET   = "\033[0m";
         constexpr const char* DIM     = "\033[90m";   // Subtle dark gray for tree lines & nulls
@@ -36,6 +36,7 @@ namespace Pulse::Parser::VHDL
         void printProcessStatement(const ProcessStatement* proc, const std::string& prefix, bool isLast);
         void printIfStatement(const IfStatement* ifStmt, const std::string& prefix, bool isLast);
         void printWaitForStatement(const WaitForStatement* wait, const std::string& prefix, bool isLast);
+        void printWaitForeverStatement(const WaitForeverStatement* wait, const std::string& prefix, bool isLast);
 
         void printPortDeclaration(const PortDeclaration* port,
             const std::string& prefix, bool isLast)
@@ -212,6 +213,12 @@ namespace Pulse::Parser::VHDL
             std::cout << KEYWORD << "WAIT FOR: " << VALUE << wait->durationFs << RESET << " fs\n";
         }
 
+        void printWaitForeverStatement(const WaitForeverStatement* wait, const std::string& prefix, bool isLast)
+        {
+            printBranch(prefix, isLast);
+            std::cout << KEYWORD << "WAIT FOREVER" << RESET << "\n";
+        }
+
         void printIfStatement(const IfStatement* ifStmt, const std::string& prefix, bool isLast)
         {
             printBranch(prefix, isLast);
@@ -270,6 +277,8 @@ namespace Pulse::Parser::VHDL
                 printIfStatement(ifStmt, prefix, isLast);
             else if (auto wait = dynamic_cast<const WaitForStatement*>(stmt))
                 printWaitForStatement(wait, prefix, isLast);
+            else if (auto waitForever = dynamic_cast<const WaitForeverStatement*>(stmt))
+                printWaitForeverStatement(waitForever, prefix, isLast);
             else
             {
                 printBranch(prefix, isLast);

@@ -277,4 +277,41 @@ namespace Pulse::Engine
         for (auto& [name, component] : components)
             component->update();
     }
+
+    SubgraphSnapshot Subgraph::takeSnapshot() const
+    {
+        SubgraphSnapshot snapshot;
+
+        // Capture the state of input ports
+        for (const auto& [name, signal] : m_inSignals)
+        {
+            if (name[0] == '$') continue;
+            snapshot.inputs[name] = { signal->width(), signal->peek() };
+        }
+        
+        // Capture the state of output ports
+        for (const auto& [name, signal] : m_outSignals)
+        {
+            if (name[0] == '$') continue;
+            snapshot.outputs[name] = { signal->width(), signal->peek() };
+        }
+
+        // Capture the state of internal wires
+        for (const auto& [name, wire] : wires)
+        {
+            if (name[0] == '$') continue;
+            snapshot.wires[name] = { wire->width(), wire->peek() };
+        }
+
+        // Capture the state of internal components (subgraphs)
+        for (const auto& [name, component] : components)
+        {
+            if (auto subgraph = dynamic_cast<Subgraph*>(component.get()))
+            {
+                snapshot.subgraphs[name] = subgraph->takeSnapshot();
+            }
+        }
+
+        return snapshot;
+    }
 }

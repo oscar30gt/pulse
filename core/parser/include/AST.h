@@ -230,6 +230,11 @@ namespace Pulse::Parser::VHDL
         uint64_t durationFs = 0; ///< Duration of the wait in femtoseconds
     };
 
+    struct WaitForeverStatement final : SequentialStatement
+    {
+        // No additional members needed for a wait forever statement
+    };
+
     /// if/elsif/else statement inside a process.
     struct IfStatement final : SequentialStatement
     {

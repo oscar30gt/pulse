@@ -450,6 +450,11 @@ namespace Pulse::Parser::VHDL
                         inst->waitTime = waitStmt->durationFs;
                         outInstructions.push_back(std::move(inst));
                     }
+                    else if (auto waitForeverStmt = dynamic_cast<const WaitForeverStatement*>(stmt.get()))
+                    {
+                        auto inst = std::make_unique<Pulse::Engine::ProcessInstructionWaitForever>();
+                        outInstructions.push_back(std::move(inst));
+                    }
                     else if (auto ifStmt = dynamic_cast<const IfStatement*>(stmt.get()))
                     {
                         compileIfStatement(ifStmt, outInstructions, inPorts, outPorts);
@@ -574,11 +579,8 @@ namespace Pulse::Parser::VHDL
 
             // 1. Register entity ports
             for (const auto& port : entity->ports)
-            {
                 bp->addPort(port->portName, port->isInput);
-                bp->addSignal(port->portName, port->width);
-            }
-
+            
             // 2. Register internal signals
             for (const SignalDeclaration* sig : arch.signals)
                 bp->addSignal(sig->signalName, sig->width);
@@ -654,7 +656,8 @@ namespace Pulse::Parser::VHDL
                     std::make_unique<ProcessInstance>(
                         std::move(inPorts),
                         std::move(outPorts),
-                        std::move(instructions)
+                        std::move(instructions),
+                        std::move(proc->sensitivityList)
                     )
                 );
             }

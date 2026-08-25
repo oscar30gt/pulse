@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE PULSE_SOURCES CONFIGURE_DEPENDS
     "core/engine/*.cc"
     "core/parser/*.cc"
+    "core/debugger/*.cc"
 )
 # Exclude test files from core library
 list(FILTER PULSE_SOURCES EXCLUDE REGEX ".*/tests/.*")
@@ -23,6 +24,9 @@ target_include_directories(pulse_app PUBLIC
     core/engine/include
     core/engine/lib
     core/parser/include
+    core/parser/lib
+    core/debugger/include
+    core/debugger/lib
 )
 
 # -----------------------------------------------------------------------------
