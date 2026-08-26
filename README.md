@@ -4,7 +4,7 @@
 
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Build](https://img.shields.io/badge/build-CMake-brightgreen.svg)](https://cmake.org/)
 
-_Pulse_ is a multi-platform digital logic simulation engine made for VHDL made with C++. It transforms VHDL source code into a logic components simulation model that can be simulated and debugged.
+_Pulse_ is a multi-platform digital logic simulation engine for VHDL made with C++. It transforms VHDL source code into a logic components simulation model that can be simulated and debugged.
 
 It features a complete VHDL compilation pipeline, including a lexer, AST parser, semantic analyzer, and a multi-file AST linker to resolve complex module hierarchies. The resulting design is built using a high-efficiency dataflow simulation engine that supports multi-valued IEEE 1164 logic states and asynchronous processes.
 
@@ -88,7 +88,7 @@ VHDL language is too large. Here is a list of the supported syntax in Pulse:
 
 - **Libraries:** For compatibility with other VHDL simulators, Pulse will not give compiler errors when using libraries. However, library declarations will be ignored.
 
-- **Signal types:** IEEE 1164 logic types natively, including `std_logic` and `std_logic_vector`. `to` and `downto` are supported for vector ranges.
+- **Signal types:** IEEE 1164 logic types are supported natively, including `std_logic` and `std_logic_vector`. `to` and `downto` can be used for vector ranges.
 
 - **Architectures:** Architectures can include component declarations, signal declarations, processes, combinational statements and component instantiations.
 
