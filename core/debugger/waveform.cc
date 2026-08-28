@@ -28,10 +28,9 @@ namespace Pulse::Waveform
         constexpr const char* dim = "\033[2;37m";
         constexpr const char* high = "\033[1;32m";
         constexpr const char* low = "\033[2;37m";
-        constexpr const char* rise = "\033[1;36m";
-        constexpr const char* fall = "\033[1;33m";
         constexpr const char* highZ = "\033[1;34m";
         constexpr const char* error = "\033[1;31m";
+        constexpr const char* cursorBg = "\033[41;1;37m";
         constexpr const char* busBorder = "\033[1;35m";
         constexpr const char* busValue = "\033[1;37m";
         constexpr const char* hierarchy = "\033[1;34m";
@@ -202,29 +201,50 @@ namespace Pulse::Waveform
                 for (uint64_t time = start; time < end; ++time)
                 {
                     const char current = valueAt(wave.samples, time).bit(0);
-                    if (time == cursor)
+                    const char next = valueAt(wave.samples, time + 1).bit(0);
+                    const char* color = low;
+                    std::string glyph = "_";
+
+                    if (current == '1')
                     {
-                        out << error << "│";
-                    }
-                    else if (current == '1')
-                    {
-                        out << (previous == '0' ? rise : high)
-                            << (previous == '0' ? "/" : "‾");
+                        color = high;
+                        if (next != '1' && previous == '1')
+                        {
+                            glyph = "\\";
+                        }
+                        else if (previous != '1')
+                        {
+                            glyph = "/";
+                        }
+                        else
+                        {
+                            glyph = "‾";
+                        }
                     }
                     else if (current == '0')
                     {
-                        out << (previous == '1' ? fall : low)
-                            << (previous == '1' ? '\\' : '_');
+                        color = low;
+                        glyph = "_";
                     }
                     else if (current == 'Z')
                     {
-                        out << highZ << '.';
+                        color = highZ;
+                        glyph = ".";
                     }
                     else
                     {
-                        out << error << '?';
+                        color = error;
+                        glyph = "?";
                     }
-                    out << reset;
+
+                    if (time == cursor)
+                    {
+                        out << cursorBg << glyph << reset;
+                    }
+                    else
+                    {
+                        out << color << glyph << reset;
+                    }
                     previous = current;
                 }
                 return out.str();
@@ -253,10 +273,6 @@ namespace Pulse::Waveform
                 }
 
                 const size_t cursorOffset = cursor >= time && cursor < time + run ? static_cast<size_t>(cursor - time) : run;
-                if (cursorOffset < cells.size())
-                {
-                    cells[cursorOffset] = '\x01';
-                }
 
                 for (size_t i = 0; i < cells.size(); ++i)
                 {
@@ -264,12 +280,9 @@ namespace Pulse::Waveform
                     const bool borderCell = i == 0;
                     const bool errorCell = !cursorCell && formatBusValue(value, wave.width) == "error";
                     const char* color = cursorCell
-                        ? error
+                        ? cursorBg
                         : (errorCell ? error : (borderCell ? busBorder : busValue));
-                    const std::string glyph = cells[i] == '\x01'
-                        ? "│"
-                        : std::string(1, cells[i]);
-                    out << color << glyph << reset;
+                    out << color << cells[i] << reset;
                 }
                 time += run;
             }
@@ -280,7 +293,7 @@ namespace Pulse::Waveform
         {
             std::string result;
             for (uint64_t time = start; time < end; ++time)
-                result += time == cursor ? std::string(error) + "│" + reset : " ";
+                result += time == cursor ? std::string(cursorBg) + " " + reset : " ";
             return result;
         }
 
