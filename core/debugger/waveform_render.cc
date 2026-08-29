@@ -6,12 +6,20 @@
 
 namespace Pulse::Waveform
 {
+    // --------------------------------------------------------------------------------------------
+    // UTF-8 & String Formatting Helpers
+    // --------------------------------------------------------------------------------------------
+
     size_t utf8Width(const std::string& text)
     {
         size_t width = 0;
         for (size_t i = 0; i < text.size(); ++i)
         {
-            if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80) ++width;
+            // Skip UTF-8 continuation bytes (10xxxxxx)
+            if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80)
+            {
+                ++width;
+            }
         }
         return width;
     }
@@ -74,10 +82,16 @@ namespace Pulse::Waveform
         return formatBusValue(value, wave.width);
     }
 
+    // --------------------------------------------------------------------------------------------
+    // Waveform Drawing & Glyph Generation
+    // --------------------------------------------------------------------------------------------
+
     std::string renderWave(const Wave& wave, uint64_t start, uint64_t end, uint64_t cursor, bool focused)
     {
         std::ostringstream out;
         const char* defaultBg = focused ? Style::focusBg : "";
+
+        // Single-bit signals: use level glyphs and transition slopes
         if (wave.width == 1)
         {
             char previous = valueAt(wave.samples, start).bit(0);
@@ -91,14 +105,17 @@ namespace Pulse::Waveform
                 if (current == '1')
                 {
                     color = Style::high;
+                    // Falling edge slope on the last '1' before a '0' transition
                     if (next != '1' && previous == '1')
                     {
                         glyph = "\\";
                     }
+                    // Rising edge slope on the first '1' following a '0'
                     else if (previous != '1')
                     {
                         glyph = "/";
                     }
+                    // Sustained high level
                     else
                     {
                         glyph = "‾";
@@ -120,6 +137,7 @@ namespace Pulse::Waveform
                     glyph = "?";
                 }
 
+                // Cursor highlight takes precedence over normal background styling
                 if (time == cursor)
                 {
                     out << Style::cursorBg << glyph << Style::reset;
@@ -133,6 +151,7 @@ namespace Pulse::Waveform
             return out.str();
         }
 
+        // Multi-bit buses: divide timestamps into runs of identical values and render hex labels
         for (uint64_t time = start; time < end;)
         {
             const LogicVector value = valueAt(wave.samples, time);
@@ -141,9 +160,11 @@ namespace Pulse::Waveform
             {
                 ++run;
             }
+
             const size_t room = static_cast<size_t>(run - 1);
             std::string cells(static_cast<size_t>(run), ' ');
             cells[0] = '|';
+
             if (room > 0)
             {
                 std::string label = formatBusValue(value, wave.width);
@@ -165,6 +186,7 @@ namespace Pulse::Waveform
                 const char* color = cursorCell
                     ? Style::cursorBg
                     : (errorCell ? Style::error : (borderCell ? Style::busBorder : Style::busValue));
+
                 if (cursorCell)
                 {
                     out << color << cells[i] << Style::reset;
@@ -183,6 +205,7 @@ namespace Pulse::Waveform
     {
         std::string result;
         const char* defaultBg = focused ? Style::focusBg : "";
+
         for (uint64_t time = start; time < end; ++time)
         {
             if (time == cursor)
@@ -212,6 +235,8 @@ namespace Pulse::Waveform
         bool controls)
     {
         std::vector<std::string> frame;
+
+        // Dynamic column width calculation
         const size_t panelWidth = std::clamp(size.columns / 3, size_t{ 46 }, size_t{ 60 });
         size_t valueWidth = 3;
         for (const Row& row : rows)
@@ -236,6 +261,7 @@ namespace Pulse::Waveform
         const uint64_t visibleEnd = std::min(end, start + timeWidth);
         const size_t visibleRows = std::max<size_t>(1, size.rows > 3 ? size.rows - 3 : 1);
 
+        // 1. Header line with timeline window range and cursor timestamp
         std::ostringstream line;
         line << Style::dim << fit("", nameWidth)
             << ' ' << fit("", typeWidth)
@@ -243,6 +269,7 @@ namespace Pulse::Waveform
             << " │ Time " << start << ".." << (visibleEnd - 1) << Style::reset;
         frame.push_back(line.str());
 
+        // 2. Visible signal and component rows
         for (size_t i = firstRow; i < rows.size() && i < firstRow + visibleRows; ++i)
         {
             line.str("");
@@ -253,7 +280,21 @@ namespace Pulse::Waveform
 
             if (!row.wave)
             {
-                line << bg << Style::hierarchy << fit(row.prefix + row.name, nameWidth) << Style::reset
+                // For collapsible components: tree lines are drawn in white,
+                // while only the arrow and component name are highlighted in hierarchy blue.
+                const size_t prefixLen = utf8Width(row.prefix);
+                const std::string truncatedName = truncateUtf8(
+                    row.name,
+                    nameWidth > prefixLen ? nameWidth - prefixLen : 0);
+                const size_t totalLen = prefixLen + utf8Width(truncatedName);
+                const std::string padding = totalLen < nameWidth
+                    ? std::string(nameWidth - totalLen, ' ')
+                    : "";
+
+                line << bg
+                    << Style::treeWhite << row.prefix
+                    << Style::hierarchy << truncatedName
+                    << padding << Style::reset
                     << bg << ' ' << fit("", typeWidth)
                     << ' ' << fit("", valueWidth) << Style::reset
                     << " │" << renderCursor(start, visibleEnd, cursor, focused);
@@ -269,6 +310,7 @@ namespace Pulse::Waveform
             frame.push_back(line.str());
         }
 
+        // 3. Footer line with row counts and keyboard navigation shortcuts
         line.str("");
         line.clear();
         line << Style::dim
@@ -286,9 +328,15 @@ namespace Pulse::Waveform
         return frame;
     }
 
+    // --------------------------------------------------------------------------------------------
+    // Double-Buffered Terminal Output Engine
+    // --------------------------------------------------------------------------------------------
+
     void TerminalRenderer::render(const std::vector<std::string>& backBuffer)
     {
         std::ostringstream batch;
+
+        // Differential update: reposition cursor and write only lines that differ from frontBuffer
         for (size_t i = 0; i < backBuffer.size(); ++i)
         {
             if (i >= m_frontBuffer.size() || m_frontBuffer[i] != backBuffer[i])
@@ -299,11 +347,13 @@ namespace Pulse::Waveform
             }
         }
 
+        // Clear trailing lines if new frame has fewer rows than previous frame
         if (m_frontBuffer.size() > backBuffer.size())
         {
             batch << "\033[" << (backBuffer.size() + 1) << ";1H\033[J";
         }
 
+        // Atomic flush of entire batch to stdout
         std::cout << batch.str() << std::flush;
         m_frontBuffer = backBuffer;
     }

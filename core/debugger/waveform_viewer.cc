@@ -18,6 +18,10 @@
 
 namespace Pulse::Waveform
 {
+    // --------------------------------------------------------------------------------------------
+    // Platform Terminal Configuration & Queries
+    // --------------------------------------------------------------------------------------------
+
     Size terminalSize()
     {
         #ifdef _WIN32
@@ -49,6 +53,10 @@ namespace Pulse::Waveform
         return isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
         #endif
     }
+
+    // --------------------------------------------------------------------------------------------
+    // Keyboard Input Event Loop
+    // --------------------------------------------------------------------------------------------
 
     #ifdef _WIN32
     Key readKey()
@@ -86,6 +94,7 @@ namespace Pulse::Waveform
         }
     }
     #else
+    /// RAII guard to enable and disable terminal raw mode on POSIX platforms.
     class RawTerminal
     {
         termios old{};
@@ -163,6 +172,10 @@ namespace Pulse::Waveform
     }
     #endif
 
+    // --------------------------------------------------------------------------------------------
+    // Interactive Waveform Viewer Main Entry
+    // --------------------------------------------------------------------------------------------
+
     void showWaveform(const Waveform& waveform, uint64_t startTime, uint64_t endTime)
     {
         if (startTime >= endTime)
@@ -170,10 +183,12 @@ namespace Pulse::Waveform
             return;
         }
 
+        // Top-level "root" component is expanded by default on launch
         std::unordered_set<std::string> expandedPaths = { "root" };
         std::vector<Row> rows;
         collectRows(waveform, expandedPaths, rows);
 
+        // Non-interactive fallback: render a single frame and write to standard output
         if (!interactive())
         {
             const auto frame = buildFrame(rows, startTime, endTime, startTime, 0, 0, terminalSize(), false);
@@ -184,6 +199,7 @@ namespace Pulse::Waveform
             return;
         }
 
+        // Terminal setup for interactive alternate screen buffer
         #ifdef _WIN32
         SetConsoleOutputCP(CP_UTF8);
         DWORD outputMode{};
@@ -199,7 +215,9 @@ namespace Pulse::Waveform
         sigaction(SIGWINCH, &action, &oldAction);
         #endif
 
+        // Switch to alternate screen buffer (\033[?1049h), hide cursor (\033[?25l), clear (\033[2J\033[H)
         std::cout << "\033[?1049h\033[?25l\033[2J\033[H" << std::flush;
+
         uint64_t time = startTime;
         uint64_t cursor = startTime;
         size_t firstRow = 0;
@@ -211,6 +229,7 @@ namespace Pulse::Waveform
         uint64_t lastTime = startTime;
         TerminalRenderer renderer;
 
+        // Interactive event loop
         while (running)
         {
             if (redraw)
@@ -223,6 +242,8 @@ namespace Pulse::Waveform
                 rowCount = std::max<size_t>(1, size.rows > 3 ? size.rows - 3 : 1);
                 lastTime = endTime > timeWidth ? endTime - timeWidth : startTime;
                 cursor = std::clamp(cursor, startTime, endTime - 1);
+
+                // Auto-scroll timeline to keep cursor visible
                 if (cursor < time)
                 {
                     time = cursor;
@@ -233,6 +254,7 @@ namespace Pulse::Waveform
                 }
                 time = std::clamp(time, startTime, lastTime);
 
+                // Auto-scroll row list to keep focused row visible
                 selectedRow = std::min(selectedRow, rows.empty() ? 0 : rows.size() - 1);
                 if (selectedRow < firstRow)
                 {
@@ -247,11 +269,14 @@ namespace Pulse::Waveform
                     ? std::min(firstRow, rows.size() - rowCount)
                     : 0;
 
+                // Render back buffer differentially to screen
                 renderer.render(buildFrame(rows, time, endTime, cursor, firstRow, selectedRow, size, true));
                 redraw = false;
             }
 
             const Key key = readKey();
+
+            // Handle terminal window resize
             if (key == Key::resize)
             {
                 renderer.clear();
@@ -268,6 +293,7 @@ namespace Pulse::Waveform
                         redraw = true;
                     }
                     break;
+
                 case Key::right:
                     if (cursor + 1 < endTime)
                     {
@@ -275,6 +301,7 @@ namespace Pulse::Waveform
                         redraw = true;
                     }
                     break;
+
                 case Key::up:
                     if (selectedRow > 0)
                     {
@@ -286,6 +313,7 @@ namespace Pulse::Waveform
                         redraw = true;
                     }
                     break;
+
                 case Key::down:
                     if (selectedRow + 1 < rows.size())
                     {
@@ -297,10 +325,11 @@ namespace Pulse::Waveform
                         redraw = true;
                     }
                     break;
+
                 case Key::toggle:
                     if (selectedRow < rows.size() && rows[selectedRow].isGraph)
                     {
-                        const std::string path = rows[selectedRow].path;
+                        const std::string& path = rows[selectedRow].path;
                         if (expandedPaths.find(path) != expandedPaths.end())
                         {
                             expandedPaths.erase(path);
@@ -309,8 +338,12 @@ namespace Pulse::Waveform
                         {
                             expandedPaths.insert(path);
                         }
+
+                        // Re-collect rows with new expansion state
                         rows.clear();
                         collectRows(waveform, expandedPaths, rows);
+
+                        // Clamp selection and adjust viewport
                         selectedRow = std::min(selectedRow, rows.empty() ? 0 : rows.size() - 1);
                         if (selectedRow < firstRow)
                         {
@@ -323,18 +356,23 @@ namespace Pulse::Waveform
                         firstRow = rows.size() > rowCount
                             ? std::min(firstRow, rows.size() - rowCount)
                             : 0;
+
                         redraw = true;
                     }
                     break;
+
                 case Key::quit:
                     running = false;
                     break;
+
                 default:
                     break;
             }
         }
 
+        // Restore terminal cursor (\033[?25h), reset styles, and exit alternate screen buffer (\033[?1049l)
         std::cout << "\033[?25h\033[0m\033[?1049l" << std::flush;
+
         #ifdef _WIN32
         SetConsoleMode(output, outputMode);
         #else
