@@ -5,12 +5,32 @@
 #include <sstream>
 #include <unordered_set>
 
-namespace Pulse::Waveform
+namespace Pulse::Debugger
 {
 
     // --------------------------------------------------------------------------------------------
     // UTF-8 & String Formatting Helpers
     // --------------------------------------------------------------------------------------------
+
+    std::string formatBusValue(const LogicVector& value, bitWidth_t width)
+    {
+        const uint8_t bits = std::min<uint8_t>(width, 64);
+        for (uint8_t bit = 0; bit < bits; ++bit)
+        {
+            if (value.bit(bit) != '0' && value.bit(bit) != '1')
+            {
+                return "error";
+            }
+        }
+
+        std::ostringstream out;
+        const uint64_t widthMask = bits == 64 ? ~uint64_t{ 0 } : ((uint64_t{ 1 } << bits) - 1);
+        out << "0x"
+            << std::uppercase << std::hex
+            << std::setw(static_cast<int>(std::max<size_t>(1, (bits + 3) / 4)))
+            << std::setfill('0') << (value.value & widthMask);
+        return out.str();
+    }
 
     size_t utf8Width(const std::string& text)
     {
@@ -234,23 +254,24 @@ namespace Pulse::Waveform
         size_t firstRow,
         size_t selectedRow,
         Size size,
-        bool controls)
+        bool controls
+    )
     {
         std::vector<std::string> frame;
 
         // Dynamic column width calculation
         const size_t panelWidth = std::clamp(size.columns / 3, size_t{ 46 }, size_t{ 60 });
-        size_t valueWidth = 3;
-        for (const Row& row : rows)
+        size_t valueWidth = 3; // Default width.
+
+        // Dynamic value width calculation based on the widest bus value in the visible rows (up to 18 characters).
+        for (const Row& row : rows) if (row.wave)
         {
-            if (row.wave)
-            {
-                valueWidth = std::max(
-                    valueWidth,
-                    row.wave->width == 1
+            valueWidth = std::max(
+                valueWidth,
+                row.wave->width == 1
                     ? size_t{ 1 }
-                : std::min<size_t>(18, (row.wave->width + 3) / 4 + 2));
-            }
+                    : std::min<size_t>(18, (row.wave->width + 3) / 4 + 2)
+            );
         }
 
         const size_t typeWidth = 6;
@@ -260,18 +281,17 @@ namespace Pulse::Waveform
         const size_t timeWidth = std::max<size_t>(
             1,
             size.columns > panelWidth + 3 ? size.columns - panelWidth - 3 : 1);
+
         const uint64_t visibleEnd = std::min(end, start + timeWidth);
         const size_t visibleRows = std::max<size_t>(1, size.rows > 3 ? size.rows - 3 : 1);
 
-        // 1. Header line with timeline window range and cursor timestamp
+        // Header line
         std::ostringstream line;
-        line << Style::dim << fit("", nameWidth)
-            << ' ' << fit("", typeWidth)
-            << ' ' << rightFit(cursor == end ? "" : std::to_string(cursor), valueWidth - 2) << "fs"
+        line << Style::dim << rightFit("Cursor: " + std::to_string(cursor) + "fs", panelWidth)
             << " │ Time " << start << ".." << (visibleEnd - 1) << Style::reset;
         frame.push_back(line.str());
 
-        // 2. Visible signal and component rows
+        // Visible signal and component rows
         for (size_t i = firstRow; i < rows.size() && i < firstRow + visibleRows; ++i)
         {
             line.str("");
@@ -321,8 +341,7 @@ namespace Pulse::Waveform
             << '/' << rows.size();
         if (controls)
         {
-            line << "  Cursor: " << cursor
-                << "fs  Arrows: move cursor/focus  Space/Enter: collapse/expand  Q/Esc: quit";
+            line << "  fs  Arrows: move cursor/focus  Space/Enter: collapse/expand  Q/Esc: quit";
         }
         line << Style::reset;
         frame.push_back(line.str());

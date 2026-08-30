@@ -20,8 +20,9 @@
 #include <unistd.h>
 #endif
 
-namespace Pulse::Waveform
+namespace Pulse::Debugger
 {
+    // Forward declaration of the internal frame builder function, implemented in tui_render.cc
     std::vector<std::string> buildFrame(
         const std::vector<Row>& rows,
         uint64_t start,
@@ -30,13 +31,90 @@ namespace Pulse::Waveform
         size_t firstRow,
         size_t selectedRow,
         Size size,
-        bool controls);
+        bool controls
+    );
 
-    // Forward declaration for the hierarchy traversal defined in waveform.cc
-    void collectRows(
-        const Waveform& waveform,
+    // --------------------------------------------------------------------------------------------
+
+    /// Internal recursive helper that flattens signals and subgraphs belonging to a specific component.
+    /// @param waveform The waveform data of the component being traversed.
+    /// @param ancestor Tree guide string for parent levels (e.g. "│  ").
+    /// @param pathPrefix Unique hierarchical prefix identifying this component (e.g. "root/CPU").
+    /// @param expandedPaths Set of paths representing currently expanded component nodes.
+    /// @param[out] rows Destination vector populated with display rows.
+    void collectSubRows(
+        const WaveformData& waveform,
+        const std::string& ancestor,
+        const std::string& pathPrefix,
         const std::unordered_set<std::string>& expandedPaths,
-        std::vector<Row>& rows);
+        std::vector<Row>& rows
+    )
+    {
+        // 1. Collect and sort all signal names alphabetically at this hierarchy level
+        std::vector<std::pair<std::string, const Wave*>> signals;
+        for (const auto& [name, wave] : waveform.signals)
+        {
+            signals.emplace_back(name, &wave);
+        }
+        std::sort(signals.begin(), signals.end());
+
+        // 2. Collect and sort all child subgraphs alphabetically
+        std::vector<std::pair<std::string, const WaveformData*>> graphs;
+        for (const auto& [name, graph] : waveform.subgraphs)
+        {
+            graphs.emplace_back(name, &graph);
+        }
+        std::sort(graphs.begin(), graphs.end());
+
+        const size_t children = signals.size() + graphs.size();
+        size_t index = 0;
+
+        // 3. Emit rows for signals
+        for (const auto& [name, wave] : signals)
+        {
+            const bool isLast = ++index == children;
+            const std::string fullPath = pathPrefix.empty() ? name : pathPrefix + "/" + name;
+            rows.push_back({ ancestor + (isLast ? "└─ " : "├─ "), name, wave, fullPath, false });
+        }
+
+        // 4. Emit rows for subgraphs and recursively expand if node is in expandedPaths
+        for (const auto& [name, graph] : graphs)
+        {
+            const bool isLast = ++index == children;
+            const std::string fullPath = pathPrefix.empty() ? name : pathPrefix + "/" + name;
+            const bool isExpanded = expandedPaths.find(fullPath) != expandedPaths.end();
+            const std::string prefix = ancestor + (isLast ? "└─ " : "├─ ");
+            const std::string arrow = isExpanded ? "▼ " : "▶ ";
+            rows.push_back({ prefix, arrow + name, nullptr, fullPath, true });
+
+            if (isExpanded)
+            {
+                collectSubRows(*graph, ancestor + (isLast ? "   " : "│  "), fullPath, expandedPaths, rows);
+            }
+        }
+    }
+
+    /// Flattens the entire circuit hierarchy under the top-level component.
+    /// If the top-level component is expanded, all top-level signals and components are emitted.
+    /// @param waveform The top-level circuit waveform.
+    /// @param expandedPaths Set of component paths currently open in the viewer.
+    /// @param[out] rows Output vector populated with flattened display rows.
+    void collectRows(
+        const WaveformData& waveform,
+        const std::unordered_set<std::string>& expandedPaths,
+        std::vector<Row>& rows,
+        std::string rootName
+    )
+    {
+        const bool isExpanded = expandedPaths.find(rootName) != expandedPaths.end();
+        const std::string arrow = isExpanded ? "▼ " : "▶ ";
+        rows.push_back({ "", arrow + rootName, nullptr, rootName, true });
+
+        if (isExpanded)
+        {
+            collectSubRows(waveform, "", rootName, expandedPaths, rows);
+        }
+    }
 
     // --------------------------------------------------------------------------------------------
     // Platform Terminal Configuration & Queries
@@ -196,17 +274,17 @@ namespace Pulse::Waveform
     // Interactive Waveform Viewer Main Entry
     // --------------------------------------------------------------------------------------------
 
-    void showWaveform(const Waveform& waveform, uint64_t startTime, uint64_t endTime)
+    void showWaveform(const WaveformData& waveform, uint64_t startTime, uint64_t endTime, std::string rootName)
     {
         if (startTime >= endTime)
         {
             return;
         }
 
-        // Top-level "root" component is expanded by default on launch
-        std::unordered_set<std::string> expandedPaths = { "root" };
+        // Top-level component is expanded by default on launch
+        std::unordered_set<std::string> expandedPaths = { rootName };
         std::vector<Row> rows;
-        collectRows(waveform, expandedPaths, rows);
+        collectRows(waveform, expandedPaths, rows, rootName);
 
         // Non-interactive fallback: render a single frame and write to standard output
         if (!interactive())
@@ -361,7 +439,7 @@ namespace Pulse::Waveform
 
                         // Re-collect rows with new expansion state
                         rows.clear();
-                        collectRows(waveform, expandedPaths, rows);
+                        collectRows(waveform, expandedPaths, rows, rootName);
 
                         // Clamp selection and adjust viewport
                         selectedRow = std::min(selectedRow, rows.empty() ? 0 : rows.size() - 1);

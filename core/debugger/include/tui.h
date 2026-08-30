@@ -5,7 +5,7 @@
 
 #include "waveform.h"
 
-namespace Pulse::Waveform
+namespace Pulse::Debugger
 {
     // --------------------------------------------------------------------------------------------
     // Terminal Dimensions and Navigation Input
@@ -28,6 +28,7 @@ namespace Pulse::Waveform
         up,     ///< Up arrow key (vertical focus up).
         down,   ///< Down arrow key (vertical focus down).
         toggle, ///< Space or Enter key (expand / collapse component).
+        radix,  ///< Tab key (toggle bus radix between hex and binary). Not implemented yet.
         quit    ///< Escape or 'q'/'Q' key (exit waveform viewer).
     };
 
@@ -78,7 +79,7 @@ namespace Pulse::Waveform
         constexpr const char* highZ = "\033[1;34m";       ///< Bold blue for high-impedance logic levels ('Z').
         constexpr const char* error = "\033[1;31m";       ///< Bold red for undefined/error logic levels ('X'/'U').
         constexpr const char* cursorBg = "\033[41;1;37m"; ///< Solid red background with bold white text for time cursor.
-        constexpr const char* focusBg = "\033[48;5;236m"; ///< Subtle dark-gray background for the focused row.
+        constexpr const char* focusBg = "\033[48;5;237m"; ///< Subtle dark-gray background for the focused row.
         constexpr const char* busBorder = "\033[1;35m";   ///< Bold magenta for multi-bit bus cell borders.
         constexpr const char* busValue = "\033[1;37m";    ///< Bold white for multi-bit bus hexadecimal labels.
         constexpr const char* hierarchy = "\033[1;34m";   ///< Bold blue for component names and expand/collapse glyphs.
@@ -92,7 +93,8 @@ namespace Pulse::Waveform
     /// @param waveform The complete hierarchical waveform trace to display.
     /// @param startTime Starting simulation timestamp of the visible range (in femtoseconds).
     /// @param endTime Ending simulation timestamp of the visible range (in femtoseconds).
-    void showWaveform(const Waveform& waveform, uint64_t startTime, uint64_t endTime);
+    /// @param rootName The name of the root component to display. (visual-only, defaults to "root")
+    void showWaveform(const WaveformData& waveform, uint64_t startTime, uint64_t endTime, std::string rootName = "root");
 }
 
 #endif // PULSE_TUI_H

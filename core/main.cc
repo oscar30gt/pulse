@@ -108,7 +108,7 @@ int main(int argc, char* argv[])
             throw std::runtime_error("Top-level entity '" + topEntity + "' not found. Ensure it exists or provide another entity using the --top option.");
 
         Subgraph graph(*bp->second.get(), {}, {});
-        Pulse::Waveform::WaveformRecorder recorder(graph.takeSnapshot());
+        Pulse::Debugger::WaveformRecorder recorder(graph.takeSnapshot());
 
         // Simulation
         for (uint64_t i = 0; i <= endTime; ++i)
@@ -118,7 +118,7 @@ int main(int argc, char* argv[])
         }
 
         // Once simulated, allow user to visualize the waveform of the simulation.
-        Pulse::Waveform::showWaveform(recorder.waveform(), 0, endTime);
+        Pulse::Debugger::showWaveform(recorder.waveform(), 0, endTime, topEntity);
     }
 
     // --------------------------------------------------------------------------------------------

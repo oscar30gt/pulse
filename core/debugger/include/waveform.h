@@ -10,7 +10,7 @@
 #include "logicVector.h"
 #include "subgraph.h"
 
-namespace Pulse::Waveform
+namespace Pulse::Debugger
 {
     // --------------------------------------------------------------------------------------------
     // Waveform Data Model
@@ -47,10 +47,10 @@ namespace Pulse::Waveform
     };
 
     /// A hierarchical structure representing the digital circuit waveform, including signals and nested subgraphs.
-    struct Waveform
+    struct WaveformData
     {
         std::unordered_map<std::string, Wave> signals;       ///< Named signals at the current hierarchy level.
-        std::unordered_map<std::string, Waveform> subgraphs; ///< Nested subgraphs representing child components.
+        std::unordered_map<std::string, WaveformData> subgraphs; ///< Nested subgraphs representing child components.
     };
 
     // --------------------------------------------------------------------------------------------
@@ -60,7 +60,7 @@ namespace Pulse::Waveform
     /// Recorder class that captures snapshots from the simulation engine and incrementally builds a Waveform trace.
     class WaveformRecorder
     {
-        Waveform m_waveform; ///< Internal hierarchical waveform representation being populated.
+        WaveformData m_waveform; ///< Internal hierarchical waveform representation being populated.
 
     public:
         /// Constructs a recorder initialized with the signals and hierarchy present in the initial snapshot.
@@ -76,19 +76,8 @@ namespace Pulse::Waveform
         /// Returns a constant reference to the recorded hierarchical waveform trace.
         /// @returns The complete Waveform structure containing all captured signals and transitions.
         [[nodiscard]]
-        const Waveform& waveform() const { return m_waveform; }
+        const WaveformData& waveform() const;
     };
-
-    // --------------------------------------------------------------------------------------------
-    // Formatting and Display Utilities
-    // --------------------------------------------------------------------------------------------
-
-    /// Formats the value of a logic vector as a padded hexadecimal string based on its signal bit width.
-    /// @param value The LogicVector value to format.
-    /// @param width The bit width of the signal, determining hexadecimal zero-padding.
-    /// @returns Formatted hexadecimal string (e.g. "0x0A"), or "error" if invalid/high-impedance bits are present.
-    [[nodiscard]]
-    std::string formatBusValue(const LogicVector& value, bitWidth_t width);
 }
 
 #endif // PULSE_WAVEFORM_H
