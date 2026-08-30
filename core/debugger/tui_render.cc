@@ -1,11 +1,13 @@
-#include "waveform_internal.h"
+#include "tui.h"
 
 #include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <unordered_set>
 
 namespace Pulse::Waveform
 {
+
     // --------------------------------------------------------------------------------------------
     // UTF-8 & String Formatting Helpers
     // --------------------------------------------------------------------------------------------
@@ -73,7 +75,7 @@ namespace Pulse::Waveform
 
     std::string cursorValue(const Wave& wave, uint64_t time)
     {
-        const LogicVector value = valueAt(wave.samples, time);
+        const LogicVector value = wave.valueAt(time);
         if (wave.width == 1)
         {
             return std::string(1, value.bit(0));
@@ -94,11 +96,11 @@ namespace Pulse::Waveform
         // Single-bit signals: use level glyphs and transition slopes
         if (wave.width == 1)
         {
-            char previous = valueAt(wave.samples, start).bit(0);
+            char previous = wave.valueAt(start).bit(0);
             for (uint64_t time = start; time < end; ++time)
             {
-                const char current = valueAt(wave.samples, time).bit(0);
-                const char next = valueAt(wave.samples, time + 1).bit(0);
+                const char current = wave.valueAt(time).bit(0);
+                const char next = wave.valueAt(time + 1).bit(0);
                 const char* color = Style::low;
                 std::string glyph = "_";
 
@@ -154,9 +156,9 @@ namespace Pulse::Waveform
         // Multi-bit buses: divide timestamps into runs of identical values and render hex labels
         for (uint64_t time = start; time < end;)
         {
-            const LogicVector value = valueAt(wave.samples, time);
+            const LogicVector value = wave.valueAt(time);
             uint64_t run = 1;
-            while (time + run < end && valueAt(wave.samples, time + run) == value)
+            while (time + run < end && wave.valueAt(time + run) == value)
             {
                 ++run;
             }
@@ -247,7 +249,7 @@ namespace Pulse::Waveform
                     valueWidth,
                     row.wave->width == 1
                     ? size_t{ 1 }
-                    : std::min<size_t>(18, (row.wave->width + 3) / 4 + 2));
+                : std::min<size_t>(18, (row.wave->width + 3) / 4 + 2));
             }
         }
 
@@ -342,8 +344,8 @@ namespace Pulse::Waveform
             if (i >= m_frontBuffer.size() || m_frontBuffer[i] != backBuffer[i])
             {
                 batch << "\033[" << (i + 1) << ";1H"
-                      << backBuffer[i]
-                      << "\033[K";
+                    << backBuffer[i]
+                    << "\033[K";
             }
         }
 
@@ -358,6 +360,7 @@ namespace Pulse::Waveform
         m_frontBuffer = backBuffer;
     }
 
+    /// Invalidates the front buffer, forcing a full repaint on the next render pass (e.g. after resize).
     void TerminalRenderer::clear()
     {
         m_frontBuffer.clear();

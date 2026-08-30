@@ -1,8 +1,9 @@
-#include "waveform_internal.h"
+#include "waveform.h"
 
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
+#include <unordered_set>
 
 namespace Pulse::Waveform
 {
@@ -10,12 +11,7 @@ namespace Pulse::Waveform
     // Sample Lookup Helpers
     // --------------------------------------------------------------------------------------------
 
-    /// Performs binary search over a chronological sample series to determine the active logic vector
-    /// value at a given simulation timestamp.
-    /// @param samples Transition list for the signal.
-    /// @param time Target timestamp in femtoseconds.
-    /// @returns Active logic value, or High-Z if before the first recorded sample.
-    LogicVector valueAt(const std::vector<Sample>& samples, uint64_t time)
+    LogicVector Wave::valueAt(uint64_t time) const
     {
         const auto it = std::upper_bound(
             samples.begin(), samples.end(), time,
@@ -35,6 +31,16 @@ namespace Pulse::Waveform
     // --------------------------------------------------------------------------------------------
     // Hierarchy Traversal and Row Flattening
     // --------------------------------------------------------------------------------------------
+
+    /// Represents a single display line in the waveform viewer (either a signal or a component node).
+    struct Row
+    {
+        std::string prefix;         ///< Tree connector symbols and indentation (e.g. "│  ├─ ").
+        std::string name;           ///< Display name with collapse/expand glyph (e.g. "▶ ALU", "clk").
+        const Wave* wave = nullptr; ///< Pointer to the wave trace data, or nullptr if this row is a component.
+        std::string path;           ///< Unique hierarchical path identifier (e.g. "root/CPU/ALU").
+        bool isGraph = false;       ///< True if this row represents a collapsible component/subgraph node.
+    };
 
     /// Internal recursive helper that flattens signals and subgraphs belonging to a specific component.
     /// @param waveform The waveform data of the component being traversed.

@@ -1,13 +1,17 @@
-#include "waveform_internal.h"
+#include "tui.h"
 
 #include <algorithm>
 #include <iostream>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
+
 #else
 #include <csignal>
 #include <sys/ioctl.h>
@@ -18,6 +22,22 @@
 
 namespace Pulse::Waveform
 {
+    std::vector<std::string> buildFrame(
+        const std::vector<Row>& rows,
+        uint64_t start,
+        uint64_t end,
+        uint64_t cursor,
+        size_t firstRow,
+        size_t selectedRow,
+        Size size,
+        bool controls);
+
+    // Forward declaration for the hierarchy traversal defined in waveform.cc
+    void collectRows(
+        const Waveform& waveform,
+        const std::unordered_set<std::string>& expandedPaths,
+        std::vector<Row>& rows);
+
     // --------------------------------------------------------------------------------------------
     // Platform Terminal Configuration & Queries
     // --------------------------------------------------------------------------------------------
@@ -94,7 +114,7 @@ namespace Pulse::Waveform
         }
     }
     #else
-    /// RAII guard to enable and disable terminal raw mode on POSIX platforms.
+        /// RAII guard to enable and disable terminal raw mode on POSIX platforms.
     class RawTerminal
     {
         termios old{};

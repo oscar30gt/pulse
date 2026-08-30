@@ -12,6 +12,7 @@
 #include "subgraph.h"
 #include "tokenizer.h"
 #include "waveform.h"
+#include "tui.h"
 
 #define VERSION "1.0.0"
 

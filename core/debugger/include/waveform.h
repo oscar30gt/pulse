@@ -1,5 +1,5 @@
-#ifndef PULSE_SIGNAL_TRACE_H
-#define PULSE_SIGNAL_TRACE_H
+#ifndef PULSE_WAVEFORM_H
+#define PULSE_WAVEFORM_H
 
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +37,13 @@ namespace Pulse::Waveform
         bitWidth_t width : 6;        ///< The bit width of the signal (up to 64 bits).
         SignalType type : 2;         ///< The port/signal type (Input, Output, or Internal).
         std::vector<Sample> samples; ///< Chronological transitions recorded for this signal.
+
+        /// Performs binary search over a chronological sample series to determine the active logic vector
+        /// value at a given simulation timestamp.
+        /// @param samples Transition list for the signal.
+        /// @param time Target timestamp in femtoseconds.
+        /// @returns Active logic value, or High-Z if before the first recorded sample.
+        LogicVector valueAt(uint64_t time) const;
     };
 
     /// A hierarchical structure representing the digital circuit waveform, including signals and nested subgraphs.
@@ -82,12 +89,6 @@ namespace Pulse::Waveform
     /// @returns Formatted hexadecimal string (e.g. "0x0A"), or "error" if invalid/high-impedance bits are present.
     [[nodiscard]]
     std::string formatBusValue(const LogicVector& value, bitWidth_t width);
-
-    /// Launches the terminal-based interactive waveform viewer (or emits a static frame if non-interactive).
-    /// @param waveform The complete hierarchical waveform trace to display.
-    /// @param startTime Starting simulation timestamp of the visible range (in femtoseconds).
-    /// @param endTime Ending simulation timestamp of the visible range (in femtoseconds).
-    void showWaveform(const Waveform& waveform, uint64_t startTime, uint64_t endTime);
 }
 
-#endif // PULSE_SIGNAL_TRACE_H
+#endif // PULSE_WAVEFORM_H
