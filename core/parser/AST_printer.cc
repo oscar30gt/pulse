@@ -4,7 +4,7 @@
 #include <memory>
 #include <iomanip>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     namespace
     {
@@ -614,4 +614,4 @@ namespace Pulse::Parser::VHDL
         std::cout << "\n" << DIM << std::string(60, '=') << RESET << "\n\n";
     }
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser

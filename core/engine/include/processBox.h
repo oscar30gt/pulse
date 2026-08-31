@@ -10,6 +10,8 @@
 
 namespace Pulse::Engine
 {
+    typedef uint64_t simTime_t; /// Simulation time type in femtoseconds (max before overflow: around 5 hours).
+    
     struct ProcessInstruction { virtual ~ProcessInstruction() = default; };
 
     // Assigns a logic value to some of the process outputs.
@@ -62,7 +64,7 @@ namespace Pulse::Engine
     /// before proceeding to the next instruction. Can only be used with SequentialProcessBox.
     struct ProcessInstructionWait : public ProcessInstruction
     {
-        uint64_t waitTime; /// in femtoseconds (max before overflow: around 5 hours)
+        simTime_t waitTime; /// in femtoseconds (max before overflow: around 5 hours)
     };
 
     /// Wait forever instruction. Will pause the processBox indefinitely.
@@ -79,7 +81,7 @@ namespace Pulse::Engine
         size_t m_instructionPointer;
 
         /// Counter for the wait instruction.
-        uint64_t m_waitCounter;
+        simTime_t m_waitCounter;
 
         /// Flag indicating if the process is currently in a wait-forever state.
         bool m_waitingForever;

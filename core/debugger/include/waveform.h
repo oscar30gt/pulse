@@ -12,6 +12,8 @@
 
 namespace Pulse::Debugger
 {
+    typedef uint64_t simTime_t; /// Simulation time type in femtoseconds (max before overflow: around 5 hours).
+
     // --------------------------------------------------------------------------------------------
     // Waveform Data Model
     // --------------------------------------------------------------------------------------------
@@ -28,7 +30,7 @@ namespace Pulse::Debugger
     struct Sample
     {
         LogicVector value;  ///< The logic vector value of the signal at this timestamp.
-        uint64_t timestamp; ///< The simulation timestamp of the sample (in femtoseconds).
+        simTime_t timestamp; ///< The simulation timestamp of the sample (in femtoseconds).
     };
 
     /// Represents the full transition trace of a single signal over the course of a simulation.
@@ -43,7 +45,7 @@ namespace Pulse::Debugger
         /// @param samples Transition list for the signal.
         /// @param time Target timestamp in femtoseconds.
         /// @returns Active logic value, or High-Z if before the first recorded sample.
-        LogicVector valueAt(uint64_t time) const;
+        LogicVector valueAt(simTime_t time) const;
     };
 
     /// A hierarchical structure representing the digital circuit waveform, including signals and nested subgraphs.
@@ -71,7 +73,7 @@ namespace Pulse::Debugger
         /// Only transitions (value changes) are appended to minimize memory consumption.
         /// @param snapshot The current state of the subgraph's signals.
         /// @param timestamp The simulation timestamp at which the snapshot is captured (in femtoseconds).
-        void record(const Engine::SubgraphSnapshot& snapshot, uint64_t timestamp);
+        void record(const Engine::SubgraphSnapshot& snapshot, simTime_t timestamp);
 
         /// Returns a constant reference to the recorded hierarchical waveform trace.
         /// @returns The complete Waveform structure containing all captured signals and transitions.

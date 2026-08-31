@@ -1,4 +1,4 @@
-// tokenizer.test.cc — GTest suite for Pulse::Parser::VHDL::Tokenizer
+// tokenizer.test.cc — GTest suite for Pulse::Parser::Tokenizer
 //
 // Each test section targets a specific lexical construct.
 // The tokenizer is case-insensitive: all keywords / identifiers are
@@ -11,7 +11,7 @@
 
 #include "tokenizer.h"
 
-using namespace Pulse::Parser::VHDL;
+using namespace Pulse::Parser;
 
 // ---------------------------------------------------------------------------
 // Helpers

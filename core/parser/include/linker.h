@@ -8,7 +8,7 @@
 #include <string>
 #include <stdexcept>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     struct ResolvedInstantiation
     {
@@ -52,6 +52,6 @@ namespace Pulse::Parser::VHDL
         void matchPortSignatures(const ComponentDeclaration* comp, const EntityDeclaration* entity);
     };
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser
 
 #endif // PULSE_VHDL_LINKER_H

@@ -25,9 +25,9 @@ namespace Pulse::Debugger
     // Forward declaration of the internal frame builder function, implemented in tui_render.cc
     std::vector<std::string> buildFrame(
         const std::vector<Row>& rows,
-        uint64_t start,
-        uint64_t end,
-        uint64_t cursor,
+        simTime_t start,
+        simTime_t end,
+        simTime_t cursor,
         size_t firstRow,
         size_t selectedRow,
         Size size,
@@ -274,7 +274,7 @@ namespace Pulse::Debugger
     // Interactive Waveform Viewer Main Entry
     // --------------------------------------------------------------------------------------------
 
-    void showWaveform(const WaveformData& waveform, uint64_t startTime, uint64_t endTime, std::string rootName)
+    void showWaveform(const WaveformData& waveform, simTime_t startTime, simTime_t endTime, std::string rootName)
     {
         if (startTime >= endTime)
         {
@@ -316,15 +316,15 @@ namespace Pulse::Debugger
         // Switch to alternate screen buffer (\033[?1049h), hide cursor (\033[?25l), clear (\033[2J\033[H)
         std::cout << "\033[?1049h\033[?25l\033[2J\033[H" << std::flush;
 
-        uint64_t time = startTime;
-        uint64_t cursor = startTime;
+        simTime_t time = startTime;
+        simTime_t cursor = startTime;
         size_t firstRow = 0;
         size_t selectedRow = 0;
         bool running = true;
         bool redraw = true;
         size_t timeWidth = 1;
         size_t rowCount = 1;
-        uint64_t lastTime = startTime;
+        simTime_t lastTime = startTime;
         TerminalRenderer renderer;
 
         // Interactive event loop

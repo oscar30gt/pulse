@@ -5,7 +5,7 @@
 #include <deque>
 #include <algorithm>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     namespace
     {
@@ -1537,4 +1537,4 @@ namespace Pulse::Parser::VHDL
         return parse(ctx);
     }
     
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser

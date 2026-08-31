@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include "SemanticAnalyzer.h"
 
-namespace Pulse::Parser::VHDL::Tests
+namespace Pulse::Parser::Tests
 {
     class SemanticAnalyzerTest : public ::testing::Test 
     {
@@ -169,4 +169,4 @@ namespace Pulse::Parser::VHDL::Tests
             }
         }, std::runtime_error);
     }
-} // namespace Pulse::Parser::VHDL::Tests
+} // namespace Pulse::Parser::Tests

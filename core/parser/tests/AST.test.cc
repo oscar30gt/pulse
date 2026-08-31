@@ -4,7 +4,7 @@
 #include "AST.h"
 #include "Tokenizer.h"
 
-using namespace Pulse::Parser::VHDL;
+using namespace Pulse::Parser;
 
 // Helper to create a Tokenizer from a string
 Tokenizer makeTokenizer(const std::string& vhdl)

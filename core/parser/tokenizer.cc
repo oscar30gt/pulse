@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <unordered_map>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     namespace
     {
@@ -370,4 +370,4 @@ namespace Pulse::Parser::VHDL
         return true;
     }
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser

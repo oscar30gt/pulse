@@ -11,12 +11,12 @@ namespace Pulse::Debugger
     // Sample Lookup Helpers
     // --------------------------------------------------------------------------------------------
 
-    LogicVector Wave::valueAt(uint64_t time) const
+    LogicVector Wave::valueAt(simTime_t time) const
     {
         const auto it = std::upper_bound(
             samples.begin(), samples.end(), time,
-            [](uint64_t value, const Sample& sample) {
-                return value < sample.timestamp;
+            [](simTime_t timestamp, const Sample& sample) {
+                return timestamp < sample.timestamp;
             }
         );
 
@@ -38,7 +38,7 @@ namespace Pulse::Debugger
     /// @param waveform The target Waveform structure to update.
     /// @param snapshot The engine snapshot containing current circuit state.
     /// @param timestamp The simulation timestamp of this snapshot in femtoseconds.
-    void recordSnapshot(WaveformData& waveform, const Engine::SubgraphSnapshot& snapshot, uint64_t timestamp)
+    void recordSnapshot(WaveformData& waveform, const Engine::SubgraphSnapshot& snapshot, simTime_t timestamp)
     {
         const auto recordSignals = [&waveform, timestamp](const auto& signals) {
             for (const auto& [name, state] : signals)
@@ -85,7 +85,7 @@ namespace Pulse::Debugger
         }
     }
 
-    void WaveformRecorder::record(const Engine::SubgraphSnapshot& snapshot, uint64_t timestamp)
+    void WaveformRecorder::record(const Engine::SubgraphSnapshot& snapshot, simTime_t timestamp)
     {
         recordSnapshot(m_waveform, snapshot, timestamp);
     }

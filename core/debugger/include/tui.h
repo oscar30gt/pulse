@@ -94,7 +94,7 @@ namespace Pulse::Debugger
     /// @param startTime Starting simulation timestamp of the visible range (in femtoseconds).
     /// @param endTime Ending simulation timestamp of the visible range (in femtoseconds).
     /// @param rootName The name of the root component to display. (visual-only, defaults to "root")
-    void showWaveform(const WaveformData& waveform, uint64_t startTime, uint64_t endTime, std::string rootName = "root");
+    void showWaveform(const WaveformData& waveform, simTime_t startTime, simTime_t endTime, std::string rootName = "root");
 }
 
 #endif // PULSE_TUI_H

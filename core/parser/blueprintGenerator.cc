@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <cassert>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     // =========================================================================
     // Internal expression compiler
@@ -698,4 +698,4 @@ namespace Pulse::Parser::VHDL
         return result;
     }
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser

@@ -7,7 +7,7 @@
 #include <string>
 #include <stdexcept>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     class SemanticAnalyzer
     {
@@ -44,6 +44,6 @@ namespace Pulse::Parser::VHDL
         Pulse::bitWidth_t getSignalReferenceWidth(const SignalReference* ref);
     };
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser
 
 #endif // PULSE_VHDL_SEMANTICANALYZER_H

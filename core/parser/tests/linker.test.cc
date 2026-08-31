@@ -2,7 +2,7 @@
 #include "Linker.h"
 #include <memory>
 
-using namespace Pulse::Parser::VHDL;
+using namespace Pulse::Parser;
 
 // Helper to create a basic entity for testing
 std::unique_ptr<EntityDeclaration> createDummyEntity(const std::string& name)

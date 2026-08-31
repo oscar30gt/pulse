@@ -1,6 +1,6 @@
 #include "Linker.h"
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     LinkedDesign Linker::link(const std::vector<ASTRoot>& astRoots)
     {
@@ -143,4 +143,4 @@ namespace Pulse::Parser::VHDL
             }
         }
     }
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser

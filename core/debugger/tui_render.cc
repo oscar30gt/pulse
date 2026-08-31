@@ -93,7 +93,7 @@ namespace Pulse::Debugger
         return {};
     }
 
-    std::string cursorValue(const Wave& wave, uint64_t time)
+    std::string cursorValue(const Wave& wave, simTime_t time)
     {
         const LogicVector value = wave.valueAt(time);
         if (wave.width == 1)
@@ -108,7 +108,7 @@ namespace Pulse::Debugger
     // Waveform Drawing & Glyph Generation
     // --------------------------------------------------------------------------------------------
 
-    std::string renderWave(const Wave& wave, uint64_t start, uint64_t end, uint64_t cursor, bool focused)
+    std::string renderWave(const Wave& wave, simTime_t start, simTime_t end, simTime_t cursor, bool focused)
     {
         std::ostringstream out;
         const char* defaultBg = focused ? Style::focusBg : "";
@@ -117,7 +117,7 @@ namespace Pulse::Debugger
         if (wave.width == 1)
         {
             char previous = wave.valueAt(start).bit(0);
-            for (uint64_t time = start; time < end; ++time)
+            for (simTime_t time = start; time < end; ++time)
             {
                 const char current = wave.valueAt(time).bit(0);
                 const char next = wave.valueAt(time + 1).bit(0);
@@ -174,10 +174,10 @@ namespace Pulse::Debugger
         }
 
         // Multi-bit buses: divide timestamps into runs of identical values and render hex labels
-        for (uint64_t time = start; time < end;)
+        for (simTime_t time = start; time < end;)
         {
             const LogicVector value = wave.valueAt(time);
-            uint64_t run = 1;
+            simTime_t run = 1;
             while (time + run < end && wave.valueAt(time + run) == value)
             {
                 ++run;
@@ -223,12 +223,12 @@ namespace Pulse::Debugger
         return out.str();
     }
 
-    std::string renderCursor(uint64_t start, uint64_t end, uint64_t cursor, bool focused)
+    std::string renderCursor(simTime_t start, simTime_t end, simTime_t cursor, bool focused)
     {
         std::string result;
         const char* defaultBg = focused ? Style::focusBg : "";
 
-        for (uint64_t time = start; time < end; ++time)
+        for (simTime_t time = start; time < end; ++time)
         {
             if (time == cursor)
             {
@@ -248,9 +248,9 @@ namespace Pulse::Debugger
 
     std::vector<std::string> buildFrame(
         const std::vector<Row>& rows,
-        uint64_t start,
-        uint64_t end,
-        uint64_t cursor,
+        simTime_t start,
+        simTime_t end,
+        simTime_t cursor,
         size_t firstRow,
         size_t selectedRow,
         Size size,
@@ -282,7 +282,7 @@ namespace Pulse::Debugger
             1,
             size.columns > panelWidth + 3 ? size.columns - panelWidth - 3 : 1);
 
-        const uint64_t visibleEnd = std::min(end, start + timeWidth);
+        const simTime_t visibleEnd = std::min(end, start + timeWidth);
         const size_t visibleRows = std::max<size_t>(1, size.rows > 3 ? size.rows - 3 : 1);
 
         // Header line

@@ -6,7 +6,7 @@
 #include <istream>
 #include <cstdint>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     /// Defines the broad lexical categories for VHDL tokens.
     /// This categorization avoids deep semantic analysis at the lexer stage.
@@ -70,6 +70,6 @@ namespace Pulse::Parser::VHDL
         bool operator>>(Token& token);
     };
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser
 
 #endif // PULSE_VHDL_TOKENIZER_H

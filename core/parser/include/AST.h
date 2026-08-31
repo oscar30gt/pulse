@@ -10,7 +10,7 @@
 #include <cmath>
 #include <unordered_map>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     /// Return type of an expression
     enum class ReturnType
@@ -264,6 +264,6 @@ namespace Pulse::Parser::VHDL
     [[nodiscard]]
     ASTRoot VHDLtoAST(Tokenizer& tokenizer);
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser
 
 #endif // PULSE_VHDL_ASTBUILDER_H

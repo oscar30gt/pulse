@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     /// Untility class that generates Blueprints from a LinkedDesign.
     /// A linked design is the final representation of a VHDL design before the whole design
@@ -26,6 +26,6 @@ namespace Pulse::Parser::VHDL
         std::unordered_map<EntityName, std::unique_ptr<Blueprint>>
             generate(const LinkedDesign& design, std::string architectureName = "behavioral");
     };
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser
 
 #endif // PULSE_VHDL_BLUEPRINT_GENERATOR_H

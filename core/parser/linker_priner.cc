@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     namespace
     {
@@ -405,4 +405,4 @@ namespace Pulse::Parser::VHDL
         }
     }
 
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser

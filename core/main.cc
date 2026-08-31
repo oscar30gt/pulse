@@ -1,3 +1,13 @@
+///
+/// Pulse Simulator
+/// Óscar Grimal Torres
+///
+/// Pulse is a multi-platform digital logic simulation engine for VHDL made with C++. 
+/// It transforms VHDL source code into a logic components simulation model that can be simulated and debugged.
+///
+/// Usage: ./pulse <project_path> [options]
+///
+
 #include <fstream>
 #include <cstdlib>
 #include <iostream>
@@ -16,8 +26,9 @@
 
 #define VERSION "1.0.0"
 
-using namespace Pulse::Parser::VHDL;
+using namespace Pulse::Parser;
 using namespace Pulse::Engine;
+using namespace Pulse::Debugger;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -25,7 +36,7 @@ using namespace Pulse::Engine;
 /// Parses a VHDL file and returns its abstract syntax tree.
 /// @param filename The path to the VHDL file to parse.
 /// @returns AST representing the parsed file.
-Pulse::Parser::VHDL::ASTRoot fileParsingPipeline(const std::string& filename);
+ASTRoot fileParsingPipeline(const std::string& filename);
 
 /// Prints the help message to the console.
 void printHelp();
@@ -41,7 +52,7 @@ void printVersion();
 /// @param[out] topEntity The name of the top-level entity to simulate. Default is top. (set by --top) [lowercased]
 /// @param[out] architecture The name of the architecture to use for simulation. Default is behavioral. (set by --arch) [lowercased]
 /// @param[out] endTime The end time for the simulation in femtoseconds. Default is 1000fs. (set by --end)
-void parseArgs(int argc, char* argv[], std::string& projectPath, bool& recursive, std::string& topEntity, std::string& architecture, uint64_t& endTime);
+void parseArgs(int argc, char* argv[], std::string& projectPath, bool& recursive, std::string& topEntity, std::string& architecture, simTime_t& endTime);
 
 /// Fills the sources vector with the paths of all VHDL files found in the specified project path.
 /// @param projectPath The path to the project directory to search for VHDL files.
@@ -78,7 +89,7 @@ int main(int argc, char* argv[])
     bool recursive;
     std::string topEntity;
     std::string architecture;
-    uint64_t endTime;
+    simTime_t endTime;
 
     parseArgs(argc, argv, projectPath, recursive, topEntity, architecture, endTime);
 
@@ -108,17 +119,17 @@ int main(int argc, char* argv[])
             throw std::runtime_error("Top-level entity '" + topEntity + "' not found. Ensure it exists or provide another entity using the --top option.");
 
         Subgraph graph(*bp->second.get(), {}, {});
-        Pulse::Debugger::WaveformRecorder recorder(graph.takeSnapshot());
+        WaveformRecorder recorder(graph.takeSnapshot());
 
         // Simulation
-        for (uint64_t i = 0; i <= endTime; ++i)
+        for (simTime_t i = 0; i <= endTime; ++i)
         {
             graph.update();
             recorder.record(graph.takeSnapshot(), i);
         }
 
         // Once simulated, allow user to visualize the waveform of the simulation.
-        Pulse::Debugger::showWaveform(recorder.waveform(), 0, endTime, topEntity);
+        showWaveform(recorder.waveform(), 0, endTime, topEntity);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -139,7 +150,7 @@ int main(int argc, char* argv[])
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-Pulse::Parser::VHDL::ASTRoot fileParsingPipeline(const std::string& filename)
+ASTRoot fileParsingPipeline(const std::string& filename)
 {
     std::ifstream inputFile(filename);
     if (!inputFile.is_open())
@@ -173,7 +184,7 @@ void printVersion()
     std::cout << "Pulse Simulator. Version " << VERSION << "\n";
 }
 
-void parseArgs(int argc, char* argv[], std::string& projectPath, bool& recursive, std::string& topEntity, std::string& architecture, uint64_t& endTime)
+void parseArgs(int argc, char* argv[], std::string& projectPath, bool& recursive, std::string& topEntity, std::string& architecture, simTime_t& endTime)
 {
     projectPath = argv[1];
     recursive = false;
@@ -210,7 +221,7 @@ void parseArgs(int argc, char* argv[], std::string& projectPath, bool& recursive
             std::string numberPart = timeStr.substr(0, pos);
             std::string unitPart = (pos != std::string::npos) ? timeStr.substr(pos) : "fs";
 
-            uint64_t timeValue;
+            simTime_t timeValue;
 
             try
             {

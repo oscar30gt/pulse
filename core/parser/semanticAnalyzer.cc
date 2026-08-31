@@ -1,7 +1,7 @@
 #include "semanticAnalyzer.h"
 #include <cmath>
 
-namespace Pulse::Parser::VHDL
+namespace Pulse::Parser
 {
     void SemanticAnalyzer::analyze(const ASTRoot& root)
     {
@@ -325,4 +325,4 @@ namespace Pulse::Parser::VHDL
     {
         (void)cond;
     }
-} // namespace Pulse::Parser::VHDL
+} // namespace Pulse::Parser
