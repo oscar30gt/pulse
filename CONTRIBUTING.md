@@ -34,7 +34,7 @@ Then, run the tests and the test VHDL project to ensure everything is working as
 ./build/Debug/pulse_tests # or pulse_tests.exe on Windows
 
 # Run test project
-./build/Debug/pulse test_project # or pulse.exe test_project on Windows
+./build/Debug/pulse test-project # or pulse.exe test-project on Windows
 ```
 
 ## Project Structure
