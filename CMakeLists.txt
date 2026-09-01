@@ -9,9 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # -----------------------------------------------------------------------------
 # Automatically gather all core source files
 file(GLOB_RECURSE PULSE_SOURCES CONFIGURE_DEPENDS
-    "core/engine/*.cc"
-    "core/parser/*.cc"
-    "core/debugger/*.cc"
+    "src/engine/*.cc"
+    "src/parser/*.cc"
+    "src/debugger/*.cc"
 )
 # Exclude test files from core library
 list(FILTER PULSE_SOURCES EXCLUDE REGEX ".*/tests/.*")
@@ -21,19 +21,19 @@ add_library(pulse_app STATIC
 )
 
 target_include_directories(pulse_app PUBLIC
-    core/engine/include
-    core/engine/lib
-    core/parser/include
-    core/parser/lib
-    core/debugger/include
-    core/debugger/lib
+    src/engine/include
+    src/engine/lib
+    src/parser/include
+    src/parser/lib
+    src/debugger/include
+    src/debugger/lib
 )
 
 # -----------------------------------------------------------------------------
 # 2. Main Application Executable (pulse.exe)
 # -----------------------------------------------------------------------------
 add_executable(pulse
-    core/main.cc
+    src/main.cc
 )
 
 target_link_libraries(pulse PRIVATE
@@ -59,7 +59,7 @@ if(BUILD_TESTS)
 
     # Automatically find all test files matching *test*.cc or *.test.cpp in any tests/ directory
     file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
-        "core/**/tests/*.cc"
+        "src/**/tests/*.cc"
     )
 
     if(TEST_SOURCES)

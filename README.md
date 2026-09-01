@@ -79,7 +79,8 @@ $ pulse ./examples/my_project -R
 | Key | Action |
 | --- | --- |
 | **Left / Right** | Move time cursor back and forth |
-| **Up / Down** | Scroll vertically if needed |
+| **Up / Down** | Move focus up and down |
+| **Space / Enter** | Collapse/expand a node |
 | **Q / Esc** | Exit interactive debugger |
 
 ## Supported Syntax
@@ -159,6 +160,15 @@ flowchart LR
 - **Debugging & Visualization:** A simulated circuit outputs a **waveform**, which represents how signals change over time. That waveform is displayed in an interactive terminal-based UI where values can be inspected at different time steps.
 
 ![Waveform](./docs/assets/waveform.png)
+
+## Roadmap
+
+Pulse will continue to evolve and improve over time. Here are some of the planned features and improvements:
+- Extended support for VHDL constructs, including generics, types and more complex logic.
+- Enhanced simulation engine with better performance and support for larger designs.
+- Improved TUI with more interactive features and better visualization options.
+- An optional web-based GUI for waveform visualization using a modern web framework such as React.
+- Verilog support and, eventually, mixed-language (VHDL + Verilog) simulation capabilities.
 
 ## License
 

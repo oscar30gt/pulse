@@ -341,7 +341,7 @@ namespace Pulse::Debugger
             << '/' << rows.size();
         if (controls)
         {
-            line << "  fs  Arrows: move cursor/focus  Space/Enter: collapse/expand  Q/Esc: quit";
+            line << "  Arrows: move cursor/focus  Space/Enter: collapse/expand  Q/Esc: quit";
         }
         line << Style::reset;
         frame.push_back(line.str());
