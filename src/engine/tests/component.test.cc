@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "../include/component.h"
-#include "../include/wire.h"
+#include "component.h"
+#include "wire.h"
 
 using namespace Pulse::Engine;
 

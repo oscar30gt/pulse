@@ -103,7 +103,7 @@ namespace Pulse::Parser
         ///          regardless of whether the signal was declared with DOWNTO or TO.
         struct SignalInfo
         {
-            Pulse::bitWidth_t width = 1;
+            bitWidth_t width = 1;
             bool isDownto = true;     ///< True when declared as (high DOWNTO low).
             int64_t declaredLow = 0;  ///< min(bound0, bound1) of the declaration.
             int64_t declaredHigh = 0; ///< max(bound0, bound1) of the declaration.
@@ -115,7 +115,7 @@ namespace Pulse::Parser
         ///          before the relevant @ref SignalInfo or @ref PortDeclaration is created.
         struct TypeSpec
         {
-            Pulse::bitWidth_t width;
+            bitWidth_t width;
             bool isVector;
             bool isDownto;
             int64_t low;
@@ -476,7 +476,7 @@ namespace Pulse::Parser
             if (width < 1 || width > 255)
                 error(ctx, "vector width out of range");
 
-            return TypeSpec{ static_cast<Pulse::bitWidth_t>(width), true, isDownto, low, high };
+            return TypeSpec{ static_cast<bitWidth_t>(width), true, isDownto, low, high };
         }
 
         // ===============================================================
@@ -1467,7 +1467,7 @@ namespace Pulse::Parser
             auto lit = std::make_unique<LogicLiteralExpr>();
             lit->value = value;
             lit->unknownMask = mask;
-            lit->width = static_cast<Pulse::bitWidth_t>(width);
+            lit->width = static_cast<bitWidth_t>(width);
             return lit;
         }
 

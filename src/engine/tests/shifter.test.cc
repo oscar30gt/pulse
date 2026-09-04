@@ -2,10 +2,10 @@
 // Comprehensive unit tests for Pulse::Shifter component.
 
 #include <gtest/gtest.h>
-#include "../include/shifter.h"
-#include "../include/wire.h"
-#include "../include/signalSource.h"
-#include "../include/constant.h"
+#include "shifter.h"
+#include "wire.h"
+#include "signalSource.h"
+#include "constant.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

@@ -26,6 +26,7 @@
 
 #define VERSION "1.0.0"
 
+using namespace Pulse;
 using namespace Pulse::Parser;
 using namespace Pulse::Engine;
 using namespace Pulse::Debugger;

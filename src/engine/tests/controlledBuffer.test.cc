@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include "../include/controlledBuffer.h"
-#include "../include/wire.h"
-#include "../include/signalSource.h"
+#include "controlledBuffer.h"
+#include "wire.h"
+#include "signalSource.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

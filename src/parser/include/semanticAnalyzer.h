@@ -20,7 +20,7 @@ namespace Pulse::Parser
     private:
         struct SymbolInfo 
         {
-            Pulse::bitWidth_t width;
+            bitWidth_t width;
             bool isInput;
         };
 
@@ -40,8 +40,8 @@ namespace Pulse::Parser
         void analyzeCondition(const Expression<ReturnType::BOOLEAN>* cond);
 
         // Helper to recursively determine the bit-width of an expression
-        Pulse::bitWidth_t evaluateWidth(const ASTNode* expr);
-        Pulse::bitWidth_t getSignalReferenceWidth(const SignalReference* ref);
+        bitWidth_t evaluateWidth(const ASTNode* expr);
+        bitWidth_t getSignalReferenceWidth(const SignalReference* ref);
     };
 
 } // namespace Pulse::Parser

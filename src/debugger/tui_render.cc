@@ -12,7 +12,7 @@ namespace Pulse::Debugger
     // UTF-8 & String Formatting Helpers
     // --------------------------------------------------------------------------------------------
 
-    std::string formatBusValue(const LogicVector& value, bitWidth_t width)
+    std::string formatBusValue(const Engine::LogicVector& value, bitWidth_t width)
     {
         const uint8_t bits = std::min<uint8_t>(width, 64);
         for (uint8_t bit = 0; bit < bits; ++bit)
@@ -95,7 +95,7 @@ namespace Pulse::Debugger
 
     std::string cursorValue(const Wave& wave, simTime_t time)
     {
-        const LogicVector value = wave.valueAt(time);
+        const Engine::LogicVector value = wave.valueAt(time);
         if (wave.width == 1)
         {
             return std::string(1, value.bit(0));
@@ -176,7 +176,7 @@ namespace Pulse::Debugger
         // Multi-bit buses: divide timestamps into runs of identical values and render hex labels
         for (simTime_t time = start; time < end;)
         {
-            const LogicVector value = wave.valueAt(time);
+            const Engine::LogicVector value = wave.valueAt(time);
             simTime_t run = 1;
             while (time + run < end && wave.valueAt(time + run) == value)
             {

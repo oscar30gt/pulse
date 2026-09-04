@@ -2,9 +2,9 @@
 // Tests for Pulse::SignalDrain using GoogleTest.
 
 #include <gtest/gtest.h>
-#include "../include/signalDrain.h"
-#include "../include/wire.h"
-#include "../include/signalSource.h"
+#include "signalDrain.h"
+#include "wire.h"
+#include "signalSource.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

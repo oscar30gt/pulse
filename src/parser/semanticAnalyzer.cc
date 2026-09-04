@@ -92,8 +92,8 @@ namespace Pulse::Parser
 
     void SemanticAnalyzer::analyzeAssignment(const SignalAssignment* assignment)
     {
-        Pulse::bitWidth_t targetWidth = getSignalReferenceWidth(assignment->target.get());
-        Pulse::bitWidth_t valueWidth = evaluateWidth(assignment->value.get());
+        bitWidth_t targetWidth = getSignalReferenceWidth(assignment->target.get());
+        bitWidth_t valueWidth = evaluateWidth(assignment->value.get());
 
         // Validate width matching
         if (targetWidth != valueWidth)
@@ -134,7 +134,7 @@ namespace Pulse::Parser
                 if (formalPort->portName == mappedPort.first)
                 {
                     found = true;
-                    Pulse::bitWidth_t actualWidth = getSignalReferenceWidth(mappedPort.second.get());
+                    bitWidth_t actualWidth = getSignalReferenceWidth(mappedPort.second.get());
                     
                     if (formalPort->width != actualWidth)
                     {
@@ -153,7 +153,7 @@ namespace Pulse::Parser
         }
     }
 
-    Pulse::bitWidth_t SemanticAnalyzer::getSignalReferenceWidth(const SignalReference* ref)
+    bitWidth_t SemanticAnalyzer::getSignalReferenceWidth(const SignalReference* ref)
     {
         auto it = m_currentScopeSymbols.find(ref->signalName);
         if (it == m_currentScopeSymbols.end())
@@ -175,22 +175,22 @@ namespace Pulse::Parser
             
             if (lowLit && highLit)
             {
-                return static_cast<Pulse::bitWidth_t>(std::abs(highLit->value - lowLit->value) + 1);
+                return static_cast<bitWidth_t>(std::abs(highLit->value - lowLit->value) + 1);
             }
             throw std::runtime_error("Semantic Error: Dynamic ranges are not supported for width calculation.");
         }
         return 1;
     }
 
-    Pulse::bitWidth_t SemanticAnalyzer::evaluateWidth(const ASTNode* node)
+    bitWidth_t SemanticAnalyzer::evaluateWidth(const ASTNode* node)
     {
         if (auto lit = dynamic_cast<const LogicLiteralExpr*>(node)) return lit->width;
         if (auto ref = dynamic_cast<const SignalReference*>(node)) return getSignalReferenceWidth(ref);
         
         if (auto binOp = dynamic_cast<const BinaryOpExpr<ReturnType::LOGIC>*>(node))
         {
-            Pulse::bitWidth_t leftW = evaluateWidth(binOp->left.get());
-            Pulse::bitWidth_t rightW = evaluateWidth(binOp->right.get());
+            bitWidth_t leftW = evaluateWidth(binOp->left.get());
+            bitWidth_t rightW = evaluateWidth(binOp->right.get());
             
             if (binOp->op == "&") return leftW + rightW;
             
@@ -208,7 +208,7 @@ namespace Pulse::Parser
 
         if (auto whenElse = dynamic_cast<const WhenElseExpr*>(node))
         {
-            Pulse::bitWidth_t defaultW = evaluateWidth(whenElse->defaultValue.get());
+            bitWidth_t defaultW = evaluateWidth(whenElse->defaultValue.get());
             for (const auto& branch : whenElse->branches)
             {
                 if (evaluateWidth(branch.value.get()) != defaultW)

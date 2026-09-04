@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # -----------------------------------------------------------------------------
 # Automatically gather all core source files
 file(GLOB_RECURSE PULSE_SOURCES CONFIGURE_DEPENDS
+    "src/shared/*.cc"
     "src/engine/*.cc"
     "src/parser/*.cc"
     "src/debugger/*.cc"
@@ -20,12 +21,20 @@ add_library(pulse_app STATIC
     ${PULSE_SOURCES}
 )
 
-target_include_directories(pulse_app PUBLIC
+target_include_directories(pulse_app 
+  PUBLIC
+    src/shared/include
     src/engine/include
-    src/engine/lib
     src/parser/include
-    src/parser/lib
     src/debugger/include
+    src/shared/impl
+    src/engine/impl
+    src/parser/impl
+    src/debugger/impl
+  PRIVATE
+    src/shared/lib
+    src/engine/lib
+    src/parser/lib
     src/debugger/lib
 )
 

@@ -50,7 +50,7 @@ namespace Pulse::Parser
     struct PortDeclaration : ASTNode
     {
         std::string portName;       ///< Name of the port
-        Pulse::bitWidth_t width;    ///< Width of the port in bits
+        bitWidth_t width;           ///< Width of the port in bits
         bool isInput;               ///< True if the port is an input, false if it's an output
     };
 
@@ -89,7 +89,7 @@ namespace Pulse::Parser
     struct SignalDeclaration : ASTNode
     {
         std::string signalName;     ///< Name of the signal
-        Pulse::bitWidth_t width;    ///< Width of the signal in bits
+        bitWidth_t width;    ///< Width of the signal in bits
         uint64_t initialValue;      ///< Initial value of the signal, if any. Not implemented yet.
     };
 
@@ -186,7 +186,7 @@ namespace Pulse::Parser
     {
         uint64_t value = 0;             ///< 0/1 when mask bit is 0, undefined/high-Z when mask bit is 1.
         uint64_t unknownMask = 0;       ///< 1 = bit is X/Z, 0 = bit is known 0/1
-        Pulse::bitWidth_t width = 0;    ///< Width of the logic literal in bits
+        bitWidth_t width = 0;    ///< Width of the logic literal in bits
     };
 
     /// Known attributes of a signal reference.

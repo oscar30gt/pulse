@@ -41,7 +41,6 @@ namespace Pulse::Engine
         // Now, create the components based on the blueprint. 
         // Each component will connect to the appropriate wires, 
         // which can be either internal wires or the subgraph's ports.
-        using namespace Pulse::Parser;
         for (auto& [name, component] : bp.components)
         {
             // Instantiate the component based on its type. Subgraph will take ownership of the created component.

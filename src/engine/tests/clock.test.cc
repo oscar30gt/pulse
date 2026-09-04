@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../include/clock.h"
+#include "clock.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

@@ -28,8 +28,6 @@ namespace Pulse::Engine
     /// A dynamically generated subgraph component defined by a blueprint object.
     class Subgraph : public Component
     {
-        using Blueprint = Pulse::Parser::Blueprint;
-
         std::unordered_map<std::string, std::unique_ptr<Wire>> wires;
         std::unordered_map<std::string, std::unique_ptr<Component>> components;
 

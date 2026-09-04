@@ -2,11 +2,11 @@
 // Comprehensive tests for Pulse::Concatenator component.
 
 #include <gtest/gtest.h>
-#include "../include/concatenator.h"
-#include "../include/wire.h"
-#include "../include/signalSource.h"
-#include "../include/signalDrain.h"
-#include "../include/constant.h"
+#include "concatenator.h"
+#include "wire.h"
+#include "signalSource.h"
+#include "signalDrain.h"
+#include "constant.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

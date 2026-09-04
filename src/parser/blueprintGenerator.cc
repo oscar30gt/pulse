@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <cassert>
 
+using namespace Pulse::Engine;
+
 namespace Pulse::Parser
 {
     // =========================================================================
@@ -15,10 +17,10 @@ namespace Pulse::Parser
         // Helpers
         // -----------------------------------------------------------------------
 
-        std::unordered_map<std::string, Pulse::bitWidth_t>
-        buildWidthTable(const LinkedArchitecture& arch)
+        std::unordered_map<std::string, bitWidth_t>
+            buildWidthTable(const LinkedArchitecture& arch)
         {
-            std::unordered_map<std::string, Pulse::bitWidth_t> table;
+            std::unordered_map<std::string, bitWidth_t> table;
 
             for (const auto& port : arch.targetEntity->ports)
                 table[port->portName] = port->width;
@@ -35,14 +37,14 @@ namespace Pulse::Parser
 
         struct ExprCompiler
         {
-            Blueprint&                                              bp;
-            const std::unordered_map<std::string, Pulse::bitWidth_t>& widths;
+            Blueprint& bp;
+            const std::unordered_map<std::string, bitWidth_t>& widths;
             int                                                     counter = 0;
 
             // ------------------------------------------------------------------
             // Allocate a fresh temporary wire and register it in the blueprint.
             // ------------------------------------------------------------------
-            std::string makeTmp(Pulse::bitWidth_t width, const std::string& prefix = "$tmp_")
+            std::string makeTmp(bitWidth_t width, const std::string& prefix = "$tmp_")
             {
                 std::string name = prefix + std::to_string(counter++);
                 bp.addSignal(name, width);
@@ -52,7 +54,7 @@ namespace Pulse::Parser
             // ------------------------------------------------------------------
             // Resolve the bit-width of an arbitrary LOGIC expression.
             // ------------------------------------------------------------------
-            Pulse::bitWidth_t widthOf(const ASTNode* node)
+            bitWidth_t widthOf(const ASTNode* node)
             {
                 if (auto lit = dynamic_cast<const LogicLiteralExpr*>(node))
                     return lit->width;
@@ -71,7 +73,7 @@ namespace Pulse::Parser
                         auto lo = dynamic_cast<const IntegerLiteralExpr*>(ref->low.get());
                         auto hi = dynamic_cast<const IntegerLiteralExpr*>(ref->high.get());
                         if (lo && hi)
-                            return static_cast<Pulse::bitWidth_t>(std::abs(hi->value - lo->value) + 1);
+                            return static_cast<bitWidth_t>(std::abs(hi->value - lo->value) + 1);
                     }
                     return 1;
                 }
@@ -104,7 +106,7 @@ namespace Pulse::Parser
                     std::string out = targetWire.empty() ? makeTmp(lit->width, "$const_") : targetWire;
                     LogicVector val{ lit->value, lit->unknownMask };
                     bp.addComponent("$cst_" + std::to_string(counter++),
-                                    std::make_unique<ConstantInstance>(out, std::move(val)));
+                        std::make_unique<ConstantInstance>(out, std::move(val)));
                     return out;
                 }
 
@@ -140,7 +142,7 @@ namespace Pulse::Parser
                     if (!targetWire.empty() && targetWire != base)
                     {
                         bp.addComponent("$join_" + base + "_" + std::to_string(counter++),
-                                        std::make_unique<JoinInstance>(base, targetWire));
+                            std::make_unique<JoinInstance>(base, targetWire));
                         return targetWire;
                     }
                     return base;
@@ -157,10 +159,10 @@ namespace Pulse::Parser
                     if (it == widths.end())
                         throw std::runtime_error("BlueprintGenerator: unknown signal '" + base + "'");
 
-                    auto bit = static_cast<Pulse::bitWidth_t>(idxExpr->value);
+                    auto bit = static_cast<bitWidth_t>(idxExpr->value);
                     std::string out = targetWire.empty() ? makeTmp(1, "$split_") : targetWire;
                     bp.addComponent("$sp_" + std::to_string(counter++),
-                                    std::make_unique<SplitterInstance>(base, out, bit, bit));
+                        std::make_unique<SplitterInstance>(base, out, bit, bit));
                     return out;
                 }
 
@@ -171,12 +173,12 @@ namespace Pulse::Parser
                     if (!loExpr || !hiExpr)
                         throw std::runtime_error("BlueprintGenerator: dynamic range slice not supported.");
 
-                    auto lo = static_cast<Pulse::bitWidth_t>(loExpr->value);
-                    auto hi = static_cast<Pulse::bitWidth_t>(hiExpr->value);
-                    Pulse::bitWidth_t w = static_cast<Pulse::bitWidth_t>(std::abs((int)hi - (int)lo) + 1);
+                    auto lo = static_cast<bitWidth_t>(loExpr->value);
+                    auto hi = static_cast<bitWidth_t>(hiExpr->value);
+                    bitWidth_t w = static_cast<bitWidth_t>(std::abs((int)hi - (int)lo) + 1);
                     std::string out = targetWire.empty() ? makeTmp(w, "$split_") : targetWire;
                     bp.addComponent("$sp_" + std::to_string(counter++),
-                                    std::make_unique<SplitterInstance>(base, out, hi, lo));
+                        std::make_unique<SplitterInstance>(base, out, hi, lo));
                     return out;
                 }
             }
@@ -187,13 +189,13 @@ namespace Pulse::Parser
             std::string compileUnary(const UnaryOpExpr<ReturnType::LOGIC>* un, const std::string& targetWire = "")
             {
                 std::string in  = compile(un->operand.get());
-                Pulse::bitWidth_t w = widthOf(un->operand.get());
+                bitWidth_t w = widthOf(un->operand.get());
                 std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
 
                 if (un->op == "not")
                 {
                     bp.addComponent("$not_" + std::to_string(counter++),
-                                    std::make_unique<NotGateInstance>(in, out));
+                        std::make_unique<NotGateInstance>(in, out));
                 }
                 else
                 {
@@ -211,23 +213,23 @@ namespace Pulse::Parser
                 std::string rhs = compile(bin->right.get());
 
                 // ── Logical / bitwise ──────────────────────────────────────────
-                static const struct { const char* op; Pulse::Engine::BinaryOp bop; }
+                static const struct { const char* op; BinaryOp bop; }
                 logicOps[] = {
-                    { "and",  Pulse::Engine::BinaryOp::AND  },
-                    { "or",   Pulse::Engine::BinaryOp::OR   },
-                    { "xor",  Pulse::Engine::BinaryOp::XOR  },
-                    { "nand", Pulse::Engine::BinaryOp::NAND },
-                    { "nor",  Pulse::Engine::BinaryOp::NOR  },
-                    { "xnor", Pulse::Engine::BinaryOp::XNOR },
+                    { "and",  BinaryOp::AND  },
+                    { "or",   BinaryOp::OR   },
+                    { "xor",  BinaryOp::XOR  },
+                    { "nand", BinaryOp::NAND },
+                    { "nor",  BinaryOp::NOR  },
+                    { "xnor", BinaryOp::XNOR },
                 };
                 for (auto& entry : logicOps)
                 {
                     if (bin->op == entry.op)
                     {
-                        Pulse::bitWidth_t w = widthOf(bin->left.get());
+                        bitWidth_t w = widthOf(bin->left.get());
                         std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
                         bp.addComponent("$gate_" + std::to_string(counter++),
-                                        std::make_unique<BinaryGateInstance>(lhs, rhs, out, entry.bop));
+                            std::make_unique<BinaryGateInstance>(lhs, rhs, out, entry.bop));
                         return out;
                     }
                 }
@@ -235,54 +237,54 @@ namespace Pulse::Parser
                 // ── Concatenation ─────────────────────────────────────────────
                 if (bin->op == "&")
                 {
-                    Pulse::bitWidth_t w = widthOf(bin->left.get()) + widthOf(bin->right.get());
+                    bitWidth_t w = widthOf(bin->left.get()) + widthOf(bin->right.get());
                     std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
                     bp.addComponent("$cat_" + std::to_string(counter++),
-                                    std::make_unique<ConcatenatorInstance>(rhs, lhs, out));
+                        std::make_unique<ConcatenatorInstance>(rhs, lhs, out));
                     return out;
                 }
 
                 // ── Shift operations ───────────────────────────────────────────
-                static const struct { const char* op; Pulse::Engine::ShiftOp sop; }
+                static const struct { const char* op; ShiftOp sop; }
                 shiftOps[] = {
-                    { "sll", Pulse::Engine::ShiftOp::LogicalLeft    },
-                    { "srl", Pulse::Engine::ShiftOp::LogicalRight   },
-                    { "sra", Pulse::Engine::ShiftOp::ArithmeticRight },
-                    { "rol", Pulse::Engine::ShiftOp::RotateLeft     },
-                    { "ror", Pulse::Engine::ShiftOp::RotateRight    },
+                    { "sll", ShiftOp::LogicalLeft    },
+                    { "srl", ShiftOp::LogicalRight   },
+                    { "sra", ShiftOp::ArithmeticRight },
+                    { "rol", ShiftOp::RotateLeft     },
+                    { "ror", ShiftOp::RotateRight    },
                 };
                 for (auto& entry : shiftOps)
                 {
                     if (bin->op == entry.op)
                     {
-                        Pulse::bitWidth_t w = widthOf(bin->left.get());
+                        bitWidth_t w = widthOf(bin->left.get());
                         std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
                         bp.addComponent("$shft_" + std::to_string(counter++),
-                                        std::make_unique<ShifterInstance>(lhs, rhs, out, entry.sop));
+                            std::make_unique<ShifterInstance>(lhs, rhs, out, entry.sop));
                         return out;
                     }
                 }
 
                 // ── Arithmetic ────────────────────────────────────────────────
                 {
-                    Pulse::bitWidth_t w = widthOf(bin->left.get());
+                    bitWidth_t w = widthOf(bin->left.get());
                     std::string out = targetWire.empty() ? makeTmp(w) : targetWire;
                     if (bin->op == "+")
                     {
                         bp.addComponent("$add_" + std::to_string(counter++),
-                                        std::make_unique<AdderInstance>(lhs, rhs, out));
+                            std::make_unique<AdderInstance>(lhs, rhs, out));
                         return out;
                     }
                     if (bin->op == "-")
                     {
                         bp.addComponent("$sub_" + std::to_string(counter++),
-                                        std::make_unique<SubtractorInstance>(lhs, rhs, out));
+                            std::make_unique<SubtractorInstance>(lhs, rhs, out));
                         return out;
                     }
                     if (bin->op == "*")
                     {
                         bp.addComponent("$mul_" + std::to_string(counter++),
-                                        std::make_unique<MultiplicatorInstance>(lhs, rhs, out));
+                            std::make_unique<MultiplicatorInstance>(lhs, rhs, out));
                         return out;
                     }
                 }
@@ -295,13 +297,13 @@ namespace Pulse::Parser
             // ------------------------------------------------------------------
             std::string compileWhenElse(const WhenElseExpr* we, const std::string& targetWire = "")
             {
-                Pulse::bitWidth_t w = widthOf(we->defaultValue.get());
+                bitWidth_t w = widthOf(we->defaultValue.get());
                 std::string finalOut = targetWire.empty() ? makeTmp(w, "$muxout_") : targetWire;
 
                 // Keep track of whether ANY previous condition was true
                 std::string anyPrevCond = makeTmp(1, "$any_prev_");
                 bp.addComponent("$cst_zero_" + std::to_string(counter++),
-                                std::make_unique<ConstantInstance>(anyPrevCond, LogicVector{0, 0}));
+                    std::make_unique<ConstantInstance>(anyPrevCond, LogicVector{ 0, 0 }));
 
                 // Process each conditional branch
                 for (const auto& branch : we->branches)
@@ -313,20 +315,20 @@ namespace Pulse::Parser
                     // Enable this branch only if its condition is true AND no previous condition was true
                     std::string notPrev = makeTmp(1, "$not_prev_");
                     bp.addComponent("$not_" + std::to_string(counter++),
-                                    std::make_unique<NotGateInstance>(anyPrevCond, notPrev));
-                    
+                        std::make_unique<NotGateInstance>(anyPrevCond, notPrev));
+
                     std::string actualCond = makeTmp(1, "$actual_cond_");
                     bp.addComponent("$and_" + std::to_string(counter++),
-                                    std::make_unique<BinaryGateInstance>(rawCond, notPrev, actualCond, Pulse::Engine::BinaryOp::AND));
+                        std::make_unique<BinaryGateInstance>(rawCond, notPrev, actualCond, BinaryOp::AND));
 
                     // Gate the value through a controlled buffer, driving finalOut directly
                     bp.addComponent("$cbuf_" + std::to_string(counter++),
-                                    std::make_unique<ControlledBufferInstance>(valWire, finalOut, actualCond));
+                        std::make_unique<ControlledBufferInstance>(valWire, finalOut, actualCond));
 
                     // Update anyPrevCond = anyPrevCond OR rawCond
                     std::string nextAny = makeTmp(1, "$any_prev_next_");
                     bp.addComponent("$or_" + std::to_string(counter++),
-                                    std::make_unique<BinaryGateInstance>(anyPrevCond, rawCond, nextAny, Pulse::Engine::BinaryOp::OR));
+                        std::make_unique<BinaryGateInstance>(anyPrevCond, rawCond, nextAny, BinaryOp::OR));
                     anyPrevCond = nextAny;
                 }
 
@@ -336,11 +338,11 @@ namespace Pulse::Parser
                 // Condition for default value is NOT anyPrevCond
                 std::string defCond = makeTmp(1, "$def_cond_");
                 bp.addComponent("$not_def_" + std::to_string(counter++),
-                                std::make_unique<NotGateInstance>(anyPrevCond, defCond));
+                    std::make_unique<NotGateInstance>(anyPrevCond, defCond));
 
                 // Gate the default value and drive finalOut
                 bp.addComponent("$cbuf_def_" + std::to_string(counter++),
-                                std::make_unique<ControlledBufferInstance>(defWire, finalOut, defCond));
+                    std::make_unique<ControlledBufferInstance>(defWire, finalOut, defCond));
 
                 return finalOut;
             }
@@ -357,21 +359,21 @@ namespace Pulse::Parser
                         std::string lhs = compileCondition(bin->left.get());
                         std::string rhs = compileCondition(bin->right.get());
                         std::string out = targetWire.empty() ? makeTmp(1, "$cond_") : targetWire;
-                        auto bop = (bin->op == "and") ? Pulse::Engine::BinaryOp::AND
-                                                      : Pulse::Engine::BinaryOp::OR;
+                        auto bop = (bin->op == "and") ? BinaryOp::AND
+                            : BinaryOp::OR;
                         bp.addComponent("$cgate_" + std::to_string(counter++),
-                                        std::make_unique<BinaryGateInstance>(lhs, rhs, out, bop));
+                            std::make_unique<BinaryGateInstance>(lhs, rhs, out, bop));
                         return out;
                     }
 
-                    static const struct { const char* op; Pulse::Engine::CompareOp cop; }
+                    static const struct { const char* op; CompareOp cop; }
                     cmpOps[] = {
-                        { "=",  Pulse::Engine::CompareOp::Equals           },
-                        { "/=", Pulse::Engine::CompareOp::NotEquals        },
-                        { "<",  Pulse::Engine::CompareOp::LessThan         },
-                        { "<=", Pulse::Engine::CompareOp::LessThanEqual    },
-                        { ">",  Pulse::Engine::CompareOp::GreaterThan      },
-                        { ">=", Pulse::Engine::CompareOp::GreaterThanEqual },
+                        { "=",  CompareOp::Equals           },
+                        { "/=", CompareOp::NotEquals        },
+                        { "<",  CompareOp::LessThan         },
+                        { "<=", CompareOp::LessThanEqual    },
+                        { ">",  CompareOp::GreaterThan      },
+                        { ">=", CompareOp::GreaterThanEqual },
                     };
                     for (auto& entry : cmpOps)
                     {
@@ -381,9 +383,9 @@ namespace Pulse::Parser
                             std::string rhs = compile(bin->right.get());
                             std::string out = targetWire.empty() ? makeTmp(1, "$cmp_") : targetWire;
                             bp.addComponent("$cmp_" + std::to_string(counter++),
-                                            std::make_unique<ComparatorInstance>(
-                                                lhs, rhs, out, entry.cop,
-                                                Pulse::Engine::CompareMode::Unsigned));
+                                std::make_unique<ComparatorInstance>(
+                                lhs, rhs, out, entry.cop,
+                                CompareMode::Unsigned));
                             return out;
                         }
                     }
@@ -398,7 +400,7 @@ namespace Pulse::Parser
                         std::string in  = compileCondition(un->operand.get());
                         std::string out = targetWire.empty() ? makeTmp(1, "$cnot_") : targetWire;
                         bp.addComponent("$cnot_" + std::to_string(counter++),
-                                        std::make_unique<NotGateInstance>(in, out));
+                            std::make_unique<NotGateInstance>(in, out));
                         return out;
                     }
                     throw std::runtime_error("BlueprintGenerator: unsupported unary boolean op '" + un->op + "'.");
@@ -423,7 +425,7 @@ namespace Pulse::Parser
             // ------------------------------------------------------------------
             void compileSequentialStatements(
                 const std::vector<std::unique_ptr<SequentialStatement>>& stmts,
-                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>>& outInstructions,
+                std::vector<std::unique_ptr<ProcessInstruction>>& outInstructions,
                 std::vector<std::string>& inPorts,
                 std::vector<std::string>& outPorts)
             {
@@ -435,7 +437,7 @@ namespace Pulse::Parser
                         std::string valWire = compile(asgn->value.get());
                         std::string tgtName = tgt->signalName;
 
-                        auto inst = std::make_unique<Pulse::Engine::ProcessInstructionAssignment>();
+                        auto inst = std::make_unique<ProcessInstructionAssignment>();
                         inst->sourcePort = valWire;
                         inst->targetPort = tgtName;
 
@@ -446,13 +448,13 @@ namespace Pulse::Parser
                     }
                     else if (auto waitStmt = dynamic_cast<const WaitForStatement*>(stmt.get()))
                     {
-                        auto inst = std::make_unique<Pulse::Engine::ProcessInstructionWait>();
+                        auto inst = std::make_unique<ProcessInstructionWait>();
                         inst->waitTime = waitStmt->durationFs;
                         outInstructions.push_back(std::move(inst));
                     }
                     else if (auto waitForeverStmt = dynamic_cast<const WaitForeverStatement*>(stmt.get()))
                     {
-                        auto inst = std::make_unique<Pulse::Engine::ProcessInstructionWaitForever>();
+                        auto inst = std::make_unique<ProcessInstructionWaitForever>();
                         outInstructions.push_back(std::move(inst));
                     }
                     else if (auto ifStmt = dynamic_cast<const IfStatement*>(stmt.get()))
@@ -471,14 +473,14 @@ namespace Pulse::Parser
             // ------------------------------------------------------------------
             void compileIfStatement(
                 const IfStatement* ifStmt,
-                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>>& outInstructions,
+                std::vector<std::unique_ptr<ProcessInstruction>>& outInstructions,
                 std::vector<std::string>& inPorts,
                 std::vector<std::string>& outPorts)
             {
                 struct CompiledBranch
                 {
                     std::string notCondWire;
-                    std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions;
+                    std::vector<std::unique_ptr<ProcessInstruction>> instructions;
                 };
 
                 std::vector<CompiledBranch> compiledBranches;
@@ -489,13 +491,13 @@ namespace Pulse::Parser
                     std::string condWire = compileCondition(branch.condition.get());
                     addPortIfMissing(inPorts, condWire);
 
-                    std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> branchInsts;
+                    std::vector<std::unique_ptr<ProcessInstruction>> branchInsts;
                     compileSequentialStatements(branch.body, branchInsts, inPorts, outPorts);
 
                     compiledBranches.push_back({ condWire, std::move(branchInsts) });
                 }
 
-                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> compiledElse;
+                std::vector<std::unique_ptr<ProcessInstruction>> compiledElse;
                 if (!ifStmt->elseBody.empty())
                 {
                     compileSequentialStatements(ifStmt->elseBody, compiledElse, inPorts, outPorts);
@@ -525,7 +527,7 @@ namespace Pulse::Parser
                     bool hasFollowing = (i + 1 < numBranches) || (elseSize > 0);
 
                     // 1. Conditional branch: if condition is false (notCond is 1), skip this branch's body (+ exit jump if present)
-                    auto condBranch = std::make_unique<Pulse::Engine::ProcessInstructionBranch>();
+                    auto condBranch = std::make_unique<ProcessInstructionBranch>();
                     condBranch->conditionPort = compiledBranches[i].notCondWire;
                     condBranch->branchLength = compiledBranches[i].instructions.size() + (hasFollowing ? 1 : 0);
                     outInstructions.push_back(std::move(condBranch));
@@ -539,7 +541,7 @@ namespace Pulse::Parser
                     // 3. Unconditional exit jump to skip to the end of the entire if/elsif/else
                     if (hasFollowing)
                     {
-                        auto exitJump = std::make_unique<Pulse::Engine::ProcessInstructionBranchAlways>();
+                        auto exitJump = std::make_unique<ProcessInstructionBranchAlways>();
                         exitJump->branchLength = suffixSize[i + 1];
                         outInstructions.push_back(std::move(exitJump));
                     }
@@ -560,7 +562,7 @@ namespace Pulse::Parser
     // =========================================================================
 
     std::unordered_map<BlueprintGenerator::EntityName, std::unique_ptr<Blueprint>>
-    BlueprintGenerator::generate(const LinkedDesign& design, std::string architectureName)
+        BlueprintGenerator::generate(const LinkedDesign& design, std::string architectureName)
     {
         std::unordered_map<EntityName, std::unique_ptr<Blueprint>> result;
 
@@ -580,7 +582,7 @@ namespace Pulse::Parser
             // 1. Register entity ports
             for (const auto& port : entity->ports)
                 bp->addPort(port->portName, port->isInput);
-            
+
             // 2. Register internal signals
             for (const SignalDeclaration* sig : arch.signals)
                 bp->addSignal(sig->signalName, sig->width);
@@ -635,7 +637,7 @@ namespace Pulse::Parser
                 }
 
                 bp->addComponent(inst.instanceName,
-                                 std::make_unique<SubgraphInstance>(nullptr, std::move(portMap)));
+                    std::make_unique<SubgraphInstance>(nullptr, std::move(portMap)));
             }
 
             // 5. Compile processes
@@ -643,7 +645,7 @@ namespace Pulse::Parser
             {
                 std::vector<std::string> inPorts;
                 std::vector<std::string> outPorts;
-                std::vector<std::unique_ptr<Pulse::Engine::ProcessInstruction>> instructions;
+                std::vector<std::unique_ptr<ProcessInstruction>> instructions;
 
                 compiler.compileSequentialStatements(proc->body, instructions, inPorts, outPorts);
 
@@ -654,11 +656,11 @@ namespace Pulse::Parser
                 bp->addComponent(
                     procName,
                     std::make_unique<ProcessInstance>(
-                        std::move(inPorts),
-                        std::move(outPorts),
-                        std::move(instructions),
-                        std::move(proc->sensitivityList)
-                    )
+                    std::move(inPorts),
+                    std::move(outPorts),
+                    std::move(instructions),
+                    std::move(proc->sensitivityList)
+                )
                 );
             }
 

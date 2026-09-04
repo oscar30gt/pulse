@@ -2,8 +2,8 @@
 // Exhaustive tests for Pulse::Constant using GoogleTest.
 
 #include <gtest/gtest.h>
-#include "../include/constant.h"
-#include "../lib/logicVector.h"
+#include "constant.h"
+#include "logicVector.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

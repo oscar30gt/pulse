@@ -6,19 +6,17 @@
 
 #include "miniSet.h"
 #include "logicVector.h"
+#include "types.h"
 
-namespace Pulse
+namespace Pulse::Engine
 {
     typedef uint16_t ttl_t;                             /// Time-to-live (TTL) type for signal propagation.
     static constexpr ttl_t TTL_DEFAULT = 512;           /// Default TTL value for signal propagation.
 
-    typedef uint8_t bitWidth_t;                         /// Bit width type for signals and ports.
-    static constexpr bitWidth_t BITWIDTH_DEFAULT = 64;  /// Default bit width for signals
-    static constexpr bitWidth_t BITWIDTH_MAX = 64;      /// Maximum bit width for signals and ports.
-}
+    class ISignalBase;
+    class ISignalReceiver;
+    class ISignalEmitter;
 
-namespace Pulse::Engine
-{
     // --------------------------------------------------------------------------------------------
 
     class bit_width_mismatch : public std::invalid_argument

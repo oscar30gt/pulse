@@ -1,10 +1,9 @@
 #include <gtest/gtest.h>
 
-#include "../include/subgraph.h"
+#include "subgraph.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;
-using namespace Pulse::Parser;
 
 TEST(SubgraphTest, SRFlipFlop)
 {

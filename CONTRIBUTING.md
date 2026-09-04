@@ -53,6 +53,8 @@ Inside of each folder, every feature or module (e.g., `x`) is divided into three
 
 > Additional internal interfaces may be created inside a `lib/` subdirectory.
 
+> For single-header modules (either private or public) whose implementation is included at the end of the header file, implementation can be placed inside a `impl/` subdirectory. For example, `src/engine/include/blueprint.h` has its implementation in `src/engine/impl/blueprint_impl.h`.
+
 
 ## Contributing Guidelines
 
