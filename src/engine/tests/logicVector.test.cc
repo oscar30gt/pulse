@@ -4,7 +4,7 @@
 #include <limits>
 #include <stdexcept>
 
-using Pulse::LogicVector;
+using Pulse::Engine::LogicVector;
 
 namespace
 {

@@ -17,7 +17,7 @@ namespace Pulse::Engine
             {
                 throw std::invalid_argument("Duplicate port name detected in Component constructor: '" + port.first + "'");
             }
-            m_inSignals[port.first] = port.second;
+            m_inSignals.push_back(std::move(port));
         }
 
         // Validate and register output ports.
@@ -27,7 +27,7 @@ namespace Pulse::Engine
             {
                 throw std::invalid_argument("Duplicate port name detected in Component constructor: '" + port.first + "'");
             }
-            m_outSignals[port.first] = port.second;
+            m_outSignals.push_back(std::move(port));
         }
     }
 
@@ -35,18 +35,17 @@ namespace Pulse::Engine
 
     Wire* Component::getPort(const std::string& signalName) const
     {
-        if (auto it = m_inSignals.find(signalName); it != m_inSignals.end())
+        for (const auto& port : m_inSignals) if (port.first == signalName)
         {
-            return it->second;
+            return port.second;
         }
-        else if (auto itOut = m_outSignals.find(signalName); itOut != m_outSignals.end())
+
+        for (const auto& port : m_outSignals) if (port.first == signalName)
         {
-            return itOut->second;
+            return port.second;
         }
-        else
-        {
-            throw std::invalid_argument("Cannot get signal from non-existent port: " + signalName);
-        }
+
+        throw std::invalid_argument("Cannot get signal from non-existent port: " + signalName);
     }
 
     Wire* Component::operator[](const std::string& signalName) const
@@ -56,12 +55,22 @@ namespace Pulse::Engine
 
     bool Component::hasInputPort(const std::string& signalName) const
     {
-        return m_inSignals.find(signalName) != m_inSignals.end();
+        for (const auto& port : m_inSignals) if (port.first == signalName)
+        {
+            return true;
+        }
+        
+        return false;
     }
 
     bool Component::hasOutputPort(const std::string& signalName) const
     {
-        return m_outSignals.find(signalName) != m_outSignals.end();
+        for (const auto& port : m_outSignals) if (port.first == signalName)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     bool Component::hasPort(const std::string& signalName) const

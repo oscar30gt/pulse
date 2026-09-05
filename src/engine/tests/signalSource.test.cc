@@ -2,8 +2,8 @@
 // Tests for Pulse::SignalSource using GoogleTest.
 
 #include <gtest/gtest.h>
-#include "../include/signalSource.h"
-#include "../lib/logicVector.h"
+#include "signalSource.h"
+#include "logicVector.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

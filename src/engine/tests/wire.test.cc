@@ -2,10 +2,10 @@
 // Exhaustive tests for Pulse::Wire using GoogleTest.
 
 #include <gtest/gtest.h>
-#include "../include/wire.h"
-#include "../include/signalSource.h"
-#include "../include/signalDrain.h"
-#include "../lib/logicVector.h"
+#include "wire.h"
+#include "signalSource.h"
+#include "signalDrain.h"
+#include "logicVector.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

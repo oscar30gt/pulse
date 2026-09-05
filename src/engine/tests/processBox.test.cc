@@ -2,11 +2,11 @@
 // Tests for Pulse::Engine::SequentialProcessBox and CombinationalProcessBox using GoogleTest.
 
 #include <gtest/gtest.h>
-#include "../include/processBox.h"
-#include "../include/wire.h"
-#include "../include/signalDrain.h"
-#include "../include/constant.h"
-#include "../include/signalSource.h"
+#include "processBox.h"
+#include "wire.h"
+#include "signalDrain.h"
+#include "constant.h"
+#include "signalSource.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

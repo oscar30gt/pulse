@@ -2,7 +2,6 @@
 #define PULSE_COMPONENT_H
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "wire.h"
@@ -17,13 +16,16 @@ namespace Pulse::Engine
     class Component
     {
     protected:
-        using PortMap = std::unordered_map<std::string, Wire*>;
+
+        // Components do not have many ports (many of them have less than 10). Thus, a vector
+        // search is enough for this use case and reduces the overhead of using a map.
+        using PortMap = std::vector<std::pair<std::string, Wire*>>;
         PortMap m_inSignals;
         PortMap m_outSignals;
 
     public:
         /// Initializer for component ports where each input/output gets a wire assigned.
-        using PortInitializer = std::vector<std::pair<std::string, Wire*>>;
+        using PortInitializer = PortMap;
 
         explicit Component(const PortInitializer& inPorts, const PortInitializer& outPorts);
         virtual ~Component();

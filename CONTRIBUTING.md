@@ -31,10 +31,10 @@ Then, run the tests and the test VHDL project to ensure everything is working as
 
 ```bash
 # Run tests
-./build/Debug/pulse_tests # or pulse_tests.exe on Windows
+./build/bin/pulse_tests
 
 # Run test project
-./build/Debug/pulse test-project # or pulse.exe test-project on Windows
+./build/bin/pulse test-project
 ```
 
 ## Project Structure
@@ -52,6 +52,8 @@ Inside of each folder, every feature or module (e.g., `x`) is divided into three
 * `tests/x.test.cc`: The unit tests for the module. Tests are written using gtest.
 
 > Additional internal interfaces may be created inside a `lib/` subdirectory.
+
+> For single-header modules (either private or public) whose implementation is included at the end of the header file, implementation can be placed inside a `impl/` subdirectory. For example, `src/engine/include/blueprint.h` has its implementation in `src/engine/impl/blueprint_impl.h`.
 
 
 ## Contributing Guidelines

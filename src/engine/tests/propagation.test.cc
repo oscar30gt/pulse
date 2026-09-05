@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
-#include "../include/component.h"
-#include "../include/wire.h"
-#include "../include/gates.h"
-#include "../include/signalDrain.h"
-#include "../include/signalSource.h"
+#include "component.h"
+#include "wire.h"
+#include "gates.h"
+#include "signalDrain.h"
+#include "signalSource.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

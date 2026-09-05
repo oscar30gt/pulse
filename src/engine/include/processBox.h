@@ -9,9 +9,7 @@
 #include "signalSource.h"
 
 namespace Pulse::Engine
-{
-    typedef uint64_t simTime_t; /// Simulation time type in femtoseconds (max before overflow: around 5 hours).
-    
+{    
     struct ProcessInstruction { virtual ~ProcessInstruction() = default; };
 
     // Assigns a logic value to some of the process outputs.

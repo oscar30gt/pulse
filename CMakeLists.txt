@@ -4,11 +4,19 @@ project(Pulse LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Force all binary outputs to build/bin across all OS and generators
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER ${CONFIG} CONFIG_UPPER)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CONFIG_UPPER} "${CMAKE_BINARY_DIR}/bin")
+endforeach()
+
 # -----------------------------------------------------------------------------
 # 1. Core Static Library
 # -----------------------------------------------------------------------------
 # Automatically gather all core source files
 file(GLOB_RECURSE PULSE_SOURCES CONFIGURE_DEPENDS
+    "src/shared/*.cc"
     "src/engine/*.cc"
     "src/parser/*.cc"
     "src/debugger/*.cc"
@@ -20,12 +28,20 @@ add_library(pulse_app STATIC
     ${PULSE_SOURCES}
 )
 
-target_include_directories(pulse_app PUBLIC
+target_include_directories(pulse_app 
+  PUBLIC
+    src/shared/include
     src/engine/include
-    src/engine/lib
     src/parser/include
-    src/parser/lib
     src/debugger/include
+    src/shared/impl
+    src/engine/impl
+    src/parser/impl
+    src/debugger/impl
+  PRIVATE
+    src/shared/lib
+    src/engine/lib
+    src/parser/lib
     src/debugger/lib
 )
 

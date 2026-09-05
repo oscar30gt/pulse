@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-namespace Pulse
+namespace Pulse::Engine
 {
     // ============================================================================
     // LogicVector: IEEE 1164 four-state logic vector
@@ -19,6 +19,10 @@ namespace Pulse
     ///   - Value=1, Mask=1: Logic 'Z' (high impedance)
     struct LogicVector
     {
+        // Important: DO NOT GROW this struct beyond 16 bytes (two uint64_t fields).
+        // It is designed to be transferred efficiently using registers when passed 
+        // by value in function calls. 
+
         uint64_t value;
         uint64_t mask;
 
@@ -221,13 +225,15 @@ namespace Pulse
         [[nodiscard]]
         std::string str(uint8_t width = 64) const;
     };
-}
+
+} // namespace Pulse::Engine
 
 // ============================================================================
 // Implementation section
+// Inlined for maximum performance and header-only usage.
 // ============================================================================
 
-namespace Pulse
+namespace Pulse::Engine
 {
     // -------- LogicVector implementation: Factory methods ---------------------------------------
 
@@ -553,6 +559,7 @@ namespace Pulse
         }
         return result;
     }
-}
+
+} // namespace Pulse::Engine
 
 #endif // PULSE_LOGICVECTOR_H

@@ -23,7 +23,7 @@ namespace Pulse::Parser
         /// is converted into its own blueprint.
         /// By default, the behavioral architecture is used to generate the blueprints. If a different architecture
         /// is desired, it can be specified by passing the architecture name as the second argument.
-        std::unordered_map<EntityName, std::unique_ptr<Blueprint>>
+        std::unordered_map<EntityName, std::unique_ptr<Pulse::Engine::Blueprint>>
             generate(const LinkedDesign& design, std::string architectureName = "behavioral");
     };
 } // namespace Pulse::Parser

@@ -2,11 +2,11 @@
 // Comprehensive unit tests for Pulse::Splitter component.
 
 #include <gtest/gtest.h>
-#include "../include/splitter.h"
-#include "../include/wire.h"
-#include "../include/signalSource.h"
-#include "../include/signalDrain.h"
-#include "../include/constant.h"
+#include "splitter.h"
+#include "wire.h"
+#include "signalSource.h"
+#include "signalDrain.h"
+#include "constant.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

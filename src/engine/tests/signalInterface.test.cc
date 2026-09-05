@@ -2,10 +2,10 @@
 // Exhaustive GoogleTest unit tests for the signal interface classes.
 
 #include <gtest/gtest.h>
-#include "../include/signalInterface.h"
-#include "../lib/logicVector.h"
-#include "../include/signalSource.h"
-#include "../include/signalDrain.h"
+#include "signalInterface.h"
+#include "logicVector.h"
+#include "signalSource.h"
+#include "signalDrain.h"
 
 using namespace Pulse;
 using namespace Pulse::Engine;

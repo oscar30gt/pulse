@@ -11,7 +11,7 @@ namespace Pulse::Debugger
     // Sample Lookup Helpers
     // --------------------------------------------------------------------------------------------
 
-    LogicVector Wave::valueAt(simTime_t time) const
+    Engine::LogicVector Wave::valueAt(simTime_t time) const
     {
         const auto it = std::upper_bound(
             samples.begin(), samples.end(), time,
@@ -22,7 +22,7 @@ namespace Pulse::Debugger
 
         if (it == samples.begin())
         {
-            return LogicVector::HighZ();
+            return Engine::LogicVector::HighZ();
         }
 
         return std::prev(it)->value;

@@ -12,8 +12,6 @@
 
 namespace Pulse::Debugger
 {
-    typedef uint64_t simTime_t; /// Simulation time type in femtoseconds (max before overflow: around 5 hours).
-
     // --------------------------------------------------------------------------------------------
     // Waveform Data Model
     // --------------------------------------------------------------------------------------------
@@ -29,7 +27,7 @@ namespace Pulse::Debugger
     /// A structure representing a single sample of a signal at a specific point in simulation time.
     struct Sample
     {
-        LogicVector value;  ///< The logic vector value of the signal at this timestamp.
+        Engine::LogicVector value;  ///< The logic vector value of the signal at this timestamp.
         simTime_t timestamp; ///< The simulation timestamp of the sample (in femtoseconds).
     };
 
@@ -45,7 +43,7 @@ namespace Pulse::Debugger
         /// @param samples Transition list for the signal.
         /// @param time Target timestamp in femtoseconds.
         /// @returns Active logic value, or High-Z if before the first recorded sample.
-        LogicVector valueAt(simTime_t time) const;
+        Engine::LogicVector valueAt(simTime_t time) const;
     };
 
     /// A hierarchical structure representing the digital circuit waveform, including signals and nested subgraphs.
