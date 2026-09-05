@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+Sept 5, 2026
+
+- Fixed a cmake problem that caused the build to fail on Unix systems.
+- Unified the executable output path to be `build/bin/` on all platforms.
+
 ## 1.0.0 - Initial Release
 Sept 1, 2026
 
