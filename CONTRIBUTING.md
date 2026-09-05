@@ -31,10 +31,10 @@ Then, run the tests and the test VHDL project to ensure everything is working as
 
 ```bash
 # Run tests
-./build/Debug/pulse_tests # or pulse_tests.exe on Windows
+./build/bin/pulse_tests
 
 # Run test project
-./build/Debug/pulse test-project # or pulse.exe test-project on Windows
+./build/bin/pulse test-project
 ```
 
 ## Project Structure

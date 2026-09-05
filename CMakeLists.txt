@@ -4,6 +4,13 @@ project(Pulse LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Force all binary outputs to build/bin across all OS and generators
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER ${CONFIG} CONFIG_UPPER)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CONFIG_UPPER} "${CMAKE_BINARY_DIR}/bin")
+endforeach()
+
 # -----------------------------------------------------------------------------
 # 1. Core Static Library
 # -----------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 # Pulse
 
-[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Build](https://img.shields.io/badge/build-CMake-brightgreen.svg)](https://cmake.org/) ![Stars](https://img.shields.io/github/stars/oscar30gt/pulse)
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Build](https://img.shields.io/badge/build-CMake-brightgreen.svg)](https://cmake.org/)
 
 _Pulse_ is a multi-platform digital logic simulation engine for VHDL made with C++. It transforms VHDL source code into a logic components simulation model that can be simulated and debugged.
 
@@ -39,14 +39,14 @@ cmake -B build
 cmake --build build --config Release
 ```
 
-> Resulting binaries will be located in `build/Debug` or `build/Release` depending on the build type.
+> Resulting binaries will be located in `build/bin`.
 
 ## Usage
 
 The pulse binary can be executed from the command line, providing the VHDL project folder as an argument:
 
 ```bash
-./build/Release/pulse test-project
+./build/bin/pulse test-project
 ```
 
 The following command line options are available:
@@ -72,6 +72,9 @@ $ pulse ./examples/counter --top CounterTop --arch Behavioral --end 2000fs
 # Search for VHDL sources recursively
 $ pulse ./examples/my_project -R
 ```
+
+> [!NOTE]
+> This examples assume that the `pulse` binary is in your current path. Plus, no examples folder is provided in this repository. This is just an usage example.
 
 ### TUI Controls
 
