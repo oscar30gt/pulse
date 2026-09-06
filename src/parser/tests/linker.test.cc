@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "Linker.h"
+#include "linker.h"
 #include <memory>
 
 using namespace Pulse::Parser;

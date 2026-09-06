@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <stdexcept>
-#include "SemanticAnalyzer.h"
+#include "semanticAnalyzer.h"
 
 namespace Pulse::Parser::Tests
 {

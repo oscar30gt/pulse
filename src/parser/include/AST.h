@@ -1,7 +1,7 @@
 #ifndef PULSE_VHDL_ASTBUILDER_H
 #define PULSE_VHDL_ASTBUILDER_H
 
-#include "Tokenizer.h"
+#include "tokenizer.h"
 #include "signalInterface.h"
 #include <vector>
 #include <string>

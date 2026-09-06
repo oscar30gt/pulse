@@ -1,7 +1,7 @@
 #ifndef PULSE_VHDL_BLUEPRINT_GENERATOR_H
 #define PULSE_VHDL_BLUEPRINT_GENERATOR_H
 
-#include "Linker.h"
+#include "linker.h"
 #include "blueprint.h"
 #include <unordered_map>
 #include <memory>

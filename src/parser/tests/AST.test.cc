@@ -2,7 +2,7 @@
 #include <sstream>
 #include <memory>
 #include "AST.h"
-#include "Tokenizer.h"
+#include "tokenizer.h"
 
 using namespace Pulse::Parser;
 
