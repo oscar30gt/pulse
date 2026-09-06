@@ -64,7 +64,7 @@ When contributing to this project, please follow these guidelines:
 2. **Documentation**: Add doc comments for new features (specially for public interfaces) and update existing documentation as needed.
 3. **Testing**: Add unit tests for new features or bug fixes.
 4. **Commit Messages**: Write clear and concise commit messages. No fixed format is required, but a good commit message should explain what has changed and why.
-5. **Pull Requests**: Submit pull requests with a clear description of the changes.
+5. **Pull Requests**: Submit pull requests with a clear description of the changes. Create a new branch for each feature and create a pull request for the main branch when your feature is ready.
 
 ## Contribution Areas
 
