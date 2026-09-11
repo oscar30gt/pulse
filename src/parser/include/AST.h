@@ -1,7 +1,7 @@
-#ifndef PULSE_VHDL_ASTBUILDER_H
-#define PULSE_VHDL_ASTBUILDER_H
+#ifndef PULSE_VHDL_AST_H
+#define PULSE_VHDL_AST_H
 
-#include "Tokenizer.h"
+#include "tokenizer.h"
 #include "signalInterface.h"
 #include <vector>
 #include <string>
@@ -12,20 +12,37 @@
 
 namespace Pulse::Parser
 {
-    /// Return type of an expression
-    enum class ReturnType
+    /// Location of a certain node in the source file.
+    struct SourceLocation
     {
-        LOGIC,
-        INTEGER,
-        SIGNED,
-        UNSIGNED,
-        BOOLEAN,
+        size_t line;          /// Line number (1-based)
+        size_t column;        /// Column number (1-based)
+    };
+
+    /// Exception thrown when an error occurs during AST construction.
+    /// what() returns a multiline descriptive message of the error, 
+    /// including the source location and a snippet of the source code.
+    class ast_build_error : public std::runtime_error
+    {
+        SourceLocation location;
+        std::string sourceSnippet;
+
+    public:
+        ast_build_error(const std::string& message, const SourceLocation& location, const std::string& sourceSnippet)
+            : std::runtime_error(message), location(location), sourceSnippet(sourceSnippet) { }
+
+        const SourceLocation& getLocation() const { return location; }
+        const std::string& getSourceSnippet() const { return sourceSnippet; }
     };
 
     // --------------------------------------------------------------------------------------------
 
     /// Base class for all AST Nodes to allow proper polymorphism without slicing.
-    struct ASTNode { virtual ~ASTNode() = default; };
+    struct ASTNode
+    {
+        virtual ~ASTNode() = default;
+        SourceLocation source; /// Location of the node in the source file
+    };
 
     /// Root node containing top-level entities and architectures
     struct ASTRoot final : ASTNode
@@ -34,191 +51,178 @@ namespace Pulse::Parser
         std::vector<std::unique_ptr<ASTNode>> children;
 
         /// Print the AST tree to stdout in a human-readable format.
-        /// This is primarily for debugging and visualization purposes.
+        /// This is primarily for debugging purposes.
         void print() const;
     };
 
     // --------------------------------------------------------------------------------------------
+    
+    struct Expression : ASTNode { };                    /// Base class for all evaluable expressions.
+    using ExpressionPtr = std::unique_ptr<Expression>;  /// Shorthand for a unique pointer to an Expression.
 
-    /// Flattened port declaration. When parsing a port from vhdl, formats can be very different.
-    /// Here, the declaration is normalized to a single name, width, and direction.
-    /// For ports declared as STD_LOGIC, the width is 1. For STD_LOGIC_VECTOR, 
-    /// the width is the number of bits in the vector.
-    /// For STD_LOGIC_VECTOR declared with a range different to (N downto 0), 
-    /// the width is still the number of bits in the vector and signal accesses will be normalized 
-    /// to the flattened bit positions.
-    struct PortDeclaration : ASTNode
+    /// Type specification for signals and ports, including range information if applicable.
+    struct TypeSpec final : ASTNode
+    {   
+        std::string typeName;               /// Name of the type (e.g., "std_logic", "integer", etc.)  
+        std::vector<ExpressionPtr> args;    /// Optional args such as range expressions for array types (e.g., "std_logic_vector(7 downto 0)")
+    };
+
+    /// Declaration of a port in VHDL.
+    /// Range flattenning for array ports is applied so downto/to is always normalized to a width.
+    struct PortDeclaration final : ASTNode
     {
-        std::string portName;       ///< Name of the port
-        bitWidth_t width;           ///< Width of the port in bits
-        bool isInput;               ///< True if the port is an input, false if it's an output
+        std::string portName;   /// Name of the port
+        TypeSpec typeSpec;      /// Type specification of the port, including range information
+        bool isInput : 1;       /// True if the port is an input
+        bool isOutput : 1;      /// True if the port is an output
     };
 
     /// Declaration of an entity in VHDL.
     /// Entities support multiple ports.
-    /// [TODO]: For now, generic parameters are not supported.
-    struct EntityDeclaration : ASTNode
+    struct EntityDeclaration final : ASTNode
     {
-        std::string entityName;     ///< Name of the entity
-        std::vector<std::unique_ptr<PortDeclaration>> ports;    ///< Ports of the entity
+        std::string name;                   /// Name of the entity
+        std::vector<PortDeclaration> ports; /// Ports of the entity
     };
 
-    struct SignalDeclaration;
-    struct ComponentDeclaration;
-    struct SignalAssignment;
-    struct ComponentInstantiation;
-    struct ProcessStatement;
+    /// Declaration of a signal within an architecture.
+    struct SignalDeclaration final : ASTNode
+    {
+        std::string name;                               /// Name of the signal
+        TypeSpec typeSpec;                              /// Type specification of the signal, including range information
+        ExpressionPtr initialValue = nullptr;           /// Optional initial value for the signal [must be known at compile time]
+    };
+
+    /// Declaration of a component within an architecture.
+    struct ComponentDeclaration final : ASTNode
+    {
+        std::string name;                   /// Name of the component
+        std::vector<PortDeclaration> ports; /// Ports of the component
+    };
+
+
+    // --------------------------------------------------------------------------------------------
+
+    struct Statement : ASTNode { };                     /// Base class for all statements (concurrent or sequential).
+    using SequentialStatement = Statement;              /// Sequential statements that can appear inside a process body.
+    using ConcurrentStatement = Statement;              /// Combinational statements that can appear inside an architecture.
 
     /// Declaration of an architecture in VHDL.
     /// Architectures support multiple signals, components, assignments,
     /// instantiations, and processes.
-    struct ArchitectureDeclaration : ASTNode
+    struct ArchitectureDeclaration final : ASTNode
     {
-        std::string architectureName; ///< Name of the architecture
-        std::string entityName;       ///< Name of the entity
+        std::string entityName;                         /// Entity name that this architecture is associated with
+        std::string name;                               /// Name of this architecture
 
-        std::vector<std::unique_ptr<SignalDeclaration>> signals;            ///< Signals declared in the architecture
-        std::vector<std::unique_ptr<ComponentDeclaration>> components;      ///< Components declared in the architecture
-        std::vector<std::unique_ptr<SignalAssignment>> assignments;         ///< Signal assignments in the order they were parsed
-        std::vector<std::unique_ptr<ComponentInstantiation>> instantiations;///< Component instantiations in the order they were parsed
-        std::vector<std::unique_ptr<ProcessStatement>> processes;           ///< Process statements in the order they were parsed
+        // Declarations region
+        std::vector<SignalDeclaration> signals;         /// Signals declared in the architecture
+        std::vector<ComponentDeclaration> components;   /// Components declared in the architecture
+
+        /// Concurrent region of the architecture (between begin and end) in the order statements were parsed.
+        std::vector<std::unique_ptr<ConcurrentStatement>> body;
     };
 
-    /// Declaration of a signal in VHDL.
-    /// Range flattenning is applied to the signal width the same way as for ports.
-    struct SignalDeclaration : ASTNode
+    // --------------------------------------------------------------------------------------------
+    
+    /// A reference to a known symbol (signal, port, component, etc.)
+    struct SymbolExpr final : Expression
     {
-        std::string signalName;     ///< Name of the signal
-        bitWidth_t width;    ///< Width of the signal in bits
-        uint64_t initialValue;      ///< Initial value of the signal, if any. Not implemented yet.
+        std::string name;     /// Name of the signal being referenced
+    };
+    
+    /// Assignment of a value to a signal within an architecture
+    struct SignalAssignment final : Statement
+    {
+        ExpressionPtr target;       /// Target signal reference for the assignment
+        ExpressionPtr value;        /// Value expression to be assigned to the target
     };
 
-    /// Declaration of a component in VHDL.
-    struct ComponentDeclaration : ASTNode
+    struct WithClause final : Statement
     {
-        std::string componentName;  ///< Name of the component
-        std::vector<std::unique_ptr<PortDeclaration>> ports;  ///< Ports of the component
+        ExpressionPtr selector;                                         /// Selector expression: with (selector) select
+        std::vector<std::pair<ExpressionPtr, ExpressionPtr>> choices;   /// List of choice pairs: (first) when (second)
+        ExpressionPtr defaultValue;                                     /// Default value expression if no choices match (optional)
     };
 
-    /// A reference to a signal or a subset of its bits.
-    /// Can be used as a target for assignments or as a source in expressions.
-    struct SignalReference;
-
-    // Component instantiation in architecture
-    struct ComponentInstantiation : ASTNode
+    /// Instantiation of a component within an architecture
+    struct ComponentInstantiation final : ConcurrentStatement
     {
-        std::string instanceName;   ///< Name of the component instance
-        std::string componentName;  ///< Name of the component being instantiated
-        std::unordered_map<std::string, std::unique_ptr<SignalReference>> portMaps; ///< Mapping of component ports to signals in the architecture
+        std::string instanceName;                                       /// Name of the component instance
+        std::string componentName;                                      /// Name of the component being instantiated
+        std::vector<std::pair<std::string, SymbolExpr>> portMap;   /// Mapping of component ports to signals in the architecture
     };
 
-    ///////////////////////////////////////////////////////////////////////////
-
-    /// Base class for all evaluable expressions.
-    /// @tparam R The return type of the expression
-    template <ReturnType R>
-    struct Expression : ASTNode
+    /// Process statement within an architecture
+    struct ProcessStatement final : ConcurrentStatement
     {
-        ReturnType returnType = R;  ///< Type this expression evaluates to.
+        std::string label;                                      /// Optional process label (empty if unlabeled)
+        std::vector<std::string> sensitivityList;               /// Names of signals in the sensitivity list (may be empty)
+        std::vector<std::unique_ptr<SequentialStatement>> body; /// Sequential statements in the process body
     };
 
-    /// Base class for sequential statements that can appear inside a process body.
-    /// Concrete types: SignalAssignment, IfStatement, WaitForStatement.
-    struct SequentialStatement : ASTNode {};
+    // --------------------------------------------------------------------------------------------    
 
-    /// signal_name(4 downto 0) <= x"00AA"
-    struct SignalAssignment final : SequentialStatement
+    /// Binary expression: e.g., "a + b", "a and b", "a lls b", etc.
+    struct BinaryOpExpr final : Expression
     {
-        std::unique_ptr<SignalReference> target;    ///< Target signal reference for the assignment
-        std::unique_ptr<Expression<ReturnType::LOGIC>> value;   ///< Value expression to be assigned to the target
+        std::string op;       /// Operator string, e.g. "+", "-", "and", "or", "lls", "rrs", etc.
+        ExpressionPtr left;   /// Left operand of the binary operation
+        ExpressionPtr right;  /// Right operand of the binary operation
     };
 
-    /// signal_name ; signal_name(4 downto 0) ; signal_name(3) ; signal_name(7 to 4)...
-    /// low/high are always stored FLATTENED (bit 0 = the internal LSB position, see
-    /// ASTBuilder.cc for the normalization rules). Both null => full signal reference.
-    /// Only 'low' set => single-bit index. Both set => range (high/low may come out
-    /// "inverted", i.e. high < low, if the access direction differs from how the
-    /// signal was declared).
-    struct SignalReference final : Expression<ReturnType::LOGIC>
+    /// Unary expression: e.g., "-a", "not a", etc.
+    struct UnaryOpExpr final : Expression
     {
-        std::string signalName; ///< Name of the signal being referenced
-        std::unique_ptr<Expression<ReturnType::INTEGER>> low;  ///< Less significant bit index, null if full signal
-        std::unique_ptr<Expression<ReturnType::INTEGER>> high; ///< More significant bit index, null if full signal or single bit indexing
+        std::string op;           /// Operator string, e.g. "-", "not", etc.
+        ExpressionPtr operand;    /// Operand of the unary operation
     };
 
-    /// Binary Operation: x"00" or 0b101010 ; 30 + 10 ; signal_name lls 3...
-    /// @tparam R The return type of the expression
-    template <ReturnType R>
-    struct BinaryOpExpr : Expression<R>
+    /// Function call expression: e.g., "unsigned(signal_name)", "to_integer(signal_name)", etc.
+    struct FunctionCallExpr final : Expression
     {
-        std::string op; ///< Operator string, e.g. "+", "-", "and", "or", "lls", "rrs", etc.
-        std::unique_ptr<ASTNode> left;  ///< Left operand of the binary operation
-        std::unique_ptr<ASTNode> right; ///< Right operand of the binary operation
+        std::string functionName;             /// Name of the function being called
+        std::vector<ExpressionPtr> arguments; /// Arguments passed to the function call
     };
 
-    /// Unary Operation: -10 ; not signal_name...
-    /// @tparam R The return type of the expression
-    template <ReturnType R>
-    struct UnaryOpExpr : Expression<R>
+    /// Plain integer constant.
+    struct IntegerLiteralExpr final : Expression
     {
-        std::string op; ///< Operator string, e.g. "-", "not", etc.
-        std::unique_ptr<ASTNode> operand; ///< Operand of the unary operation
+        int64_t value = 0; /// Value of the integer literal
     };
 
-    /// Function call expression: unsigned(signal_name), to_integer(signal_name), etc...
-    /// @tparam R The return type of the expression
-    template <ReturnType R>
-    struct FunctionCallExpr : Expression<R>
+    /// Plain boolean constant: true or false.
+    struct BooleanLiteral final : Expression
     {
-        std::string functionName; ///< Name of the function being called
-        std::vector<std::unique_ptr<ASTNode>> arguments; ///< Arguments passed to the function call
+        bool value = false; /// Value of the boolean literal (true or false)
     };
 
-    /// Plain integer constant, used for range bounds, shift amounts, etc.
-    struct IntegerLiteralExpr final : Expression<ReturnType::INTEGER>
-    {
-        int64_t value = 0; ///< Value of the integer literal
-    };
-
-    /// x"00AA", "0101", '0', '1', 'X', 'Z' ... a STD_LOGIC / STD_LOGIC_VECTOR literal.
+    /// x"00AA", "0101", '0', '1', 'X', 'Z' ... STD_LOGIC / STD_LOGIC_VECTOR literal.
     /// Each bit's value is meaningful only where the corresponding unknownMask bit is 0.
-    struct LogicLiteralExpr final : Expression<ReturnType::LOGIC>
+    struct LogicLiteralExpr final : Expression
     {
-        uint64_t value = 0;             ///< 0/1 when mask bit is 0, undefined/high-Z when mask bit is 1.
-        uint64_t unknownMask = 0;       ///< 1 = bit is X/Z, 0 = bit is known 0/1
-        bitWidth_t width = 0;    ///< Width of the logic literal in bits
+        uint64_t value = 0;         /// 0/1 when mask bit is 0, undefined/high-Z when mask bit is 1.
+        uint64_t mask = 0;          /// 1 = bit is unknown X/Z, 0 = bit is known 0/1
+        uint8_t width : 7 = 0;      /// Width of the logic literal in bits
+        bool isSigned : 1 = false;  /// Whether the logic literal is signed
     };
 
-    /// Known attributes of a signal reference.
-    enum class AttributeKind
+    /// Accessing an attribute of a signal, such as "signal_name'left" or "signal_name'event".
+    struct AttributeExpr final : Expression
     {
-        Left,
-        Right,
-        Low,
-        High,
-        Length,
+        std::string attributeName;              /// Name of the attribute being accessed (e.g., "left", "high", "length", "event", etc.)
+        std::unique_ptr<SymbolExpr> target;     /// Target signal reference for the attribute access
     };
 
-    /// signal_name'left / 'right / 'low / 'high / 'length
-    struct AttributeExpr final : Expression<ReturnType::INTEGER>
-    {
-        AttributeKind kind; ///< Kind of attribute being accessed
-        std::unique_ptr<SignalReference> target; ///< Target signal reference for the attribute access
-    };
+    // --------------------------------------------------------------------------------------------    
 
-    /// When-Else expression: a set of chained conditions and their corresponding values, with an optional default value.
-    /// Evaluates to a logic value based on the first condition that evaluates to true.
-    struct WhenElseExpr final : Expression<ReturnType::LOGIC>
-    {
-        /// A "when" branch
-        struct Branch
-        {
-            std::unique_ptr<Expression<ReturnType::LOGIC>> value;       ///< Value expression to be returned if the condition evaluates to true
-            std::unique_ptr<Expression<ReturnType::BOOLEAN>> condition; ///< Condition expression to be evaluated for this branch
-        };
-
-        std::vector<Branch> branches;   ///< List of "when" branches in the order they must be evaluated.
-        std::unique_ptr<Expression<ReturnType::LOGIC>> defaultValue; ///< Default value expression to be returned if no conditions evaluate to true (optional)
+    /// When-Else expression: a ternary-like expression that evaluates to one value if a condition
+    /// is true, and another value if the condition is false.
+    struct WhenElseExpr final : Expression
+    {   
+        ExpressionPtr trueValue;        /// Value expression to be returned if the condition evaluates to true.
+        ExpressionPtr condition;        /// Boolean expression to be evaluated for this branch.
+        ExpressionPtr falseValue;       /// Default value expression to be returned if no conditions evaluate to true (optional).
     };
 
     // --------------------------------------------------------------------------------------------
@@ -227,43 +231,35 @@ namespace Pulse::Parser
     /// Pauses simulation for the given duration (stored in femtoseconds).
     struct WaitForStatement final : SequentialStatement
     {
-        uint64_t durationFs = 0; ///< Duration of the wait in femtoseconds
+        uint64_t durationFs = 0; /// Duration of the wait in femtoseconds
     };
 
-    struct WaitForeverStatement final : SequentialStatement
-    {
-        // No additional members needed for a wait forever statement
-    };
+    struct WaitForeverStatement final : SequentialStatement { };
 
     /// if/elsif/else statement inside a process.
     struct IfStatement final : SequentialStatement
     {
-        /// A single if / elsif branch
+        /// An if / elsif branch
         struct Branch
         {
-            std::unique_ptr<Expression<ReturnType::BOOLEAN>> condition; ///< Condition of this branch
-            std::vector<std::unique_ptr<SequentialStatement>> body;     ///< Statements to execute when the condition is true
+            ExpressionPtr condition;                                    /// Condition of this branch
+            std::vector<std::unique_ptr<SequentialStatement>> body;     /// Statements to execute when the condition is true
         };
 
-        std::vector<Branch> branches;                                    ///< if + zero or more elsif branches, in order
-        std::vector<std::unique_ptr<SequentialStatement>> elseBody;      ///< Statements to execute in the else clause (may be empty)
-    };
-
-    /// A VHDL process statement.
-    /// Processes contain a sensitivity list, local signal declarations,
-    /// and a sequential body (signal assignments, if/else, wait for).
-    struct ProcessStatement final : ASTNode
-    {
-        std::string label;                                              ///< Optional process label (empty if unlabeled)
-        std::vector<std::string> sensitivityList;                       ///< Names of signals in the sensitivity list (may be empty)
-        std::vector<std::unique_ptr<SequentialStatement>> body;         ///< Sequential statements in the process body
+        std::vector<Branch> branches;                                    /// if + zero or more elsif branches, in order
+        std::vector<std::unique_ptr<SequentialStatement>> elseBody;      /// Statements to execute in the else clause (may be empty)
     };
 
     // --------------------------------------------------------------------------------------------
 
+    /// Takes a tokenized VHDL source file and generates its corresponding
+    /// Abstract Syntax Tree (AST) representation.
+    /// @param tokenizer A reference to a Tokenizer object that provides the tokenized VHDL source code.
+    /// @returns An ASTRoot object representing the root of the generated AST.
+    /// @note No semantic analysis is performed; the AST is purely syntactic.
     [[nodiscard]]
     ASTRoot VHDLtoAST(Tokenizer& tokenizer);
 
 } // namespace Pulse::Parser
 
-#endif // PULSE_VHDL_ASTBUILDER_H
+#endif // PULSE_VHDL_AST_H

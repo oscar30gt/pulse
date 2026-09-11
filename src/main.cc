@@ -14,11 +14,11 @@
 #include <string>
 #include <filesystem>
 
-#include "AST.h"
+#include "ast.h"
 #include "blueprint.h"
-#include "blueprintGenerator.h"
-#include "linker.h"
-#include "semanticAnalyzer.h"
+// #include "blueprintGenerator.h"
+// #include "linker.h"
+// #include "semanticAnalyzer.h"
 #include "subgraph.h"
 #include "tokenizer.h"
 #include "waveform.h"
@@ -106,31 +106,34 @@ int main(int argc, char* argv[])
         for (const auto& source : sources)
             astRoots.push_back(fileParsingPipeline(source.string()));
 
-        // Linking process
-        Linker linker;
-        auto linkedDesign = linker.link(astRoots);
+        for (const auto& ast : astRoots)
+            ast.print();
 
-        // Generating blueprints for subgraphs for the specified architecture.
-        BlueprintGenerator blueprintGenerator;
-        auto blueprints = blueprintGenerator.generate(linkedDesign, architecture);
+        // // Linking process
+        // Linker linker;
+        // auto linkedDesign = linker.link(astRoots);
 
-        // Retreives and instantiates the top-level subgraph for simulation.
-        auto bp = blueprints.find(topEntity);
-        if (bp == blueprints.end())
-            throw std::runtime_error("Top-level entity '" + topEntity + "' not found. Ensure it exists or provide another entity using the --top option.");
+        // // Generating blueprints for subgraphs for the specified architecture.
+        // BlueprintGenerator blueprintGenerator;
+        // auto blueprints = blueprintGenerator.generate(linkedDesign, architecture);
 
-        Subgraph graph(*bp->second.get(), {}, {});
-        WaveformRecorder recorder(graph.takeSnapshot());
+        // // Retreives and instantiates the top-level subgraph for simulation.
+        // auto bp = blueprints.find(topEntity);
+        // if (bp == blueprints.end())
+        //     throw std::runtime_error("Top-level entity '" + topEntity + "' not found. Ensure it exists or provide another entity using the --top option.");
 
-        // Simulation
-        for (simTime_t i = 0; i <= endTime; ++i)
-        {
-            graph.update();
-            recorder.record(graph.takeSnapshot(), i);
-        }
+        // Subgraph graph(*bp->second.get(), {}, {});
+        // WaveformRecorder recorder(graph.takeSnapshot());
 
-        // Once simulated, allow user to visualize the waveform of the simulation.
-        showWaveform(recorder.waveform(), 0, endTime, topEntity);
+        // // Simulation
+        // for (simTime_t i = 0; i <= endTime; ++i)
+        // {
+        //     graph.update();
+        //     recorder.record(graph.takeSnapshot(), i);
+        // }
+
+        // // Once simulated, allow user to visualize the waveform of the simulation.
+        // showWaveform(recorder.waveform(), 0, endTime, topEntity);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -162,8 +165,8 @@ ASTRoot fileParsingPipeline(const std::string& filename)
 
     Tokenizer tokenizer(inputFile);
     auto root = VHDLtoAST(tokenizer);
-    SemanticAnalyzer semanticAnalyzer;
-    semanticAnalyzer.analyze(root);
+    // SemanticAnalyzer semanticAnalyzer;
+    // semanticAnalyzer.analyze(root);
     return root;
 }
 

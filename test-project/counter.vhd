@@ -2,7 +2,7 @@ ENTITY counter IS
     PORT (
         clk : IN STD_LOGIC;
         reset : IN STD_LOGIC;
-        count : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        count : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
     );
 END ENTITY counter;
 

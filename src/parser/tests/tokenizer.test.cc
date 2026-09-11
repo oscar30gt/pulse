@@ -1,8 +1,12 @@
 // tokenizer.test.cc — GTest suite for Pulse::Parser::Tokenizer
 //
-// Each test section targets a specific lexical construct.
-// The tokenizer is case-insensitive: all keywords / identifiers are
-// normalised to lower-case before classification.
+// Tests are written against the actual implementation:
+//   - TokenType variants: Identifier, Keyword, NumericLiteral, BitStringLiteral,
+//     CharacterLiteral, Operator, Delimiter, Unknown.
+//   - Word operators (and, or, not, ...) produce TokenType::Operator, not Keyword.
+//   - All identifiers and keywords are normalised to lower-case.
+//   - Plain quoted strings ("...") produce TokenType::BitStringLiteral with default binary radix.
+//   - Cursor API: next() / prev() clamp at boundaries and return nullptr.
 
 #include <gtest/gtest.h>
 #include <sstream>
@@ -20,15 +24,13 @@ using namespace Pulse::Parser;
 /// Build a Tokenizer from a raw string and collect every token into a vector.
 static std::vector<Token> tokenize(const std::string& source)
 {
-    std::istringstream ss(source);
-    Tokenizer tok(ss);
+    Tokenizer tok(source);
 
     std::vector<Token> result;
     result.reserve(tok.size());
 
-    Token t;
-    while (tok >> t)
-        result.push_back(t);
+    while (const Token* t = tok.next())
+        result.push_back(*t);
 
     return result;
 }
@@ -49,16 +51,15 @@ static void expectToken(const std::vector<Token>& tokens,
 // 1. KEYWORDS
 // ===========================================================================
 
-TEST(Tokenizer_Keywords, BasicKeywordsRecognised)
+TEST(Tokenizer_Keywords, EveryKeywordRecognised)
 {
-    // One keyword per line – exercise every entry in the keyword map.
+    // Exhaustive list matching the keyword set in the implementation.
     const std::vector<std::string> kws = {
-        "entity", "architecture", "is", "begin", "end",
-        "port", "map", "signal", "constant", "generic",
-        "process", "if", "then", "else", "elsif",
-        "case", "when", "with", "select", "for",
-        "in", "out", "downto", "to", "open",
-        "component", "use", "library", "others", "all"
+        "use", "library", "entity", "architecture", "component",
+        "is", "of", "begin", "end", "port", "map",
+        "in", "out", "inout", "signal", "constant",
+        "with", "select", "when", "else", "others", "open",
+        "process", "if", "then", "elsif", "wait", "for"
     };
 
     for (const auto& kw : kws)
@@ -70,111 +71,37 @@ TEST(Tokenizer_Keywords, BasicKeywordsRecognised)
     }
 }
 
-TEST(Tokenizer_Keywords, KeywordsAreCaseInsensitive)
+TEST(Tokenizer_Keywords, CaseInsensitive)
 {
-    // The tokenizer lower-cases before classifying.
     auto tokens = tokenize("ENTITY Architecture IS");
     ASSERT_EQ(tokens.size(), 3u);
-    EXPECT_EQ(tokens[0].type,  TokenType::Keyword);
-    EXPECT_EQ(tokens[0].value, "entity");
-    EXPECT_EQ(tokens[1].type,  TokenType::Keyword);
-    EXPECT_EQ(tokens[1].value, "architecture");
-    EXPECT_EQ(tokens[2].type,  TokenType::Keyword);
-    EXPECT_EQ(tokens[2].value, "is");
+    EXPECT_EQ(tokens[0].type, TokenType::Keyword); EXPECT_EQ(tokens[0].value, "entity");
+    EXPECT_EQ(tokens[1].type, TokenType::Keyword); EXPECT_EQ(tokens[1].value, "architecture");
+    EXPECT_EQ(tokens[2].type, TokenType::Keyword); EXPECT_EQ(tokens[2].value, "is");
 }
 
-// ===========================================================================
-// 2. STANDARD TYPES
-// ===========================================================================
-
-TEST(Tokenizer_StandardTypes, AllStandardTypesRecognised)
+TEST(Tokenizer_Keywords, NotInKeywordSetIsIdentifier)
 {
-    const std::vector<std::string> types = {
-        "std_logic", "std_logic_vector",
-        "integer", "real", "boolean",
-        "character", "string",
-        "signed", "unsigned"
-    };
-
-    for (const auto& ty : types)
+    // Words that look keyword-adjacent but are not in the set.
+    for (const auto& word : {"generic", "all", "case", "rising_edge"})
     {
-        auto tokens = tokenize(ty);
-        ASSERT_EQ(tokens.size(), 1u) << "type: " << ty;
-        EXPECT_EQ(tokens[0].type,  TokenType::StandardType) << "type: " << ty;
-        EXPECT_EQ(tokens[0].value, ty)                      << "type: " << ty;
-    }
-}
-
-TEST(Tokenizer_StandardTypes, CaseInsensitive)
-{
-    auto tokens = tokenize("STD_LOGIC STD_LOGIC_VECTOR INTEGER");
-    ASSERT_EQ(tokens.size(), 3u);
-    for (const auto& t : tokens)
-        EXPECT_EQ(t.type, TokenType::StandardType);
-}
-
-// ===========================================================================
-// 3. STANDARD FUNCTIONS
-// ===========================================================================
-
-TEST(Tokenizer_StandardFunctions, RecognisedFunctions)
-{
-    const std::vector<std::string> fns = {
-        "rising_edge", "falling_edge",
-        "to_unsigned", "to_signed"
-    };
-
-    for (const auto& fn : fns)
-    {
-        auto tokens = tokenize(fn);
-        ASSERT_EQ(tokens.size(), 1u) << "function: " << fn;
-        EXPECT_EQ(tokens[0].type,  TokenType::StandardFunction) << "function: " << fn;
-        EXPECT_EQ(tokens[0].value, fn)                          << "function: " << fn;
+        auto tokens = tokenize(word);
+        ASSERT_EQ(tokens.size(), 1u) << "word: " << word;
+        EXPECT_EQ(tokens[0].type, TokenType::Identifier) << "word: " << word;
     }
 }
 
 // ===========================================================================
-// 4. ATTRIBUTES
+// 2. WORD OPERATORS  (logical / shift)
 // ===========================================================================
 
-TEST(Tokenizer_Attributes, RecognisedAttributes)
-{
-    const std::vector<std::string> attrs = {
-        "left", "right", "low", "high", "length"
-    };
+// Word operators are tokenised as TokenType::Operator, not Keyword.
 
-    for (const auto& a : attrs)
-    {
-        auto tokens = tokenize(a);
-        ASSERT_EQ(tokens.size(), 1u) << "attribute: " << a;
-        EXPECT_EQ(tokens[0].type,  TokenType::Attribute) << "attribute: " << a;
-        EXPECT_EQ(tokens[0].value, a)                    << "attribute: " << a;
-    }
-}
-
-TEST(Tokenizer_Attributes, AttributeAccessWithTick)
-{
-    // sig'length  ->  Identifier  Operator(')  Attribute
-    auto tokens = tokenize("sig'length");
-    ASSERT_EQ(tokens.size(), 3u);
-    EXPECT_EQ(tokens[0].type,  TokenType::Identifier);
-    EXPECT_EQ(tokens[0].value, "sig");
-    EXPECT_EQ(tokens[1].type,  TokenType::Operator);
-    EXPECT_EQ(tokens[1].value, "'");
-    EXPECT_EQ(tokens[2].type,  TokenType::Attribute);
-    EXPECT_EQ(tokens[2].value, "length");
-}
-
-// ===========================================================================
-// 5. WORD OPERATORS  (logical / shift)
-// ===========================================================================
-
-TEST(Tokenizer_WordOperators, LogicalAndShiftOperators)
+TEST(Tokenizer_WordOperators, EveryWordOperatorRecognised)
 {
     const std::vector<std::string> ops = {
-        "and", "or", "nand", "nor",
-        "xor", "xnor", "not",
-        "sll", "srl", "sra", "rol", "ror"
+        "and", "or", "nand", "nor", "xor", "xnor",
+        "not", "sll", "srl", "sla", "sra", "rol", "ror"
     };
 
     for (const auto& op : ops)
@@ -186,16 +113,24 @@ TEST(Tokenizer_WordOperators, LogicalAndShiftOperators)
     }
 }
 
-// ===========================================================================
-// 6. SYMBOLIC TWO-CHARACTER OPERATORS
-// ===========================================================================
-
-TEST(Tokenizer_TwoCharOperators, AllTwoCharOperators)
+TEST(Tokenizer_WordOperators, CaseInsensitive)
 {
-    // := <= >= => /= **
-    const std::vector<std::string> ops = {":=", "<=", ">=", "=>", "/=", "**"};
+    auto tokens = tokenize("AND OR NOT");
+    ASSERT_EQ(tokens.size(), 3u);
+    for (const auto& t : tokens)
+        EXPECT_EQ(t.type, TokenType::Operator);
+    EXPECT_EQ(tokens[0].value, "and");
+    EXPECT_EQ(tokens[1].value, "or");
+    EXPECT_EQ(tokens[2].value, "not");
+}
 
-    for (const auto& op : ops)
+// ===========================================================================
+// 3. TWO-CHARACTER OPERATORS
+// ===========================================================================
+
+TEST(Tokenizer_TwoCharOperators, AllRecognised)
+{
+    for (const auto& op : {":=", "<=", ">=", "=>", "/=", "**"})
     {
         auto tokens = tokenize(op);
         ASSERT_EQ(tokens.size(), 1u) << "two-char-op: " << op;
@@ -204,23 +139,31 @@ TEST(Tokenizer_TwoCharOperators, AllTwoCharOperators)
     }
 }
 
-TEST(Tokenizer_TwoCharOperators, TwoCharHasPriorityOverSingleChar)
+TEST(Tokenizer_TwoCharOperators, PriorityOverSingleChar)
 {
-    // ":=" must NOT produce two tokens (':' then '=').
+    // ":=" must not split into ':' then '='.
     auto tokens = tokenize(":=");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].value, ":=");
 }
 
-// ===========================================================================
-// 7. SINGLE-CHARACTER OPERATORS
-// ===========================================================================
-
-TEST(Tokenizer_SingleCharOperators, AllSingleCharOperators)
+TEST(Tokenizer_TwoCharOperators, SingleCharFallsBackCorrectly)
 {
-    // & + - * / < > = |
-    const std::vector<char> ops = {'&', '+', '-', '*', '/', '<', '>', '=', '|'};
+    // "=>" is a two-char op; a lone "=" is a single-char op.
+    auto tokens = tokenize("=");
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type,  TokenType::Operator);
+    EXPECT_EQ(tokens[0].value, "=");
+}
 
+// ===========================================================================
+// 4. SINGLE-CHARACTER OPERATORS
+// ===========================================================================
+
+TEST(Tokenizer_SingleCharOperators, AllRecognised)
+{
+    // Full set: & + - * / < > = |
+    const std::string ops = "&+-*/<>=|";
     for (char op : ops)
     {
         std::string src(1, op);
@@ -232,14 +175,13 @@ TEST(Tokenizer_SingleCharOperators, AllSingleCharOperators)
 }
 
 // ===========================================================================
-// 8. DELIMITERS
+// 5. DELIMITERS
 // ===========================================================================
 
-TEST(Tokenizer_Delimiters, AllDelimitersRecognised)
+TEST(Tokenizer_Delimiters, AllRecognised)
 {
-    // ( ) [ ] , ; : .
-    const std::vector<char> delims = {'(', ')', '[', ']', ',', ';', ':', '.'};
-
+    // Full set: ( ) [ ] , ; : .
+    const std::string delims = "()[],;:.";
     for (char d : delims)
     {
         std::string src(1, d);
@@ -251,10 +193,10 @@ TEST(Tokenizer_Delimiters, AllDelimitersRecognised)
 }
 
 // ===========================================================================
-// 9. IDENTIFIERS
+// 6. IDENTIFIERS
 // ===========================================================================
 
-TEST(Tokenizer_Identifiers, SimpleIdentifier)
+TEST(Tokenizer_Identifiers, Simple)
 {
     auto tokens = tokenize("my_signal");
     ASSERT_EQ(tokens.size(), 1u);
@@ -262,16 +204,15 @@ TEST(Tokenizer_Identifiers, SimpleIdentifier)
     EXPECT_EQ(tokens[0].value, "my_signal");
 }
 
-TEST(Tokenizer_Identifiers, IdentifierLowercased)
+TEST(Tokenizer_Identifiers, NormalisedToLowerCase)
 {
-    // Non-keyword identifiers are also stored lower-case.
-    auto tokens = tokenize("MyEntity");
+    auto tokens = tokenize("MySignal");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::Identifier);
-    EXPECT_EQ(tokens[0].value, "myentity");
+    EXPECT_EQ(tokens[0].value, "mysignal");
 }
 
-TEST(Tokenizer_Identifiers, IdentifierWithDigits)
+TEST(Tokenizer_Identifiers, WithDigits)
 {
     auto tokens = tokenize("sig_2");
     ASSERT_EQ(tokens.size(), 1u);
@@ -279,9 +220,9 @@ TEST(Tokenizer_Identifiers, IdentifierWithDigits)
     EXPECT_EQ(tokens[0].value, "sig_2");
 }
 
-TEST(Tokenizer_Identifiers, IdentifierStartsWithUnderscore)
+TEST(Tokenizer_Identifiers, StartsWithUnderscore)
 {
-    // '_' is a valid start character for identifiers in this tokenizer.
+    // '_' is a valid start character in this tokenizer.
     auto tokens = tokenize("_hidden");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::Identifier);
@@ -289,10 +230,10 @@ TEST(Tokenizer_Identifiers, IdentifierStartsWithUnderscore)
 }
 
 // ===========================================================================
-// 10. NUMERIC LITERALS
+// 7. NUMERIC LITERALS
 // ===========================================================================
 
-TEST(Tokenizer_NumericLiterals, IntegerLiteral)
+TEST(Tokenizer_NumericLiterals, Integer)
 {
     auto tokens = tokenize("42");
     ASSERT_EQ(tokens.size(), 1u);
@@ -300,7 +241,7 @@ TEST(Tokenizer_NumericLiterals, IntegerLiteral)
     EXPECT_EQ(tokens[0].value, "42");
 }
 
-TEST(Tokenizer_NumericLiterals, RealLiteral)
+TEST(Tokenizer_NumericLiterals, Real)
 {
     auto tokens = tokenize("3.14");
     ASSERT_EQ(tokens.size(), 1u);
@@ -310,20 +251,19 @@ TEST(Tokenizer_NumericLiterals, RealLiteral)
 
 TEST(Tokenizer_NumericLiterals, UnderscoreSeparator)
 {
-    // VHDL allows underscores in numeric literals for readability.
     auto tokens = tokenize("1_000_000");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::NumericLiteral);
     EXPECT_EQ(tokens[0].value, "1_000_000");
 }
 
-TEST(Tokenizer_NumericLiterals, BasedLiteral)
+TEST(Tokenizer_NumericLiterals, BasedLiteralLowercased)
 {
-    // 16#FF# is a VHDL based literal.
+    // 16#FF# — the hex digits are lower-cased.
     auto tokens = tokenize("16#FF#");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::NumericLiteral);
-    EXPECT_EQ(tokens[0].value, "16#ff#"); // lower-cased
+    EXPECT_EQ(tokens[0].value, "16#ff#");
 }
 
 TEST(Tokenizer_NumericLiterals, ExponentNotation)
@@ -335,77 +275,68 @@ TEST(Tokenizer_NumericLiterals, ExponentNotation)
 }
 
 // ===========================================================================
-// 11. BIT-STRING LITERALS
+// 8. BIT-STRING LITERALS
 // ===========================================================================
 
-TEST(Tokenizer_BitStringLiterals, HexBitString)
+TEST(Tokenizer_BitStringLiterals, IdentifierPrefixes)
 {
-    // x"A_5" — identifier-prefix form
+    // Prefixes that are scanned as identifiers then merged with the quoted body.
+    const std::vector<std::string> prefixes = {
+        "b", "o", "x", "d",
+        "ub", "uo", "ux",
+        "sb", "so", "sx"
+    };
+
+    for (const auto& pfx : prefixes)
+    {
+        std::string src = pfx + "\"10\"";
+        auto tokens = tokenize(src);
+        ASSERT_EQ(tokens.size(), 1u)                           << "prefix: " << pfx;
+        EXPECT_EQ(tokens[0].type, TokenType::BitStringLiteral) << "prefix: " << pfx;
+        EXPECT_EQ(tokens[0].value, src)                        << "prefix: " << pfx;
+    }
+}
+
+TEST(Tokenizer_BitStringLiterals, HexWithUnderscoreSeparator)
+{
+    // Underscores inside the quoted body are preserved as-is.
     auto tokens = tokenize("x\"A_5\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
     EXPECT_EQ(tokens[0].value, "x\"A_5\"");
 }
 
-TEST(Tokenizer_BitStringLiterals, BinaryBitString)
+TEST(Tokenizer_BitStringLiterals, SizedNumericPrefix)
 {
-    auto tokens = tokenize("b\"1010\"");
-    ASSERT_EQ(tokens.size(), 1u);
-    EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
-    EXPECT_EQ(tokens[0].value, "b\"1010\"");
-}
-
-TEST(Tokenizer_BitStringLiterals, OctalBitString)
-{
-    auto tokens = tokenize("o\"37\"");
-    ASSERT_EQ(tokens.size(), 1u);
-    EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
-    EXPECT_EQ(tokens[0].value, "o\"37\"");
-}
-
-TEST(Tokenizer_BitStringLiterals, UnsignedBitStringPrefixes)
-{
-    // ub, uo, ux
-    for (const std::string& prefix : {"ub", "uo", "ux"})
-    {
-        std::string src = prefix + "\"10\"";
-        auto tokens = tokenize(src);
-        ASSERT_EQ(tokens.size(), 1u) << "prefix: " << prefix;
-        EXPECT_EQ(tokens[0].type, TokenType::BitStringLiteral) << "prefix: " << prefix;
-    }
-}
-
-TEST(Tokenizer_BitStringLiterals, SignedBitStringPrefixes)
-{
-    // sb, so, sx
-    for (const std::string& prefix : {"sb", "so", "sx"})
-    {
-        std::string src = prefix + "\"10\"";
-        auto tokens = tokenize(src);
-        ASSERT_EQ(tokens.size(), 1u) << "prefix: " << prefix;
-        EXPECT_EQ(tokens[0].type, TokenType::BitStringLiteral) << "prefix: " << prefix;
-    }
-}
-
-TEST(Tokenizer_BitStringLiterals, SizedHexBitString)
-{
-    // 8x"FF" — numeric-size prefix form
+    // 8x"FF" — the numeric-size prefix form.
     auto tokens = tokenize("8x\"FF\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
     EXPECT_EQ(tokens[0].value, "8x\"FF\"");
 }
 
-TEST(Tokenizer_BitStringLiterals, UnterminatedThrows)
+TEST(Tokenizer_BitStringLiterals, UnterminatedIdentifierPrefixThrows)
 {
     EXPECT_THROW(tokenize("x\"1010"), std::runtime_error);
 }
 
+TEST(Tokenizer_BitStringLiterals, UnterminatedSizedPrefixThrows)
+{
+    EXPECT_THROW(tokenize("8x\"FF"), std::runtime_error);
+}
+
+TEST(Tokenizer_BitStringLiterals, NewlineInsideBodyThrows)
+{
+    EXPECT_THROW(tokenize("x\"10\n10\""), std::runtime_error);
+}
+
 // ===========================================================================
-// 12. STRING LITERALS
+// 9. QUOTED BIT-STRING LITERALS
 // ===========================================================================
 
-TEST(Tokenizer_StringLiterals, SimpleStringLiteral)
+// Plain quoted strings produce TokenType::BitStringLiteral (default binary radix).
+
+TEST(Tokenizer_StringLiterals, Simple)
 {
     auto tokens = tokenize("\"hello\"");
     ASSERT_EQ(tokens.size(), 1u);
@@ -413,7 +344,7 @@ TEST(Tokenizer_StringLiterals, SimpleStringLiteral)
     EXPECT_EQ(tokens[0].value, "\"hello\"");
 }
 
-TEST(Tokenizer_StringLiterals, EmptyString)
+TEST(Tokenizer_StringLiterals, Empty)
 {
     auto tokens = tokenize("\"\"");
     ASSERT_EQ(tokens.size(), 1u);
@@ -421,22 +352,21 @@ TEST(Tokenizer_StringLiterals, EmptyString)
     EXPECT_EQ(tokens[0].value, "\"\"");
 }
 
-TEST(Tokenizer_StringLiterals, UnterminatedStringThrows)
+TEST(Tokenizer_StringLiterals, UnterminatedThrows)
 {
     EXPECT_THROW(tokenize("\"unterminated"), std::runtime_error);
 }
 
-TEST(Tokenizer_StringLiterals, MultilineStringThrows)
+TEST(Tokenizer_StringLiterals, NewlineInsideThrows)
 {
-    // A string that spans a line break is illegal.
     EXPECT_THROW(tokenize("\"line1\nline2\""), std::runtime_error);
 }
 
 // ===========================================================================
-// 13. CHARACTER LITERALS
+// 10. CHARACTER LITERALS
 // ===========================================================================
 
-TEST(Tokenizer_CharacterLiterals, SingleCharLiteral)
+TEST(Tokenizer_CharacterLiterals, SinglePrintableChar)
 {
     auto tokens = tokenize("'A'");
     ASSERT_EQ(tokens.size(), 1u);
@@ -450,51 +380,52 @@ TEST(Tokenizer_CharacterLiterals, StdLogicValues)
     {
         std::string src = {'\'', c, '\''};
         auto tokens = tokenize(src);
-        ASSERT_EQ(tokens.size(), 1u) << "char: " << c;
-        EXPECT_EQ(tokens[0].type,  TokenType::CharacterLiteral) << "char: " << c;
-        EXPECT_EQ(tokens[0].value, src)                         << "char: " << c;
+        ASSERT_EQ(tokens.size(), 1u)                              << "char: " << c;
+        EXPECT_EQ(tokens[0].type,  TokenType::CharacterLiteral)   << "char: " << c;
+        EXPECT_EQ(tokens[0].value, src)                           << "char: " << c;
     }
 }
 
-TEST(Tokenizer_CharacterLiterals, TickWithoutCharIsOperator)
+TEST(Tokenizer_CharacterLiterals, TickWithoutBodyIsOperator)
 {
-    // A lone tick that is not 'X' form -> Operator token.
-    // e.g.  vec'(others => '0')  starts with  Identifier tick ...
+    // A lone tick that doesn't form 'X' -> Operator.
     auto tokens = tokenize("vec'");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[0].type,  TokenType::Identifier);
+    EXPECT_EQ(tokens[0].value, "vec");
     EXPECT_EQ(tokens[1].type,  TokenType::Operator);
     EXPECT_EQ(tokens[1].value, "'");
 }
 
+TEST(Tokenizer_CharacterLiterals, AttributeTickSequence)
+{
+    // sig'length  ->  Identifier  Operator(')  Identifier
+    auto tokens = tokenize("sig'length");
+    ASSERT_EQ(tokens.size(), 3u);
+    EXPECT_EQ(tokens[0].type,  TokenType::Identifier); EXPECT_EQ(tokens[0].value, "sig");
+    EXPECT_EQ(tokens[1].type,  TokenType::Operator);   EXPECT_EQ(tokens[1].value, "'");
+    EXPECT_EQ(tokens[2].type,  TokenType::Identifier); EXPECT_EQ(tokens[2].value, "length");
+}
+
 // ===========================================================================
-// 14. COMMENTS
+// 11. COMMENTS
 // ===========================================================================
 
 TEST(Tokenizer_Comments, LineCommentSkipped)
 {
-    // Everything after -- to end-of-line must be ignored.
     auto tokens = tokenize("signal -- this is ignored\n");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::Keyword);
     EXPECT_EQ(tokens[0].value, "signal");
 }
 
-TEST(Tokenizer_Comments, CommentAfterTokens)
+TEST(Tokenizer_Comments, OnlyCommentsProducesNoTokens)
 {
-    auto tokens = tokenize("end -- EOF");
-    ASSERT_EQ(tokens.size(), 1u);
-    EXPECT_EQ(tokens[0].value, "end");
-}
-
-TEST(Tokenizer_Comments, CommentOnlySource)
-{
-    // A source with only comments should produce no tokens.
     auto tokens = tokenize("-- nothing here\n-- or here\n");
     EXPECT_EQ(tokens.size(), 0u);
 }
 
-TEST(Tokenizer_Comments, InlineCommentDoesNotEatNextLine)
+TEST(Tokenizer_Comments, DoesNotConsumeNextLine)
 {
     auto tokens = tokenize("signal -- comment\nmy_sig");
     ASSERT_EQ(tokens.size(), 2u);
@@ -502,9 +433,9 @@ TEST(Tokenizer_Comments, InlineCommentDoesNotEatNextLine)
     EXPECT_EQ(tokens[1].value, "my_sig");
 }
 
-TEST(Tokenizer_Comments, CommentAttachedToEndKeyword)
+TEST(Tokenizer_Comments, ImmediatelyAfterKeywordNoSpace)
 {
-    // "end--comment" — the '--' immediately follows a keyword with no space.
+    // "end--comment\n" — the '--' is attached directly to the keyword.
     auto tokens = tokenize("end--comment\n");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].type,  TokenType::Keyword);
@@ -512,10 +443,10 @@ TEST(Tokenizer_Comments, CommentAttachedToEndKeyword)
 }
 
 // ===========================================================================
-// 15. WHITESPACE
+// 12. WHITESPACE
 // ===========================================================================
 
-TEST(Tokenizer_Whitespace, LeadingAndTrailingWhitespaceIgnored)
+TEST(Tokenizer_Whitespace, LeadingAndTrailingIgnored)
 {
     auto tokens = tokenize("  \t  signal  \t  ");
     ASSERT_EQ(tokens.size(), 1u);
@@ -528,8 +459,14 @@ TEST(Tokenizer_Whitespace, NewlinesTreatedAsWhitespace)
     ASSERT_EQ(tokens.size(), 2u);
 }
 
+TEST(Tokenizer_Whitespace, EmptySourceProducesNoTokens)
+{
+    EXPECT_EQ(tokenize("").size(), 0u);
+    EXPECT_EQ(tokenize("   \t\n  ").size(), 0u);
+}
+
 // ===========================================================================
-// 16. POSITION TRACKING (line / column)
+// 13. POSITION TRACKING (line / column)
 // ===========================================================================
 
 TEST(Tokenizer_PositionTracking, FirstTokenOnFirstLine)
@@ -540,12 +477,13 @@ TEST(Tokenizer_PositionTracking, FirstTokenOnFirstLine)
     EXPECT_EQ(tokens[0].column, 1u);
 }
 
-TEST(Tokenizer_PositionTracking, SecondTokenOnSameLine)
+TEST(Tokenizer_PositionTracking, SecondTokenColumnOnSameLine)
 {
+    // "entity foo" — 'f' starts at column 8.
     auto tokens = tokenize("entity foo");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[1].line,   1u);
-    EXPECT_EQ(tokens[1].column, 8u); // "entity " = 7 chars, then 'f' at col 8
+    EXPECT_EQ(tokens[1].column, 8u);
 }
 
 TEST(Tokenizer_PositionTracking, TokenOnSecondLine)
@@ -556,28 +494,195 @@ TEST(Tokenizer_PositionTracking, TokenOnSecondLine)
     EXPECT_EQ(tokens[1].column, 1u);
 }
 
+TEST(Tokenizer_PositionTracking, ColumnAfterTwoCharOperator)
+{
+    // ":= x" — 'x' starts at column 4.
+    auto tokens = tokenize(":= x");
+    ASSERT_EQ(tokens.size(), 2u);
+    EXPECT_EQ(tokens[1].line,   1u);
+    EXPECT_EQ(tokens[1].column, 4u);
+}
+
 // ===========================================================================
-// 17. UNKNOWN CHARACTER THROWS
+// 14. ISTREAM CONSTRUCTOR
 // ===========================================================================
 
-TEST(Tokenizer_UnknownChar, ThrowsOnUnrecognisedCharacter)
+TEST(Tokenizer_IStream, ProducesIdenticalTokens)
 {
-    // '@' is not in any recognised category.
+    const std::string src = "entity foo is begin end;";
+
+    std::istringstream ss(src);
+    Tokenizer tokStream(ss);
+
+    Tokenizer tokString(src);
+
+    ASSERT_EQ(tokStream.size(), tokString.size());
+
+    for (size_t i = 0; i < tokString.size(); ++i)
+    {
+        const Token* a = tokStream.next();
+        const Token* b = tokString.next();
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        EXPECT_EQ(a->type,   b->type);
+        EXPECT_EQ(a->value,  b->value);
+        EXPECT_EQ(a->line,   b->line);
+        EXPECT_EQ(a->column, b->column);
+    }
+}
+
+// ===========================================================================
+// 15. CURSOR API  (next / prev / peek)
+// ===========================================================================
+
+TEST(Tokenizer_Cursor, InitialState)
+{
+    Tokenizer tok("a b c");
+    EXPECT_EQ(tok.index(),     0u);
+    EXPECT_EQ(tok.size(),      3u);
+    EXPECT_EQ(tok.remaining(), 3u);
+}
+
+TEST(Tokenizer_Cursor, NextAdvancesAndReturnsToken)
+{
+    Tokenizer tok("a b c");
+    const Token* t = tok.next();
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(t->value, "a");
+    EXPECT_EQ(tok.index(), 1u);
+}
+
+TEST(Tokenizer_Cursor, NextReturnsNullptrAtEnd)
+{
+    Tokenizer tok("a");
+    tok.next();
+    EXPECT_EQ(tok.next(), nullptr);
+}
+
+TEST(Tokenizer_Cursor, NextClampsToBoundary)
+{
+    Tokenizer tok("a b");
+    // Advancing by more than remaining must clamp and return nullptr.
+    EXPECT_EQ(tok.next(100), nullptr);
+    EXPECT_EQ(tok.index(), tok.size());
+}
+
+TEST(Tokenizer_Cursor, PrevMovesBackAndReturnsToken)
+{
+    Tokenizer tok("a b c");
+    tok.next(); // index -> 1
+    tok.next(); // index -> 2
+    // prev() decrements index to 1 and returns tokens[1] = "b"
+    const Token* t = tok.prev();
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(t->value, "b");
+    EXPECT_EQ(tok.index(), 1u);
+}
+
+TEST(Tokenizer_Cursor, PrevReturnsNullptrAtBeginning)
+{
+    Tokenizer tok("a b");
+    EXPECT_EQ(tok.prev(), nullptr);
+}
+
+TEST(Tokenizer_Cursor, PrevClampsToBeginning)
+{
+    Tokenizer tok("a b");
+    tok.next();
+    EXPECT_EQ(tok.prev(100), nullptr);
+    EXPECT_EQ(tok.index(), 0u);
+}
+
+TEST(Tokenizer_Cursor, PeekZeroIsCurrentToken)
+{
+    Tokenizer tok("a b c");
+    tok.next(); // consume 'a', cursor at 1
+    const Token* p = tok.peek(0);
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->value, "b");
+}
+
+TEST(Tokenizer_Cursor, PeekPositiveLooksAhead)
+{
+    Tokenizer tok("a b c");
+    const Token* p = tok.peek(2);
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->value, "c");
+}
+
+TEST(Tokenizer_Cursor, PeekNegativeLooksBehind)
+{
+    Tokenizer tok("a b c");
+    tok.next(); // cursor -> 1
+    tok.next(); // cursor -> 2
+    // peek(-1) = tokens[2 - 1] = tokens[1] = "b"
+    const Token* p = tok.peek(-1);
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->value, "b");
+}
+
+TEST(Tokenizer_Cursor, PeekReturnsNullptrOutOfBounds)
+{
+    Tokenizer tok("a");
+    EXPECT_EQ(tok.peek(-1), nullptr); // before start
+    EXPECT_EQ(tok.peek(1),  nullptr); // past end
+}
+
+TEST(Tokenizer_Cursor, PeekDoesNotMoveCursor)
+{
+    Tokenizer tok("a b c");
+    tok.peek(2);
+    EXPECT_EQ(tok.index(), 0u);
+}
+
+TEST(Tokenizer_Cursor, RemainingDecreasesWithNext)
+{
+    Tokenizer tok("a b c");
+    EXPECT_EQ(tok.remaining(), 3u);
+    tok.next();
+    EXPECT_EQ(tok.remaining(), 2u);
+    tok.next();
+    EXPECT_EQ(tok.remaining(), 1u);
+    tok.next();
+    EXPECT_EQ(tok.remaining(), 0u);
+}
+
+// ===========================================================================
+// 16. UNKNOWN CHARACTER
+// ===========================================================================
+
+TEST(Tokenizer_Unknown, ThrowsOnUnrecognisedCharacter)
+{
     EXPECT_THROW(tokenize("@"), std::runtime_error);
 }
 
-TEST(Tokenizer_UnknownChar, ThrowsOnBacktick)
+TEST(Tokenizer_Unknown, ThrowsOnBacktick)
 {
     EXPECT_THROW(tokenize("`"), std::runtime_error);
 }
 
+TEST(Tokenizer_Unknown, ErrorMessageContainsPosition)
+{
+    try
+    {
+        tokenize("\n@");
+        FAIL() << "Expected std::runtime_error";
+    }
+    catch (const std::runtime_error& e)
+    {
+        const std::string msg = e.what();
+        // Must mention line 2 and column 1.
+        EXPECT_NE(msg.find("2"), std::string::npos) << "message: " << msg;
+        EXPECT_NE(msg.find("1"), std::string::npos) << "message: " << msg;
+    }
+}
+
 // ===========================================================================
-// 18. COMPOUND / INTEGRATION TESTS
+// 17. INTEGRATION
 // ===========================================================================
 
 TEST(Tokenizer_Integration, EntityDeclaration)
 {
-    // entity adder is port ( a : in std_logic ; b : in std_logic ) ; end adder ;
     const std::string src =
         "entity adder is\n"
         "  port ( a : in std_logic;\n"
@@ -586,52 +691,50 @@ TEST(Tokenizer_Integration, EntityDeclaration)
 
     auto tokens = tokenize(src);
 
-    expectToken(tokens, 0,  TokenType::Keyword,      "entity");
-    expectToken(tokens, 1,  TokenType::Identifier,   "adder");
-    expectToken(tokens, 2,  TokenType::Keyword,       "is");
-    expectToken(tokens, 3,  TokenType::Keyword,       "port");
-    expectToken(tokens, 4,  TokenType::Delimiter,     "(");
-    expectToken(tokens, 5,  TokenType::Identifier,    "a");
-    expectToken(tokens, 6,  TokenType::Delimiter,     ":");
-    expectToken(tokens, 7,  TokenType::Keyword,       "in");
-    expectToken(tokens, 8,  TokenType::StandardType,  "std_logic");
-    expectToken(tokens, 9,  TokenType::Delimiter,     ";");
-    expectToken(tokens, 10, TokenType::Identifier,    "b");
-    expectToken(tokens, 11, TokenType::Delimiter,     ":");
-    expectToken(tokens, 12, TokenType::Keyword,       "in");
-    expectToken(tokens, 13, TokenType::StandardType,  "std_logic");
-    expectToken(tokens, 14, TokenType::Delimiter,     ")");
-    expectToken(tokens, 15, TokenType::Delimiter,     ";");
-    expectToken(tokens, 16, TokenType::Keyword,       "end");
-    expectToken(tokens, 17, TokenType::Identifier,    "adder");
-    expectToken(tokens, 18, TokenType::Delimiter,     ";");
+    expectToken(tokens, 0,  TokenType::Keyword,     "entity");
+    expectToken(tokens, 1,  TokenType::Identifier,  "adder");
+    expectToken(tokens, 2,  TokenType::Keyword,     "is");
+    expectToken(tokens, 3,  TokenType::Keyword,     "port");
+    expectToken(tokens, 4,  TokenType::Delimiter,   "(");
+    expectToken(tokens, 5,  TokenType::Identifier,  "a");
+    expectToken(tokens, 6,  TokenType::Delimiter,   ":");
+    expectToken(tokens, 7,  TokenType::Keyword,     "in");
+    expectToken(tokens, 8,  TokenType::Identifier,  "std_logic");   // plain identifier
+    expectToken(tokens, 9,  TokenType::Delimiter,   ";");
+    expectToken(tokens, 10, TokenType::Identifier,  "b");
+    expectToken(tokens, 11, TokenType::Delimiter,   ":");
+    expectToken(tokens, 12, TokenType::Keyword,     "in");
+    expectToken(tokens, 13, TokenType::Identifier,  "std_logic");
+    expectToken(tokens, 14, TokenType::Delimiter,   ")");
+    expectToken(tokens, 15, TokenType::Delimiter,   ";");
+    expectToken(tokens, 16, TokenType::Keyword,     "end");
+    expectToken(tokens, 17, TokenType::Identifier,  "adder");
+    expectToken(tokens, 18, TokenType::Delimiter,   ";");
     EXPECT_EQ(tokens.size(), 19u);
 }
 
 TEST(Tokenizer_Integration, SignalAssignment)
 {
-    // y <= a and b;
     auto tokens = tokenize("y <= a and b;");
     ASSERT_EQ(tokens.size(), 6u);
     expectToken(tokens, 0, TokenType::Identifier, "y");
     expectToken(tokens, 1, TokenType::Operator,   "<=");
     expectToken(tokens, 2, TokenType::Identifier, "a");
-    expectToken(tokens, 3, TokenType::Operator,   "and");
+    expectToken(tokens, 3, TokenType::Operator,   "and");  // word operator -> Operator
     expectToken(tokens, 4, TokenType::Identifier, "b");
     expectToken(tokens, 5, TokenType::Delimiter,  ";");
 }
 
-TEST(Tokenizer_Integration, VariableAssignmentWithConstant)
+TEST(Tokenizer_Integration, VariableAssignment)
 {
-    // count := count + 1;
     auto tokens = tokenize("count := count + 1;");
     ASSERT_EQ(tokens.size(), 6u);
-    expectToken(tokens, 0, TokenType::Identifier,    "count");
-    expectToken(tokens, 1, TokenType::Operator,      ":=");
-    expectToken(tokens, 2, TokenType::Identifier,    "count");
-    expectToken(tokens, 3, TokenType::Operator,      "+");
+    expectToken(tokens, 0, TokenType::Identifier,     "count");
+    expectToken(tokens, 1, TokenType::Operator,       ":=");
+    expectToken(tokens, 2, TokenType::Identifier,     "count");
+    expectToken(tokens, 3, TokenType::Operator,       "+");
     expectToken(tokens, 4, TokenType::NumericLiteral, "1");
-    expectToken(tokens, 5, TokenType::Delimiter,     ";");
+    expectToken(tokens, 5, TokenType::Delimiter,      ";");
 }
 
 TEST(Tokenizer_Integration, IfThenElse)
@@ -646,54 +749,83 @@ TEST(Tokenizer_Integration, IfThenElse)
     auto tokens = tokenize(src);
 
     expectToken(tokens, 0,  TokenType::Keyword,          "if");
-    expectToken(tokens, 1,  TokenType::Identifier,        "sel");
-    expectToken(tokens, 2,  TokenType::Operator,          "=");
-    expectToken(tokens, 3,  TokenType::CharacterLiteral,  "'1'");
-    expectToken(tokens, 4,  TokenType::Keyword,            "then");
-    expectToken(tokens, 5,  TokenType::Identifier,         "y");
-    expectToken(tokens, 6,  TokenType::Operator,           "<=");
-    expectToken(tokens, 7,  TokenType::Identifier,         "a");
-    expectToken(tokens, 8,  TokenType::Delimiter,          ";");
-    expectToken(tokens, 9,  TokenType::Keyword,            "else");
-    expectToken(tokens, 10, TokenType::Identifier,         "y");
-    expectToken(tokens, 11, TokenType::Operator,           "<=");
-    expectToken(tokens, 12, TokenType::Identifier,         "b");
-    expectToken(tokens, 13, TokenType::Delimiter,          ";");
-    expectToken(tokens, 14, TokenType::Keyword,            "end");
-    expectToken(tokens, 15, TokenType::Keyword,            "if");
-    expectToken(tokens, 16, TokenType::Delimiter,          ";");
+    expectToken(tokens, 1,  TokenType::Identifier,       "sel");
+    expectToken(tokens, 2,  TokenType::Operator,         "=");
+    expectToken(tokens, 3,  TokenType::CharacterLiteral, "'1'");
+    expectToken(tokens, 4,  TokenType::Keyword,          "then");
+    expectToken(tokens, 5,  TokenType::Identifier,       "y");
+    expectToken(tokens, 6,  TokenType::Operator,         "<=");
+    expectToken(tokens, 7,  TokenType::Identifier,       "a");
+    expectToken(tokens, 8,  TokenType::Delimiter,        ";");
+    expectToken(tokens, 9,  TokenType::Keyword,          "else");
+    expectToken(tokens, 10, TokenType::Identifier,       "y");
+    expectToken(tokens, 11, TokenType::Operator,         "<=");
+    expectToken(tokens, 12, TokenType::Identifier,       "b");
+    expectToken(tokens, 13, TokenType::Delimiter,        ";");
+    expectToken(tokens, 14, TokenType::Keyword,          "end");
+    expectToken(tokens, 15, TokenType::Keyword,          "if");
+    expectToken(tokens, 16, TokenType::Delimiter,        ";");
     EXPECT_EQ(tokens.size(), 17u);
 }
 
-TEST(Tokenizer_Integration, ProcessWithRisingEdge)
+TEST(Tokenizer_Integration, UseLibraryClause)
 {
-    const std::string src =
-        "process(clk)\n"
-        "begin\n"
-        "  if rising_edge(clk) then\n"
-        "    q <= d;\n"
-        "  end if;\n"
-        "end process;\n";
+    auto tokens = tokenize("library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;");
 
-    auto tokens = tokenize(src);
-
-    expectToken(tokens, 0,  TokenType::Keyword,          "process");
-    expectToken(tokens, 1,  TokenType::Delimiter,         "(");
-    expectToken(tokens, 2,  TokenType::Identifier,        "clk");
-    expectToken(tokens, 3,  TokenType::Delimiter,         ")");
-    expectToken(tokens, 4,  TokenType::Keyword,            "begin");
-    expectToken(tokens, 5,  TokenType::Keyword,            "if");
-    expectToken(tokens, 6,  TokenType::StandardFunction,   "rising_edge");
-    expectToken(tokens, 7,  TokenType::Delimiter,          "(");
-    expectToken(tokens, 8,  TokenType::Identifier,         "clk");
-    expectToken(tokens, 9,  TokenType::Delimiter,          ")");
-    expectToken(tokens, 10, TokenType::Keyword,            "then");
+    expectToken(tokens, 0, TokenType::Keyword,    "library");
+    expectToken(tokens, 1, TokenType::Identifier, "ieee");
+    expectToken(tokens, 2, TokenType::Delimiter,  ";");
+    expectToken(tokens, 3, TokenType::Keyword,    "use");
+    expectToken(tokens, 4, TokenType::Identifier, "ieee");
+    expectToken(tokens, 5, TokenType::Delimiter,  ".");
+    expectToken(tokens, 6, TokenType::Identifier, "std_logic_1164");
+    expectToken(tokens, 7, TokenType::Delimiter,  ".");
+    expectToken(tokens, 8, TokenType::Identifier, "all");    // 'all' is not a keyword here
+    expectToken(tokens, 9, TokenType::Delimiter,  ";");
+    EXPECT_EQ(tokens.size(), 10u);
 }
 
-TEST(Tokenizer_Integration, CompressedSyntaxFile)
+TEST(Tokenizer_Integration, PortMapInstantiation)
 {
-    // Verifies the tokenizer handles the compressed style found in
-    // test-files/compressedSyntax.vhdl without throwing.
+    auto tokens = tokenize("u1 : adder port map ( a => x , b => y ) ;");
+
+    expectToken(tokens, 0, TokenType::Identifier, "u1");
+    expectToken(tokens, 1, TokenType::Delimiter,  ":");
+    expectToken(tokens, 2, TokenType::Identifier, "adder");
+    expectToken(tokens, 3, TokenType::Keyword,    "port");
+    expectToken(tokens, 4, TokenType::Keyword,    "map");
+    expectToken(tokens, 5, TokenType::Delimiter,  "(");
+    expectToken(tokens, 6, TokenType::Identifier, "a");
+    expectToken(tokens, 7, TokenType::Operator,   "=>");
+    expectToken(tokens, 8, TokenType::Identifier, "x");
+    expectToken(tokens, 9, TokenType::Delimiter,  ",");
+}
+
+TEST(Tokenizer_Integration, BitStringLiteralInAssignment)
+{
+    auto tokens = tokenize("temp <= x\"A_5\";");
+    ASSERT_EQ(tokens.size(), 4u);
+    expectToken(tokens, 0, TokenType::Identifier,       "temp");
+    expectToken(tokens, 1, TokenType::Operator,         "<=");
+    expectToken(tokens, 2, TokenType::BitStringLiteral, "x\"A_5\"");
+    expectToken(tokens, 3, TokenType::Delimiter,        ";");
+}
+
+TEST(Tokenizer_Integration, VectorRangeWithDownto)
+{
+    auto tokens = tokenize("std_logic_vector(7 downto 0)");
+    ASSERT_EQ(tokens.size(), 6u);
+    expectToken(tokens, 0, TokenType::Identifier,     "std_logic_vector");
+    expectToken(tokens, 1, TokenType::Delimiter,      "(");
+    expectToken(tokens, 2, TokenType::NumericLiteral, "7");
+    expectToken(tokens, 3, TokenType::Operator,       "downto");
+    expectToken(tokens, 4, TokenType::NumericLiteral, "0");
+    expectToken(tokens, 5, TokenType::Delimiter,      ")");
+}
+
+TEST(Tokenizer_Integration, CompressedSyntaxDoesNotThrow)
+{
+    // No spaces between tokens — exercises every adjacency the lexer must handle.
     const std::string src =
         "library IEEE;use IEEE.STD_LOGIC_1164.ALL;\n"
         "entity test_mux is port(a,b:in std_logic_vector(3 downto 0);\n"
@@ -714,65 +846,3 @@ TEST(Tokenizer_Integration, CompressedSyntaxFile)
         EXPECT_GT(tokens.size(), 0u);
     });
 }
-
-TEST(Tokenizer_Integration, UseLibraryClause)
-{
-    // library IEEE ; use IEEE . STD_LOGIC_1164 . ALL ;
-    auto tokens = tokenize("library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;");
-
-    expectToken(tokens, 0, TokenType::Keyword,    "library");
-    expectToken(tokens, 1, TokenType::Identifier,  "ieee");
-    expectToken(tokens, 2, TokenType::Delimiter,   ";");
-    expectToken(tokens, 3, TokenType::Keyword,     "use");
-    expectToken(tokens, 4, TokenType::Identifier,  "ieee");
-    expectToken(tokens, 5, TokenType::Delimiter,   ".");
-    expectToken(tokens, 6, TokenType::Identifier,  "std_logic_1164");
-    expectToken(tokens, 7, TokenType::Delimiter,   ".");
-    expectToken(tokens, 8, TokenType::Keyword,     "all");
-    expectToken(tokens, 9, TokenType::Delimiter,   ";");
-    EXPECT_EQ(tokens.size(), 10u);
-}
-
-TEST(Tokenizer_Integration, PortMapInstantiation)
-{
-    // u1 : adder port map ( a => x , b => y , s => sum ) ;
-    const std::string src =
-        "u1 : adder port map ( a => x , b => y , s => sum ) ;";
-    auto tokens = tokenize(src);
-
-    expectToken(tokens, 0,  TokenType::Identifier, "u1");
-    expectToken(tokens, 1,  TokenType::Delimiter,  ":");
-    expectToken(tokens, 2,  TokenType::Identifier, "adder");
-    expectToken(tokens, 3,  TokenType::Keyword,    "port");
-    expectToken(tokens, 4,  TokenType::Keyword,    "map");
-    expectToken(tokens, 5,  TokenType::Delimiter,  "(");
-    expectToken(tokens, 6,  TokenType::Identifier, "a");
-    expectToken(tokens, 7,  TokenType::Operator,   "=>");
-    expectToken(tokens, 8,  TokenType::Identifier, "x");
-    expectToken(tokens, 9,  TokenType::Delimiter,  ",");
-}
-
-TEST(Tokenizer_Integration, ConcurrentSignalAssignmentWithBitStringLiteral)
-{
-    // temp <= x"A_5";
-    auto tokens = tokenize("temp <= x\"A_5\";");
-    ASSERT_EQ(tokens.size(), 4u);
-    expectToken(tokens, 0, TokenType::Identifier,       "temp");
-    expectToken(tokens, 1, TokenType::Operator,         "<=");
-    expectToken(tokens, 2, TokenType::BitStringLiteral, "x\"A_5\"");
-    expectToken(tokens, 3, TokenType::Delimiter,        ";");
-}
-
-TEST(Tokenizer_Integration, VectorRangeWithDownto)
-{
-    // std_logic_vector ( 7 downto 0 )
-    auto tokens = tokenize("std_logic_vector(7 downto 0)");
-    ASSERT_EQ(tokens.size(), 6u);
-    expectToken(tokens, 0, TokenType::StandardType,  "std_logic_vector");
-    expectToken(tokens, 1, TokenType::Delimiter,      "(");
-    expectToken(tokens, 2, TokenType::NumericLiteral, "7");
-    expectToken(tokens, 3, TokenType::Keyword,        "downto");
-    expectToken(tokens, 4, TokenType::NumericLiteral, "0");
-    expectToken(tokens, 5, TokenType::Delimiter,      ")");
-}
-

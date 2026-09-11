@@ -1,7 +1,4 @@
 ENTITY top IS
-    PORT (
-        x : OUT STD_LOGIC;
-    );
 END ENTITY top;
 
 ARCHITECTURE behavioral OF top IS
@@ -20,8 +17,7 @@ ARCHITECTURE behavioral OF top IS
         );
     END COMPONENT;
 
-    SIGNAL clk_signal : STD_LOGIC;
-    SIGNAL reset_signal : STD_LOGIC;
+    SIGNAL clk_signal, reset_signal : STD_LOGIC;
     SIGNAL count_signal : STD_LOGIC_VECTOR(31 DOWNTO 0);
 
 BEGIN
