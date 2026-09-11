@@ -1,17 +1,8 @@
-#ifndef PULSE_PARSER_LIB_AST_CLONES_H
-#define PULSE_PARSER_LIB_AST_CLONES_H
+#include "ast_internal.h"
 
-namespace Pulse::Parser
-{
-    /// Clones an Expression object, creating a deep copy of the expression tree.
-    /// @param src The source Expression to clone.
-    /// @returns A unique pointer to the cloned Expression.
-    inline ExpressionPtr cloneExpression(const Expression* src);
-
-    /// Clones a TypeSpec object, creating a deep copy of the type specification.
-    /// @param src The source TypeSpec to clone.
-    /// @returns A new TypeSpec object that is a deep copy of the source.
-    inline TypeSpec cloneTypeSpec(const TypeSpec& src)
+namespace Pulse::Parser {
+    
+    TypeSpec cloneTypeSpec(const TypeSpec& src)
     {
         TypeSpec copy;
         copy.source = src.source;
@@ -25,7 +16,7 @@ namespace Pulse::Parser
         return copy;
     }
 
-    inline ExpressionPtr cloneExpression(const Expression* src)
+    ExpressionPtr cloneExpression(const Expression* src)
     {
         if (!src) return nullptr;
 
@@ -113,6 +104,4 @@ namespace Pulse::Parser
 
         throw std::runtime_error("Pulse Parser Error: Unknown Expression subtype in cloneExpression");
     }
-}
-
-#endif // PULSE_PARSER_LIB_AST_CLONES_H
+} // namespace Pulse::Parser
