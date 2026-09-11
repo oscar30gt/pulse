@@ -2,13 +2,13 @@
 //
 // Comprehensive test coverage for AST generation from tokenized VHDL source.
 // Tests verify that all syntactically valid VHDL represented in the AST tree
-// is parsed correctly, and that syntax errors result in ast_build_error exceptions.
+// is parsed correctly, and that syntax errors result in ast_syntax_error exceptions.
 //
 // Implementation notes:
 //   - The function takes a Tokenizer reference and generates an ASTRoot.
 //   - No semantic analysis is performed; only syntactic parsing is verified.
 //   - Not all VHDL syntax is supported; only constructs that fit the AST are parseable.
-//   - The function throws ast_build_error on malformed input.
+//   - The function throws ast_syntax_error on malformed input.
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -16,7 +16,7 @@
 #include <vector>
 #include <sstream>
 
-#include "ast.h"
+#include "parser.h"
 #include "tokenizer.h"
 
 using namespace Pulse::Parser;
@@ -27,21 +27,21 @@ using namespace Pulse::Parser;
 
 /// Build an AST from a raw VHDL string.
 /// @returns ASTRoot containing the parsed tree.
-/// @throws ast_build_error if the input is malformed.
+/// @throws ast_syntax_error if the input is malformed.
 static ASTRoot parseVHDL(const std::string& source)
 {
     Tokenizer tokenizer(source);
     return VHDLtoAST(tokenizer);
 }
 
-/// Assert that parsing the given source throws ast_build_error.
+/// Assert that parsing the given source throws ast_syntax_error.
 /// @param source Raw VHDL string that should fail to parse.
 static void expectParseError(const std::string& source)
 {
     EXPECT_THROW({
         Tokenizer tokenizer(source);
         VHDLtoAST(tokenizer);
-    }, ast_build_error);
+    }, ast_syntax_error);
 }
 
 /// Assert that parsing succeeds and returns a non-empty AST.
@@ -333,6 +333,154 @@ TEST(VHDLtoAST_SignalAssignments, AssignmentWithBooleanLiteral)
     });
 }
 
+TEST(VHDLtoAST_SignalAssignments, Literals)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+
+        architecture behavioral of test is
+        begin
+            -- Character Literals (Pulse Parser Supported)
+            sig_02 <= '0';
+            sig_03 <= '1';
+            sig_04 <= 'X';
+            sig_05 <= 'x';
+            sig_06 <= 'Z';
+            sig_07 <= 'z';
+            sig_08 <= '-';
+
+            -- Bit String Literals (Implicit Binary)
+            sig_09 <= "1010";
+            sig_10 <= "1100_0011";
+
+            -- Explicit Base Prefix Bit Strings (Binary, Octal, Hexadecimal, Decimal)
+            sig_11 <= B"1010";
+            sig_12 <= b"1010";
+            sig_13 <= O"75";
+            sig_14 <= o"75";
+            sig_15 <= X"FA";
+            sig_16 <= x"fa";
+            sig_17 <= D"42";
+            sig_18 <= d"42";
+
+            -- VHDL-2008 Explicit Sized Bit Strings (Default Unsigned)
+            sig_19 <= 8B"1010";
+            sig_20 <= 12O"75";
+            sig_21 <= 16X"FA";
+            sig_22 <= 10D"42";
+
+            -- VHDL-2008 Explicit Sized & Unsigned Bit Strings
+            sig_23 <= 8UB"1010";
+            sig_24 <= 12UO"75";
+            sig_25 <= 16UX"FA";
+            sig_26 <= 10UD"42";
+
+            -- VHDL-2008 Explicit Sized & Signed Bit Strings (Sign-Extended)
+            sig_27 <= 8SB"1110";
+            sig_28 <= 12SO"75";
+            sig_29 <= 16SX"F";
+            sig_30 <= 10SD"42";
+
+            -- VHDL-2008 Unsigned Bit Strings (No explicit size)
+            sig_31 <= UB"1010";
+            sig_32 <= UO"75";
+            sig_33 <= UX"FA";
+            sig_34 <= UD"42";
+
+            -- VHDL-2008 Signed Bit Strings (No explicit size)
+            sig_35 <= SB"1010";
+            sig_36 <= SO"75";
+            sig_37 <= SX"FA";
+            sig_38 <= SD"42";
+        end behavioral;
+    )";
+
+    ASTRoot root = parseVHDL(source);
+    auto* arch = dynamic_cast<ArchitectureDeclaration*>(root.children[1].get());
+    ASSERT_NE(arch, nullptr);
+
+    struct ExpectedLiteral {
+        uint64_t value;
+        uint64_t mask;
+        uint8_t width;
+        bool isSigned;
+    };
+
+    std::unordered_map<std::string, ExpectedLiteral> expected = {
+        {"sig_02", {0x0, 0, 1, false}},
+        {"sig_03", {0x1, 0, 1, false}},
+        {"sig_04", {0x0, 1, 1, false}},
+        {"sig_05", {0x0, 1, 1, false}},
+        {"sig_06", {0x1, 1, 1, false}},
+        {"sig_07", {0x1, 1, 1, false}},
+        {"sig_08", {0x0, 0, 1, false}},
+
+        {"sig_09", {0xA,  0, 4, false}}, // "1010"
+        {"sig_10", {0xC3, 0, 8, false}}, // "11000011"
+
+        {"sig_11", {0xA,  0, 4, false}}, // B"1010"
+        {"sig_12", {0xA,  0, 4, false}}, // b"1010"
+        {"sig_13", {0x3D, 0, 6, false}}, // O"75" -> 111_101
+        {"sig_14", {0x3D, 0, 6, false}}, // o"75"
+        {"sig_15", {0xFA, 0, 8, false}}, // X"FA" -> 1111_1010
+        {"sig_16", {0xFA, 0, 8, false}}, // x"fa"
+        {"sig_17", {0x2A, 0, 6, false}}, // D"42" -> 101010 (6 min bits)
+        {"sig_18", {0x2A, 0, 6, false}}, // d"42"
+
+        {"sig_19", {0x00A, 0, 8,  false}}, // 8B"1010" -> zero-padded
+        {"sig_20", {0x03D, 0, 12, false}}, // 12O"75"
+        {"sig_21", {0x0FA, 0, 16, false}}, // 16X"FA"
+        {"sig_22", {0x02A, 0, 10, false}}, // 10D"42"
+
+        {"sig_23", {0x00A, 0, 8,  false}}, // 8UB"1010"
+        {"sig_24", {0x03D, 0, 12, false}}, // 12UO"75"
+        {"sig_25", {0x0FA, 0, 16, false}}, // 16UX"FA"
+        {"sig_26", {0x02A, 0, 10, false}}, // 10UD"42"
+
+        // Sign extended (MSB of the original value is 1, so extended with 1s)
+        {"sig_27", {0xFE,   0, 8,  true}}, // 8SB"1110" -> 1111_1110
+        {"sig_28", {0xFFD,  0, 12, true}}, // 12SO"75"  -> 1111_1111_1101
+        {"sig_29", {0xFFFF, 0, 16, true}}, // 16SX"F"   -> 1111_1111_1111_1111
+        {"sig_30", {0x3EA,  0, 10, true}}, // 10SD"42"  -> MSB is 1 -> 11_1110_1010
+
+        // Unsigned modifiers with implicit size
+        {"sig_31", {0xA,  0, 4, false}}, // UB"1010"
+        {"sig_32", {0x3D, 0, 6, false}}, // UO"75"
+        {"sig_33", {0xFA, 0, 8, false}}, // UX"FA"
+        {"sig_34", {0x2A, 0, 6, false}}, // UD"42"
+
+        // Signed modifiers with implicit size
+        {"sig_35", {0xA,  0, 4, true}},  // SB"1010"
+        {"sig_36", {0x3D, 0, 6, true}},  // SO"75"
+        {"sig_37", {0xFA, 0, 8, true}},  // SX"FA"
+        {"sig_38", {0x2A, 0, 6, true}}   // SD"42"
+    };
+
+    ASSERT_EQ(arch->body.size(), expected.size());
+
+    for (auto& child : arch->body)
+    {
+        auto* assign = dynamic_cast<SignalAssignment*>(child.get());
+        ASSERT_NE(assign, nullptr) << "Expected a SignalAssignment in architecture body";
+        
+        auto* targetSym = dynamic_cast<SymbolExpr*>(assign->target.get());
+        ASSERT_NE(targetSym, nullptr) << "Expected target to be a SymbolExpr";
+
+        std::string sigName = targetSym->name;
+        auto it = expected.find(sigName);
+        ASSERT_TRUE(it != expected.end()) << "Unexpected signal assignment to: " << sigName;
+
+        auto* logic = dynamic_cast<LogicLiteralExpr*>(assign->value.get());
+        ASSERT_NE(logic, nullptr) << "Expected assigned value for " << sigName << " to be a LogicLiteralExpr";
+        
+        EXPECT_EQ(logic->value, it->second.value) << "Value mismatch for " << sigName;
+        EXPECT_EQ(logic->mask, it->second.mask) << "Mask mismatch for " << sigName;
+        EXPECT_EQ(logic->width, it->second.width) << "Width mismatch for " << sigName;
+        EXPECT_EQ(logic->isSigned, it->second.isSigned) << "Signed flag mismatch for " << sigName;
+    }
+}
+
 // ===========================================================================
 // 4. EXPRESSIONS
 // ===========================================================================
@@ -392,7 +540,7 @@ TEST(VHDLtoAST_Expressions, BinaryOperatorShift)
         architecture behavioral of test is
             signal a, result : std_logic_vector(7 downto 0);
         begin
-            result <= a sll "2";
+            result <= a sll 2;
         end behavioral;
     )";
     

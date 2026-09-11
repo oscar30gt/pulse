@@ -1,5 +1,4 @@
-#include "tokenizer.h"
-#include "sourceReader.h"
+#include "tokenizer_internal.h"
 
 #include <istream>
 
@@ -13,7 +12,7 @@ namespace Pulse::Parser
 
     Tokenizer::Tokenizer(const std::string& input)
     {
-        SourceReader reader(input, tokens);
+        SourceReader reader(input, m_tokens);
         reader.tokenize();
     }
 
@@ -21,39 +20,39 @@ namespace Pulse::Parser
 
     size_t Tokenizer::index() const
     {
-        return currentIndex;
+        return m_currentIndex;
     }
 
     size_t Tokenizer::size() const
     {
-        return tokens.size();
+        return m_tokens.size();
     }
 
     size_t Tokenizer::remaining() const
     {
-        return tokens.size() - currentIndex;
+        return m_tokens.size() - m_currentIndex;
     }
 
     const Token* Tokenizer::next(size_t count)
     {
-        if (count > tokens.size() - currentIndex)
+        if (count > m_tokens.size() - m_currentIndex)
         {
-            currentIndex = tokens.size();
+            m_currentIndex = m_tokens.size();
             return nullptr;
         }
-        currentIndex += count;
-        return &tokens[currentIndex - 1];
+        m_currentIndex += count;
+        return &m_tokens[m_currentIndex - 1];
     }
 
     const Token* Tokenizer::prev(size_t count)
     {
-        if (count > currentIndex)
+        if (count > m_currentIndex)
         {
-            currentIndex = 0;
+            m_currentIndex = 0;
             return nullptr;
         }
-        currentIndex -= count;
-        return &tokens[currentIndex];
+        m_currentIndex -= count;
+        return &m_tokens[m_currentIndex];
     }
 
     const Token* Tokenizer::peek(ssize_t offset) const
@@ -61,21 +60,21 @@ namespace Pulse::Parser
         if (offset < 0)
         {
             size_t back = static_cast<size_t>(-offset);
-            if (back > currentIndex)
+            if (back > m_currentIndex)
                 return nullptr;
-            return &tokens[currentIndex - back];
+            return &m_tokens[m_currentIndex - back];
         }
 
-        size_t peekPos = currentIndex + static_cast<size_t>(offset);
-        if (peekPos >= tokens.size())
+        size_t peekPos = m_currentIndex + static_cast<size_t>(offset);
+        if (peekPos >= m_tokens.size())
             return nullptr;
 
-        return &tokens[peekPos];
+        return &m_tokens[peekPos];
     }
 
     bool Tokenizer::end() const
     {
-        return currentIndex >= tokens.size();
+        return m_currentIndex >= m_tokens.size();
     }
 
 } // namespace Pulse::Parser

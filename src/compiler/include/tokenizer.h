@@ -44,8 +44,8 @@ namespace Pulse::Parser
     /// for a list of supported VHDL constructs.
     class Tokenizer
     {
-        std::vector<Token> tokens;
-        size_t currentIndex = 0;
+        std::vector<Token> m_tokens;
+        size_t m_currentIndex = 0;
 
     public:
         Tokenizer(std::istream& input);

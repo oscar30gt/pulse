@@ -42,7 +42,7 @@ Then, run the tests and the test VHDL project to ensure everything is working as
 Inside the `src` directory, you'll find 3 main subdirectories:
 - `debugger/`: Contains waveform-related code (recorder, TUI, etc.)
 - `engine/`: Contains the core components used to run the simulation (wires, gates, subgraphs, etc.)
-- `parser/`: Contains the whole compilation pipeline to convert VHDL code into a simulation graph.
+- `compiler/`: Contains the whole compilation pipeline to convert VHDL code into a simulation graph.
 
 Each of these directories implements its functionality in its own namespace.
 
@@ -76,7 +76,7 @@ We welcome contributions across all layers of the simulation engine. Here are th
 VHDL is a huge language with many complex constructs. We aim to support as much of the syntax and semantics as possible, including advanced sequential statements, package declarations, and complex module hierarchies.
 
 #### Where to Look
-You can find parsing-related code inside `/src/parser/`.
+You can find parsing-related code inside `/src/compiler/`.
 
 #### How to Contribute
 The compilation pipeline consists of several stages: lexing, parsing, semantic analysis, and linking. Every of these stages should be able to handle new VHDL constructs. Finally, you will need to find the best way the new constructs can be represented in the simulation graph when building the design blueprint.

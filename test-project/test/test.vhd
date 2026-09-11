@@ -13,7 +13,7 @@ entity complex_test_entity is
         clk         : in  std_logic;
         rst_n       : in  randomType;
         data_in     : in  std_logic_vector(7 downto 0);
-        data_out    : out std_logic_vector(40 to 50 * 19 + 5, 4);
+        data_out    : out std_logic_vector(40 to -50 * 16 + 5, 4);
         flag_inout  : inout  boolean
     );
 end entity complex_test_entity;
@@ -35,6 +35,9 @@ architecture structural_behavioral of complex_test_entity is
     signal weird_mix      : std_logic_vector(3 downto 0) := "0101";
 
 begin
+    a <= true;
+    b <= 'X';
+    c <= 8SB"1110";
 
     -- Concurrent Signal Assignment with a complex When-Else expression
     -- Combines function calls, arithmetic, logic operations, and un-type-safe operands

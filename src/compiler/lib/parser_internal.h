@@ -1,7 +1,7 @@
 #ifndef PULSE_PARSER_LIB_AST_H
 #define PULSE_PARSER_LIB_AST_H
 
-#include "ast.h"
+#include "include/parser.h"
 
 #include <unordered_map>
 #include <initializer_list>

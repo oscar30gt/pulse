@@ -1,8 +1,6 @@
 #ifndef PULSE_VHDL_AST_H
 #define PULSE_VHDL_AST_H
 
-#include "tokenizer.h"
-#include "signalInterface.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -17,22 +15,6 @@ namespace Pulse::Parser
     {
         size_t line;          /// Line number (1-based)
         size_t column;        /// Column number (1-based)
-    };
-
-    /// Exception thrown when an error occurs during AST construction.
-    /// what() returns a multiline descriptive message of the error, 
-    /// including the source location and a snippet of the source code.
-    class ast_build_error : public std::runtime_error
-    {
-        SourceLocation location;
-        std::string sourceSnippet;
-
-    public:
-        ast_build_error(const std::string& message, const SourceLocation& location, const std::string& sourceSnippet)
-            : std::runtime_error(message), location(location), sourceSnippet(sourceSnippet) { }
-
-        const SourceLocation& getLocation() const { return location; }
-        const std::string& getSourceSnippet() const { return sourceSnippet; }
     };
 
     // --------------------------------------------------------------------------------------------
@@ -249,16 +231,6 @@ namespace Pulse::Parser
         std::vector<Branch> branches;                                    /// if + zero or more elsif branches, in order
         std::vector<std::unique_ptr<SequentialStatement>> elseBody;      /// Statements to execute in the else clause (may be empty)
     };
-
-    // --------------------------------------------------------------------------------------------
-
-    /// Takes a tokenized VHDL source file and generates its corresponding
-    /// Abstract Syntax Tree (AST) representation.
-    /// @param tokenizer A reference to a Tokenizer object that provides the tokenized VHDL source code.
-    /// @returns An ASTRoot object representing the root of the generated AST.
-    /// @note No semantic analysis is performed; the AST is purely syntactic.
-    [[nodiscard]]
-    ASTRoot VHDLtoAST(Tokenizer& tokenizer);
 
 } // namespace Pulse::Parser
 

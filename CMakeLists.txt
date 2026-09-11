@@ -18,7 +18,7 @@ endforeach()
 file(GLOB_RECURSE PULSE_SOURCES CONFIGURE_DEPENDS
     "src/shared/*.cc"
     "src/engine/*.cc"
-    "src/parser/*.cc"
+    "src/compiler/*.cc"
     "src/debugger/*.cc"
 )
 # Exclude test files from core library
@@ -32,16 +32,16 @@ target_include_directories(pulse_app
   PUBLIC
     src/shared/include
     src/engine/include
-    src/parser/include
+    src/compiler/include
     src/debugger/include
     src/shared/impl
     src/engine/impl
-    src/parser/impl
+    src/compiler/impl
     src/debugger/impl
   PRIVATE
     src/shared/lib
     src/engine/lib
-    src/parser/lib
+    src/compiler/lib
     src/debugger/lib
 )
 

@@ -1,4 +1,4 @@
-#include "ast_internal.h"
+#include "parser_internal.h"
 #include <algorithm>
 
 namespace Pulse::Parser

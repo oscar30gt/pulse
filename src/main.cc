@@ -14,6 +14,7 @@
 #include <string>
 #include <filesystem>
 
+#include "parser.h"
 #include "ast.h"
 #include "blueprint.h"
 // #include "blueprintGenerator.h"

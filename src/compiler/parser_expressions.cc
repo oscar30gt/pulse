@@ -1,7 +1,175 @@
-#include "ast_internal.h"
+#include "parser_internal.h"
 
 namespace Pulse::Parser
 {
+    namespace BitstringUtils
+    {
+        void parseCharacterToken(char bit, uint64_t& val, uint64_t& msk, ParseContext& ctx)
+        {
+            val = 0;
+            msk = 0;
+            switch (bit)
+            {
+                case '0':           val = 0; msk = 0; break;
+                case '1':           val = 1; msk = 0; break;
+                case 'X': case 'x': val = 0; msk = 1; break;
+                case 'Z': case 'z': val = 1; msk = 1; break;
+                case '-':           val = 0; msk = 0; break; // Don't care treated as 0
+                default: ctx.error(std::string("Invalid bit literal: '") + bit + "'");
+            }
+        }
+
+        void parsePrefix(const std::string& prefix, int& explicitSize, bool& isSigned, char& base)
+        {
+            explicitSize = -1;
+            isSigned = false;
+            base = 'B'; // Default to binary if no prefix is provided
+
+            if (prefix.empty()) return;
+
+            size_t idx = 0;
+
+            // Parse optional explicit size
+            if (std::isdigit(prefix[0]))
+            {
+                explicitSize = 0;
+                while (idx < prefix.size() && std::isdigit(prefix[idx]))
+                {
+                    explicitSize = explicitSize * 10 + (prefix[idx] - '0');
+                    idx++;
+                }
+            }
+
+            // Parse optional sign extension flag
+            if (idx < prefix.size() && (prefix[idx] == 's' || prefix[idx] == 'S' || prefix[idx] == 'u' || prefix[idx] == 'U'))
+            {
+                isSigned = (prefix[idx] == 's' || prefix[idx] == 'S');
+                idx++;
+            }
+
+            // Parse base identifier
+            if (idx < prefix.size())
+            {
+                base = std::toupper(prefix[idx]);
+            }
+        }
+
+        void parseBinaryString(const std::string& bits, uint64_t& val, uint64_t& msk, uint32_t& bitCount, ParseContext& ctx)
+        {
+            for (char bit : bits)
+            {
+                if (bit == '_') continue; // Ignore visual separators
+
+                val <<= 1;
+                msk <<= 1;
+                bitCount++;
+
+                char c = std::toupper(bit);
+                if (c == '1')
+                {
+                    val |= 1;
+                }
+                else if (c == 'X')
+                {
+                    msk |= 1;
+                }
+                else if (c == 'Z')
+                {
+                    val |= 1;
+                    msk |= 1;
+                }
+                else if (c == '-')
+                {
+                    // Don't care treated as 0 logic and 0 mask
+                }
+                else if (c != '0')
+                {
+                    ctx.error("Invalid character in binary literal");
+                }
+            }
+        }
+
+        void parseOctalOrHexString(const std::string& bits, char base, uint64_t& val, uint32_t& bitCount, ParseContext& ctx)
+        {
+            int bitsPerDigit = (base == 'X') ? 4 : 3;
+            for (char bit : bits)
+            {
+                if (bit == '_') continue;
+
+                val <<= bitsPerDigit;
+                bitCount += bitsPerDigit;
+
+                char c = std::toupper(bit);
+                if (std::isdigit(c))
+                {
+                    if (base == 'O' && c > '7') ctx.error("Invalid octal digit");
+                    val |= (c - '0');
+                }
+                else if (base == 'X' && c >= 'A' && c <= 'F')
+                {
+                    val |= (c - 'A' + 10);
+                }
+                else
+                {
+                    ctx.error("Special/invalid bits are not supported in non-binary radix");
+                }
+            }
+        }
+
+        void parseDecimalString(const std::string& bits, uint64_t& val, uint32_t& bitCount, ParseContext& ctx)
+        {
+            for (char bit : bits)
+            {
+                if (bit == '_') continue;
+                if (!std::isdigit(bit)) ctx.error("Special/invalid bits are not supported in decimal radix");
+                val = val * 10 + (bit - '0');
+            }
+
+            // Calculate minimum bits required to represent the decimal value
+            uint64_t temp = val;
+            bitCount = 1;
+            if (temp > 1)
+            {
+                bitCount = 0;
+                while (temp > 0)
+                {
+                    temp >>= 1;
+                    bitCount++;
+                }
+            }
+        }
+
+        void applySizeAndSign(uint64_t& val, uint64_t& msk, uint32_t& bitCount, int explicitSize, bool isSigned)
+        {
+            // Apply explicit size and sign extension if specified by VHDL-2008 syntax
+            if (explicitSize != -1)
+            {
+                if (explicitSize > static_cast<int>(bitCount))
+                {
+                    int diff = explicitSize - bitCount;
+                    if (isSigned && bitCount > 0)
+                    {
+                        // Extract the MSB of the calculated value and mask to sign-extend
+                        bool msbVal = (val >> (bitCount - 1)) & 1;
+                        bool msbMsk = (msk >> (bitCount - 1)) & 1;
+
+                        if (msbVal)
+                        {
+                            uint64_t extendMask = ((1ULL << diff) - 1) << bitCount;
+                            val |= extendMask;
+                        }
+                        if (msbMsk)
+                        {
+                            uint64_t extendMask = ((1ULL << diff) - 1) << bitCount;
+                            msk |= extendMask;
+                        }
+                    }
+                }
+                bitCount = explicitSize;
+            }
+        }
+    } // namespace BitstringUtils
+
     // Determine the precedence (binding power) of an operator
     // Lower number = lower precedence (binds less tightly)
     static int getOperatorPrecedence(const std::string& op)
@@ -32,6 +200,8 @@ namespace Pulse::Parser
 
     std::unique_ptr<LogicLiteralExpr> ParseContext::parseLogicLiteral()
     {
+        using namespace BitstringUtils;
+
         const Token* tok = peek();
         if (!tok || (tok->type != TokenType::BitStringLiteral && tok->type != TokenType::CharacterLiteral))
             error("Expected a logic literal token");
@@ -43,36 +213,49 @@ namespace Pulse::Parser
 
         if (tok->type == TokenType::CharacterLiteral)
         {
-            char bit = tok->value[1]; // Extract the bit character (assuming format is '0', '1', 'X', or 'Z')
-            expr->value = (bit == '1' || bit == 'Z') ? 1 : 0;
-            expr->mask = (bit == 'X' || bit == 'Z') ? 1 : 0;
             expr->width = 1;
+            expr->isSigned = false; // Single characters are implicitly unsigned
+            parseCharacterToken(tok->value[1], expr->value, expr->mask, *this);
         }
-
-        // BitStringLiteral
-        else
+        else // BitStringLiteral
         {
-            std::string prefix; // Radix prefix (e.g., "b" on b"1010")
-            std::string bits; // The actual bit string (e.g., "1010" in b"1010")
-            std::string tokValue = tok->value;
+            size_t pos = tok->value.find('"');
+            if (pos == std::string::npos)
+                error("Malformed bit string literal");
 
-            size_t pos = tokValue.find('"');
-            prefix = pos == std::string::npos ? "b" : tokValue.substr(0, pos); // Default to binary if no prefix is found
-            bits = tokValue.substr(pos + 1, tokValue.size() - 2); // Remove prefix and quotes
+            std::string prefix = tok->value.substr(0, pos);
+            std::string bits = tok->value.substr(pos + 1, tok->value.size() - pos - 2);
 
-            for (size_t i = 0; i < bits.size(); ++i)
-            {
-                char bit = bits[i];
-                expr->value <<= 1;
-                expr->mask <<= 1;
+            int explicitSize;
+            bool isSigned;
+            char base;
+            parsePrefix(prefix, explicitSize, isSigned, base);
 
-                if (bit == '1' || bit == 'Z')
-                    expr->value |= 1;
-                else if (bit == 'X' || bit == 'Z')
-                    expr->mask |= 1;
+            uint64_t val = 0;
+            uint64_t msk = 0;
+            uint32_t bitCount = 0;
 
-                expr->width++;
-            }
+            if (base == 'B')
+                parseBinaryString(bits, val, msk, bitCount, *this);
+            else if (base == 'O' || base == 'X')
+                parseOctalOrHexString(bits, base, val, bitCount, *this);
+            else if (base == 'D')
+                parseDecimalString(bits, val, bitCount, *this);
+            else
+                error("Unknown base prefix in bit string literal");
+
+            applySizeAndSign(val, msk, bitCount, explicitSize, isSigned);
+
+            if (bitCount > 64)
+                error("Literal width exceeds 64 bits");
+
+            // Apply mask to drop any bits extending beyond the exact final width
+            uint64_t finalMask = (bitCount == 64) ? ~0ULL : (1ULL << bitCount) - 1;
+
+            expr->value = val & finalMask;
+            expr->mask = msk & finalMask;
+            expr->width = bitCount;
+            expr->isSigned = isSigned;
         }
 
         return expr;
@@ -159,15 +342,15 @@ namespace Pulse::Parser
     {
         auto whenExpr = std::make_unique<WhenElseExpr>();
         whenExpr->source = baseExpr->source;
-        
+
         // baseExpr is the value to return if the condition evaluates to true
         whenExpr->trueValue = std::move(baseExpr);
-        
+
         next(); // Consume "when"
-        
+
         // Parse condition (a condition should not absorb chained whens)
         whenExpr->condition = parseExpression(false);
-        
+
         // Parse the else branch recursively
         if (peek() && peek()->value == "else")
         {
@@ -179,7 +362,7 @@ namespace Pulse::Parser
         {
             whenExpr->falseValue = nullptr;
         }
-        
+
         return whenExpr;
     }
 

@@ -1,4 +1,4 @@
-#include "ast_internal.h"
+#include "parser_internal.h"
 #include <stdexcept>
 
 namespace Pulse::Parser
@@ -106,7 +106,7 @@ namespace Pulse::Parser
         SourceLocation location;
         location.line = token ? token->line : 0;
         location.column = token ? token->column : 0;
-        throw ast_build_error(std::string(msg), location, "");
+        throw ast_syntax_error(std::string(msg), location);
     }
 
     // --------------------------------------------------------------------------------------------

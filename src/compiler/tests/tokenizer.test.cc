@@ -283,8 +283,13 @@ TEST(Tokenizer_BitStringLiterals, IdentifierPrefixes)
     // Prefixes that are scanned as identifiers then merged with the quoted body.
     const std::vector<std::string> prefixes = {
         "b", "o", "x", "d",
-        "ub", "uo", "ux",
-        "sb", "so", "sx"
+        "ub", "uo", "ux", "ud",
+        "sb", "so", "sx", "sd",
+        "8b", "8o", "8x", "8d",
+        "16x", "32x", "64x", "128x",
+        "1x", "2x", "3x", "4x",
+        "16sx", "32sx", "64sx", "128sx",
+        "1sx", "2sx", "3sx", "4sx",
     };
 
     for (const auto& pfx : prefixes)
