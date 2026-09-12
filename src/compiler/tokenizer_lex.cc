@@ -109,15 +109,30 @@ namespace Pulse::Parser
         {
             if (unsizedBitStringPrefixes().count(identifier))
             {
+                unsigned radix = 16;
+                if (identifier.back() == 'b') radix = 2;
+                else if (identifier.back() == 'o') radix = 8;
+                else if (identifier.back() == 'd') radix = 10;
+
                 size_t strStart = index;
                 advance(); // consume opening '"'
 
                 while (!atEnd() && current() != '"')
                 {
-                    if (current() == '\n')
+                    char c = current();
+                    if (c == '\n')
                         throw std::runtime_error(
                             "Tokenizer: unterminated bit-string literal at line "
                             + std::to_string(line) + ", column " + std::to_string(column) + ".");
+                    
+                    if (c != '_')
+                    {
+                        unsigned val = 255;
+                        if (c >= '0' && c <= '9') val = c - '0';
+                        else if (c >= 'a' && c <= 'z') val = c - 'a' + 10;
+                        else if (c >= 'A' && c <= 'Z') val = c - 'A' + 10;
+                        if (val >= radix) throw std::runtime_error("Character over radix limit");
+                    }
                     advance();
                 }
 
@@ -134,6 +149,10 @@ namespace Pulse::Parser
                     startColumn
                 );
                 return true;
+            }
+            else
+            {
+                throw std::runtime_error("Invalid bit-string prefix");
             }
         }
 

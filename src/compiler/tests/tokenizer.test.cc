@@ -285,11 +285,12 @@ TEST(Tokenizer_BitStringLiterals, IdentifierPrefixes)
         "b", "o", "x", "d",
         "ub", "uo", "ux", "ud",
         "sb", "so", "sx", "sd",
-        "8b", "8o", "8x", "8d",
         "16x", "32x", "64x", "128x",
-        "1x", "2x", "3x", "4x",
+        "2x", "13x", "24x",
         "16sx", "32sx", "64sx", "128sx",
-        "1sx", "2sx", "3sx", "4sx",
+        "2sx", "13sx", "24sx",
+        "16ux", "32ux", "64ux", "128ux",
+        "2ux", "13ux", "24ux",
     };
 
     for (const auto& pfx : prefixes)
@@ -300,6 +301,28 @@ TEST(Tokenizer_BitStringLiterals, IdentifierPrefixes)
         EXPECT_EQ(tokens[0].type, TokenType::BitStringLiteral) << "prefix: " << pfx;
         EXPECT_EQ(tokens[0].value, src)                        << "prefix: " << pfx;
     }
+}
+
+TEST(Tokenizer_BitStringLiterals, InvalidPrefixThrows)
+{
+    EXPECT_THROW(tokenize("q\"1010\""), std::runtime_error);
+    EXPECT_THROW(tokenize("8b\"1010\""), std::runtime_error);
+    EXPECT_THROW(tokenize("16y\"FF\""), std::runtime_error);
+    EXPECT_THROW(tokenize("22ss\"1010\""), std::runtime_error);
+}
+
+TEST(Tokenizer_BitStringLiterals, CharactersOverRadixLimitThrows)
+{
+    EXPECT_THROW(tokenize("b\"102\""), std::runtime_error);
+    EXPECT_THROW(tokenize("o\"89\""), std::runtime_error);
+    EXPECT_THROW(tokenize("d\"A\""), std::runtime_error);
+    EXPECT_THROW(tokenize("x\"G\""), std::runtime_error);
+    EXPECT_THROW(tokenize("16x\"G\""), std::runtime_error);
+    EXPECT_THROW(tokenize("12x\"C\""), std::runtime_error);
+    EXPECT_THROW(tokenize("2x\"2\""), std::runtime_error);
+    EXPECT_NO_THROW(tokenize("20x\"J\""));
+    EXPECT_NO_THROW(tokenize("36x\"Z\""));
+    EXPECT_NO_THROW(tokenize("5x\"4\""));
 }
 
 TEST(Tokenizer_BitStringLiterals, HexWithUnderscoreSeparator)
@@ -313,11 +336,17 @@ TEST(Tokenizer_BitStringLiterals, HexWithUnderscoreSeparator)
 
 TEST(Tokenizer_BitStringLiterals, SizedNumericPrefix)
 {
-    // 8x"FF" — the numeric-size prefix form.
-    auto tokens = tokenize("8x\"FF\"");
-    ASSERT_EQ(tokens.size(), 1u);
-    EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
-    EXPECT_EQ(tokens[0].value, "8x\"FF\"");
+    std::vector<std::string> tests = {
+        "8x\"77\"", "16x\"ABCD\"", "32x\"12345678\"", "64x\"DEADBEEFCAFEBABE\""
+    };
+    
+    for (const auto& test : tests)
+    {
+        auto tokens = tokenize(test);
+        ASSERT_EQ(tokens.size(), 1u);
+        EXPECT_EQ(tokens[0].type,  TokenType::BitStringLiteral);
+        EXPECT_EQ(tokens[0].value, test);
+    }
 }
 
 TEST(Tokenizer_BitStringLiterals, UnterminatedIdentifierPrefixThrows)

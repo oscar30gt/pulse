@@ -37,7 +37,7 @@ architecture structural_behavioral of complex_test_entity is
 begin
     a <= true;
     b <= 'X';
-    c <= 8SB"1110";
+    c <= 16UX"F";
 
     -- Concurrent Signal Assignment with a complex When-Else expression
     -- Combines function calls, arithmetic, logic operations, and un-type-safe operands

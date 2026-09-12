@@ -22,23 +22,23 @@ namespace Pulse::Parser
         ///
         /// Grammar (after lowercasing):
         ///   sized-prefix ::= <digits> [u|s] <base-letter>
-        ///   base-letter  ::= b | o | x | d
+        ///   base-letter  ::= x
         ///
-        /// Examples of valid prefixes : "8x", "12ux", "12sx", "4b", "8sb"
-        /// Examples of invalid prefixes: "abc", "12z", "12abx", ""
+        /// Examples of valid prefixes : "8x", "12ux", "12sx"
+        /// Examples of invalid prefixes: "abc", "12z", "12abx", "", "4b", "8sb"
         ///
         /// @param prefix Lowercased string ending with the base letter (already
-        ///               confirmed to end with b/o/x/d by the caller).
+        ///               confirmed to end with x by the caller).
         /// @returns True when the prefix is a valid sized bit-string prefix.
         bool isSizedBitStringPrefix(const std::string& prefix)
         {
             if (prefix.empty())
                 return false;
 
-            // The last character is the base letter (b/o/x/d) — already
+            // The last character is the base letter (x) — already
             // confirmed by callers, but checked here for robustness.
             char base = prefix.back();
-            if (base != 'b' && base != 'o' && base != 'x' && base != 'd')
+            if (base != 'x')
                 return false;
 
             // Everything before the base letter must be: <digits> [u|s]
@@ -109,34 +109,60 @@ namespace Pulse::Parser
         std::string number = source.substr(start, index - start);
         toLowerInPlace(number);
 
-        // Sized bit-string literal: e.g. 8x"FF", 12sx"0A", 4ub"1010"
+        // Sized bit-string literal: e.g. 8x"FF", 12sx"0A"
         // The numeric scan above consumes the size digits and the optional
         // signedness/base suffix (e.g. "12sx"), so we just need to check
         // that the result is a valid sized prefix followed by a quoted body.
-        if (!atEnd() && current() == '"' && isSizedBitStringPrefix(number))
+        if (!atEnd() && current() == '"')
         {
-            size_t strStart = index;
-            advance(); // consume opening '"'
-
-            while (!atEnd() && current() != '"')
+            if (isSizedBitStringPrefix(number))
             {
-                if (current() == '\n')
+                unsigned radix = 0;
+                for (char c : number)
+                {
+                    if (c >= '0' && c <= '9')
+                        radix = radix * 10 + (c - '0');
+                    else
+                        break;
+                }
+
+                size_t strStart = index;
+                advance(); // consume opening '"'
+
+                while (!atEnd() && current() != '"')
+                {
+                    char c = current();
+                    if (c == '\n')
+                        throw std::runtime_error(
+                            "Tokenizer: unterminated sized bit-string literal at line "
+                            + std::to_string(line) + ", column " + std::to_string(column) + ".");
+                    
+                    if (c != '_')
+                    {
+                        unsigned val = 255;
+                        if (c >= '0' && c <= '9') val = c - '0';
+                        else if (c >= 'a' && c <= 'z') val = c - 'a' + 10;
+                        else if (c >= 'A' && c <= 'Z') val = c - 'A' + 10;
+                        if (val >= radix) throw std::runtime_error("Character over radix limit");
+                    }
+                    advance();
+                }
+
+                if (atEnd())
                     throw std::runtime_error(
                         "Tokenizer: unterminated sized bit-string literal at line "
                         + std::to_string(line) + ", column " + std::to_string(column) + ".");
-                advance();
+
+                advance(); // consume closing '"'
+                emit(TokenType::BitStringLiteral,
+                     number + source.substr(strStart, index - strStart),
+                     startLine, startColumn);
+                return true;
             }
-
-            if (atEnd())
-                throw std::runtime_error(
-                    "Tokenizer: unterminated sized bit-string literal at line "
-                    + std::to_string(line) + ", column " + std::to_string(column) + ".");
-
-            advance(); // consume closing '"'
-            emit(TokenType::BitStringLiteral,
-                 number + source.substr(strStart, index - strStart),
-                 startLine, startColumn);
-            return true;
+            else
+            {
+                throw std::runtime_error("Invalid sized bit-string prefix");
+            }
         }
 
         emit(TokenType::NumericLiteral, std::move(number), startLine, startColumn);
