@@ -17,9 +17,9 @@
 #include "parser.h"
 #include "ast.h"
 #include "blueprint.h"
+#include "analyzer.h"
 // #include "blueprintGenerator.h"
 // #include "linker.h"
-// #include "semanticAnalyzer.h"
 #include "subgraph.h"
 #include "tokenizer.h"
 #include "waveform.h"
@@ -107,8 +107,8 @@ int main(int argc, char* argv[])
         for (const auto& source : sources)
             astRoots.push_back(fileParsingPipeline(source.string()));
 
-        for (const auto& ast : astRoots)
-            ast.print();
+        // for (const auto& ast : astRoots)
+        //     ast.print();
 
         // // Linking process
         // Linker linker;
@@ -166,8 +166,13 @@ ASTRoot fileParsingPipeline(const std::string& filename)
 
     Tokenizer tokenizer(inputFile);
     auto root = VHDLtoAST(tokenizer);
-    // SemanticAnalyzer semanticAnalyzer;
-    // semanticAnalyzer.analyze(root);
+
+    try {
+        analyzeAST(root);
+    } catch (const std::exception& e) {
+        std::cerr << "Semantic analysis error in file " << filename << ": " << e.what() << '\n';
+        std::exit(1);
+    }
     return root;
 }
 

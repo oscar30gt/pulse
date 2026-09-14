@@ -17,7 +17,7 @@ BEGIN
         IF reset = '1' THEN
             count_internal <= x"00000000";
         ELSIF clk = '1' THEN
-            count_internal <= count_internal + x"00000001";
+            count_internal <= to_unsigned(to_integer(count_internal) + 1, 32);
         END IF;
     END PROCESS;
 
