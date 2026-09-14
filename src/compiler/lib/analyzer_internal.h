@@ -84,7 +84,10 @@ namespace Pulse::Parser
         /// Returns true if typeName is a supported built-in type.
         bool isBuiltinType(const std::string& typeName) const;
 
-        /// Returns true if typeName is a logic type (std_logic or std_logic_vector).
+        /// Returns true if typeName is an array vector type (std_logic_vector, signed, or unsigned).
+        bool isVectorType(const std::string& typeName) const;
+
+        /// Returns true if typeName is a logic type (std_logic, std_logic_vector, signed, or unsigned).
         bool isLogicType(const std::string& typeName) const;
 
         /// Returns true if both TypeSpecs are logic types.
@@ -97,11 +100,14 @@ namespace Pulse::Parser
         /// Returns true if `right` can be assigned to a context expecting `left`.
         bool areTypesCompatible(const TypeSpec& left, const TypeSpec& right) const;
 
-        /// Extracts the bit-width from a std_logic_vector TypeSpec. Returns -1 if dynamic/unknown.
+        /// Returns true if a std_logic_vector literal can be used to initialize/assign a signed/unsigned target (QoL rule).
+        bool isLiteralCompatible(const TypeSpec& targetType, const Expression* valueExpr) const;
+
+        /// Extracts the bit-width from a vector TypeSpec (std_logic_vector, signed, unsigned). Returns -1 if dynamic/unknown.
         int resolveVectorWidth(const TypeSpec& typeSpec) const;
 
-        /// Builds a std_logic_vector TypeSpec with range (width - 1 downto 0).
-        TypeSpec makeVectorType(int width, SourceLocation loc = {0, 0}) const;
+        /// Builds a vector TypeSpec with range (width - 1 downto 0).
+        TypeSpec makeVectorType(int width, const std::string& typeName = "std_logic_vector", SourceLocation loc = {0, 0}) const;
 
         // -------- Expression Type Inference -----------------------------------------------------
 

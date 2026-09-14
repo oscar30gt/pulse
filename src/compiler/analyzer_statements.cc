@@ -80,7 +80,7 @@ namespace Pulse::Parser
                     hasTargetType = true;
 
                     TypeSpec valType = exprType(binOp->right.get());
-                    if (!areTypesCompatible(targetType, valType))
+                    if (!areTypesCompatible(targetType, valType) && !isLiteralCompatible(targetType, binOp->right.get()))
                     {
                         throw ast_semantic_error("Choice value type does not match target type in with-select.", binOp->right->source);
                     }
@@ -96,7 +96,7 @@ namespace Pulse::Parser
             }
             else
             {
-                if (!areTypesCompatible(targetType, valType))
+                if (!areTypesCompatible(targetType, valType) && !isLiteralCompatible(targetType, value.get()))
                 {
                     throw ast_semantic_error("Choice value type does not match expected target type in with-select.", value->source);
                 }
@@ -106,7 +106,7 @@ namespace Pulse::Parser
         if (stmt.defaultValue)
         {
             TypeSpec defType = exprType(stmt.defaultValue.get());
-            if (hasTargetType && !areTypesCompatible(targetType, defType))
+            if (hasTargetType && !areTypesCompatible(targetType, defType) && !isLiteralCompatible(targetType, stmt.defaultValue.get()))
             {
                 throw ast_semantic_error("Default choice ('others') value type does not match target type in with-select.", stmt.defaultValue->source);
             }

@@ -77,6 +77,7 @@ namespace Pulse::Parser {
             copy->value = lLit->value;
             copy->mask = lLit->mask;
             copy->width = lLit->width;
+            copy->typeName = lLit->typeName;
             return copy;
         }
         if (auto* attr = dynamic_cast<const AttributeExpr*>(src))

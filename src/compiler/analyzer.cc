@@ -82,7 +82,7 @@ namespace Pulse::Parser
         }
 
         TypeSpec initType = exprType(init);
-        if (!areTypesCompatible(targetType, initType))
+        if (!areTypesCompatible(targetType, initType) && !isLiteralCompatible(targetType, init))
         {
             throw ast_semantic_error("Initial value type does not match signal type.", node.source);
         }

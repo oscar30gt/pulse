@@ -2,13 +2,13 @@ ENTITY counter IS
     PORT (
         clk : IN STD_LOGIC;
         reset : IN STD_LOGIC;
-        count : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+        count : OUT UNSIGNED(31 DOWNTO 0)
     );
 END ENTITY counter;
 
 ARCHITECTURE behavioral OF counter IS
 
-    SIGNAL count_internal : STD_LOGIC_VECTOR(31 DOWNTO 0);
+    SIGNAL count_internal : UNSIGNED(31 DOWNTO 0);
 
 BEGIN
 
@@ -17,7 +17,7 @@ BEGIN
         IF reset = '1' THEN
             count_internal <= x"00000000";
         ELSIF clk = '1' THEN
-            count_internal <= to_unsigned(to_integer(count_internal) + 1, 32);
+            count_internal <= count_internal + 1;
         END IF;
     END PROCESS;
 

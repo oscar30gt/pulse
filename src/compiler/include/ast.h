@@ -183,10 +183,10 @@ namespace Pulse::Parser
     /// Each bit's value is meaningful only where the corresponding unknownMask bit is 0.
     struct LogicLiteralExpr final : Expression
     {
+        std::string typeName;       /// "std_logic", "std_logic_vector", "signed", or "unsigned"
         uint64_t value = 0;         /// 0/1 when mask bit is 0, undefined/high-Z when mask bit is 1.
         uint64_t mask = 0;          /// 1 = bit is unknown X/Z, 0 = bit is known 0/1
         uint8_t width : 7 = 0;      /// Width of the logic literal in bits
-        bool isSigned : 1 = false;  /// Whether the logic literal is signed
     };
 
     /// Accessing an attribute of a signal, such as "signal_name'left" or "signal_name'event".

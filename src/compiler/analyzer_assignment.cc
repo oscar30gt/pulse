@@ -80,11 +80,12 @@ namespace Pulse::Parser
         TypeSpec leftType = exprType(left);
         TypeSpec rightType = exprType(right);
 
-        if (!areTypesCompatible(leftType, rightType))
+        if (!areTypesCompatible(leftType, rightType) && !isLiteralCompatible(leftType, right))
         {
             int wLeft = resolveVectorWidth(leftType);
             int wRight = resolveVectorWidth(rightType);
-            if (leftType.typeName == "std_logic_vector" && rightType.typeName == "std_logic_vector" &&
+            if (isVectorType(leftType.typeName) && isVectorType(rightType.typeName) &&
+                leftType.typeName == rightType.typeName &&
                 wLeft != -1 && wRight != -1 && wLeft != wRight)
             {
                 throw ast_semantic_error("Width mismatch in assignment: target is " + std::to_string(wLeft) +

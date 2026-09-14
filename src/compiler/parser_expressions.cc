@@ -32,10 +32,10 @@ namespace Pulse::Parser
 
     namespace BitstringUtils
     {
-        void parsePrefix(const std::string& prefix, int& explicitSize, bool& isSigned, char& base)
+        void parsePrefix(const std::string& prefix, int& explicitSize, std::string& typeName, char& base)
         {
             explicitSize = -1;
-            isSigned = false;
+            typeName = "std_logic_vector";
             base = 'B';
 
             if (prefix.empty()) return;
@@ -49,8 +49,20 @@ namespace Pulse::Parser
                     explicitSize = explicitSize * 10 + (prefix[idx++] - '0');
             }
 
-            if (idx < prefix.size() && (prefix[idx] == 's' || prefix[idx] == 'S' || prefix[idx] == 'u' || prefix[idx] == 'U'))
-                isSigned = (prefix[idx++] == 's' || prefix[idx - 1] == 'S');
+            if (idx < prefix.size())
+            {
+                char c = std::toupper(prefix[idx]);
+                if (c == 'S')
+                {
+                    typeName = "signed";
+                    idx++;
+                }
+                else if (c == 'U')
+                {
+                    typeName = "unsigned";
+                    idx++;
+                }
+            }
 
             if (idx < prefix.size())
                 base = std::toupper(prefix[idx]);
@@ -119,7 +131,7 @@ namespace Pulse::Parser
         if (tok->type == TokenType::CharacterLiteral)
         {
             expr->width = 1;
-            expr->isSigned = false;
+            expr->typeName = "std_logic";
 
             char u = std::toupper(tok->value[1]);
             expr->value = (u == '1' || u == 'Z') ? 1 : 0;
@@ -133,8 +145,8 @@ namespace Pulse::Parser
             std::string prefix = tok->value.substr(0, pos);
             std::string bits   = tok->value.substr(pos + 1, tok->value.size() - pos - 2);
 
-            int explicitSize; bool isSigned; char base;
-            parsePrefix(prefix, explicitSize, isSigned, base);
+            int explicitSize; std::string typeName; char base;
+            parsePrefix(prefix, explicitSize, typeName, base);
 
             uint64_t val = 0, msk = 0;
             uint32_t bitCount = 0;
@@ -149,7 +161,7 @@ namespace Pulse::Parser
             expr->value   = val & finalMask;
             expr->mask    = msk & finalMask;
             expr->width   = bitCount;
-            expr->isSigned = isSigned;
+            expr->typeName = typeName;
         }
 
         return expr;

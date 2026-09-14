@@ -6,14 +6,23 @@ namespace Pulse::Parser
     {
         return typeName == "std_logic" ||
                typeName == "std_logic_vector" ||
+               typeName == "signed" ||
+               typeName == "unsigned" ||
                typeName == "integer" ||
                typeName == "boolean" ||
                typeName == "range";
     }
 
+    bool AnalyzerContext::isVectorType(const std::string& typeName) const
+    {
+        return typeName == "std_logic_vector" ||
+               typeName == "signed" ||
+               typeName == "unsigned";
+    }
+
     bool AnalyzerContext::isLogicType(const std::string& typeName) const
     {
-        return typeName == "std_logic" || typeName == "std_logic_vector";
+        return typeName == "std_logic" || isVectorType(typeName);
     }
 
     bool AnalyzerContext::areBothLogic(const TypeSpec& a, const TypeSpec& b) const
@@ -21,11 +30,11 @@ namespace Pulse::Parser
         return isLogicType(a.typeName) && isLogicType(b.typeName);
     }
 
-    TypeSpec AnalyzerContext::makeVectorType(int width, SourceLocation loc) const
+    TypeSpec AnalyzerContext::makeVectorType(int width, const std::string& typeName, SourceLocation loc) const
     {
         TypeSpec ts;
         ts.source = loc;
-        ts.typeName = "std_logic_vector";
+        ts.typeName = typeName;
 
         if (width > 0)
         {
@@ -57,7 +66,7 @@ namespace Pulse::Parser
             return 1;
         }
 
-        if (typeSpec.typeName != "std_logic_vector")
+        if (!isVectorType(typeSpec.typeName))
         {
             return -1;
         }
@@ -132,17 +141,17 @@ namespace Pulse::Parser
             return;
         }
 
-        if (typeSpec.typeName == "std_logic_vector")
+        if (isVectorType(typeSpec.typeName))
         {
             if (typeSpec.args.size() != 1)
             {
-                throw ast_semantic_error("Type 'std_logic_vector' requires exactly one range argument", typeSpec.source);
+                throw ast_semantic_error("Type '" + typeSpec.typeName + "' requires exactly one range argument", typeSpec.source);
             }
 
             const auto* binOp = dynamic_cast<const BinaryOpExpr*>(typeSpec.args[0].get());
             if (!binOp || (binOp->op != "downto" && binOp->op != "to"))
             {
-                throw ast_semantic_error("'std_logic_vector' argument must be a range expression", typeSpec.source);
+                throw ast_semantic_error("'" + typeSpec.typeName + "' argument must be a range expression", typeSpec.source);
             }
 
             TypeSpec leftType = const_cast<AnalyzerContext*>(this)->exprType(binOp->left.get());
@@ -176,7 +185,7 @@ namespace Pulse::Parser
             return false;
         }
 
-        if (left.typeName == "std_logic_vector")
+        if (isVectorType(left.typeName))
         {
             int wLeft = resolveVectorWidth(left);
             int wRight = resolveVectorWidth(right);
@@ -187,6 +196,26 @@ namespace Pulse::Parser
         }
 
         return true;
+    }
+
+    bool AnalyzerContext::isLiteralCompatible(const TypeSpec& targetType, const Expression* valueExpr) const
+    {
+        if (!valueExpr) return false;
+
+        if (const auto* logicLit = dynamic_cast<const LogicLiteralExpr*>(valueExpr))
+        {
+            if ((targetType.typeName == "signed" || targetType.typeName == "unsigned") &&
+                logicLit->typeName == "std_logic_vector")
+            {
+                int targetWidth = resolveVectorWidth(targetType);
+                if (targetWidth == -1 || targetWidth == static_cast<int>(logicLit->width))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
 } // namespace Pulse::Parser

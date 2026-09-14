@@ -387,7 +387,7 @@ namespace Pulse::Parser
             else if (auto logicLit = dynamic_cast<const LogicLiteralExpr*>(expr))
             {
                 printBranch(prefix, isLast);
-                std::cout << KEYWORD << (logicLit->isSigned ? "LOGIC LITERAL (signed):" : "LOGIC LITERAL (unsigned): ")
+                std::cout << KEYWORD << "LOGIC LITERAL (" << TYPE << logicLit->typeName << KEYWORD << "):"
                     << RESET << " value=" << VALUE << "0x" << std::hex << logicLit->value
                     << RESET << " mask=" << VALUE << "0x" << logicLit->mask << std::dec
                     << RESET << " width=" << VALUE << static_cast<int>(logicLit->width)

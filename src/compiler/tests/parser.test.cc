@@ -405,63 +405,63 @@ TEST(VHDLtoAST_SignalAssignments, Literals)
         uint64_t value;
         uint64_t mask;
         uint8_t width;
-        bool isSigned;
+        std::string typeName;
     };
 
     std::unordered_map<std::string, ExpectedLiteral> expected = {
         // Character Literals
-        { "sig_02",{ 0, 0, 1, false } },
-        { "sig_03",{ 1, 0, 1, false } },
-        { "sig_04",{ 0, 1, 1, false } },
-        { "sig_05",{ 0, 1, 1, false } },
-        { "sig_06",{ 1, 1, 1, false } },
-        { "sig_07",{ 1, 1, 1, false } },
-        { "sig_08",{ 0, 0, 1, false } },
+        { "sig_02",{ 0, 0, 1, "std_logic" } },
+        { "sig_03",{ 1, 0, 1, "std_logic" } },
+        { "sig_04",{ 0, 1, 1, "std_logic" } },
+        { "sig_05",{ 0, 1, 1, "std_logic" } },
+        { "sig_06",{ 1, 1, 1, "std_logic" } },
+        { "sig_07",{ 1, 1, 1, "std_logic" } },
+        { "sig_08",{ 0, 0, 1, "std_logic" } },
 
         // Bit String Literals (Implicit Binary)
-        { "sig_09",{ 0xA, 0, 4, false } },  // "1010"
-        { "sig_10",{ 0xC3, 0, 8, false } }, // "1100_0011"
+        { "sig_09",{ 0xA, 0, 4, "std_logic_vector" } },  // "1010"
+        { "sig_10",{ 0xC3, 0, 8, "std_logic_vector" } }, // "1100_0011"
 
         // Explicit Base Prefix Bit Strings
-        { "sig_11",{ 0xA, 0, 4, false } },  // B"1010"
-        { "sig_12",{ 0xA, 0, 4, false } },  // b"1010"
-        { "sig_13",{ 0x3D, 0, 6, false } }, // O"75" -> 61
-        { "sig_14",{ 0x3D, 0, 6, false } }, // o"75"
-        { "sig_15",{ 0xFA, 0, 8, false } }, // X"FA" -> 250
-        { "sig_16",{ 0xFA, 0, 8, false } }, // x"fa"
-        { "sig_17",{ 42, 0, 6, false } },   // D"42"
-        { "sig_18",{ 42, 0, 6, false } },   // d"42"
+        { "sig_11",{ 0xA, 0, 4, "std_logic_vector" } },  // B"1010"
+        { "sig_12",{ 0xA, 0, 4, "std_logic_vector" } },  // b"1010"
+        { "sig_13",{ 0x3D, 0, 6, "std_logic_vector" } }, // O"75" -> 61
+        { "sig_14",{ 0x3D, 0, 6, "std_logic_vector" } }, // o"75"
+        { "sig_15",{ 0xFA, 0, 8, "std_logic_vector" } }, // X"FA" -> 250
+        { "sig_16",{ 0xFA, 0, 8, "std_logic_vector" } }, // x"fa"
+        { "sig_17",{ 42, 0, 6, "std_logic_vector" } },   // D"42"
+        { "sig_18",{ 42, 0, 6, "std_logic_vector" } },   // d"42"
 
         // VHDL-2008 Explicit Sized Bit Strings (Default Unsigned)
-        { "sig_19",{ 0x10, 0, 8, false } }, // 8x"1010" (Truncated from 16-bit 0x1010 to 8-bit)
-        { "sig_20",{ 0x75, 0, 12, false } },// 12x"75"
-        { "sig_21",{ 0xFA, 0, 16, false } },// 16x"FA"
-        { "sig_22",{ 0x42, 0, 10, false } },// 10x"42"
+        { "sig_19",{ 0x10, 0, 8, "std_logic_vector" } }, // 8x"1010" (Truncated from 16-bit 0x1010 to 8-bit)
+        { "sig_20",{ 0x75, 0, 12, "std_logic_vector" } },// 12x"75"
+        { "sig_21",{ 0xFA, 0, 16, "std_logic_vector" } },// 16x"FA"
+        { "sig_22",{ 0x42, 0, 10, "std_logic_vector" } },// 10x"42"
 
         // VHDL-2008 Explicit Sized & Unsigned Bit Strings
-        { "sig_23",{ 0x10, 0, 8, false } }, // 8Ux"1010"
-        { "sig_24",{ 0x75, 0, 12, false } },// 12Ux"75"
-        { "sig_25",{ 0xFA, 0, 16, false } },// 16Ux"FA"
-        { "sig_26",{ 0x42, 0, 10, false } },// 10Ux"42"
+        { "sig_23",{ 0x10, 0, 8, "unsigned" } }, // 8Ux"1010"
+        { "sig_24",{ 0x75, 0, 12, "unsigned" } },// 12Ux"75"
+        { "sig_25",{ 0xFA, 0, 16, "unsigned" } },// 16Ux"FA"
+        { "sig_26",{ 0x42, 0, 10, "unsigned" } },// 10Ux"42"
 
         // VHDL-2008 Explicit Sized & Signed Bit Strings
         // Based on the constraints, sign extension is not applied during the parse step.
-        { "sig_27",{ 0x10, 0, 8, true } },  // 8Sx"1110" (Truncated)
-        { "sig_28",{ 0x75, 0, 12, true } }, // 12Sx"75"
-        { "sig_29",{ 0xF, 0, 16, true } },  // 16Sx"F" (Not sign extended here)
-        { "sig_30",{ 0x42, 0, 10, true } }, // 10Sx"42"
+        { "sig_27",{ 0x10, 0, 8, "signed" } },  // 8Sx"1110" (Truncated)
+        { "sig_28",{ 0x75, 0, 12, "signed" } }, // 12Sx"75"
+        { "sig_29",{ 0xF, 0, 16, "signed" } },  // 16Sx"F" (Not sign extended here)
+        { "sig_30",{ 0x42, 0, 10, "signed" } }, // 10Sx"42"
 
         // VHDL-2008 Unsigned Bit Strings (No explicit size)
-        { "sig_31",{ 0xA, 0, 4, false } },  // UB"1010"
-        { "sig_32",{ 0x3D, 0, 6, false } }, // UO"75"
-        { "sig_33",{ 0xFA, 0, 8, false } }, // UX"FA"
-        { "sig_34",{ 42, 0, 6, false } },   // UD"42"
+        { "sig_31",{ 0xA, 0, 4, "unsigned" } },  // UB"1010"
+        { "sig_32",{ 0x3D, 0, 6, "unsigned" } }, // UO"75"
+        { "sig_33",{ 0xFA, 0, 8, "unsigned" } }, // UX"FA"
+        { "sig_34",{ 42, 0, 6, "unsigned" } },   // UD"42"
 
         // VHDL-2008 Signed Bit Strings (No explicit size)
-        { "sig_35",{ 0xA, 0, 4, true } },   // SB"1010"
-        { "sig_36",{ 0x3D, 0, 6, true } },  // SO"75"
-        { "sig_37",{ 0xFA, 0, 8, true } },  // SX"FA"
-        { "sig_38",{ 42, 0, 6, true } }     // SD"42"
+        { "sig_35",{ 0xA, 0, 4, "signed" } },   // SB"1010"
+        { "sig_36",{ 0x3D, 0, 6, "signed" } },  // SO"75"
+        { "sig_37",{ 0xFA, 0, 8, "signed" } },  // SX"FA"
+        { "sig_38",{ 42, 0, 6, "signed" } }     // SD"42"
     };
 
     ASSERT_EQ(arch->body.size(), expected.size());
@@ -484,7 +484,7 @@ TEST(VHDLtoAST_SignalAssignments, Literals)
         EXPECT_EQ(logic->value, it->second.value) << "Value mismatch for " << sigName;
         EXPECT_EQ(logic->mask, it->second.mask) << "Mask mismatch for " << sigName;
         EXPECT_EQ(logic->width, it->second.width) << "Width mismatch for " << sigName;
-        EXPECT_EQ(logic->isSigned, it->second.isSigned) << "Signed flag mismatch for " << sigName;
+        EXPECT_EQ(logic->typeName, it->second.typeName) << "TypeName mismatch for " << sigName;
     }
 }
 

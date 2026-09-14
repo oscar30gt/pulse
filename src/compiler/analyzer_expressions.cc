@@ -56,14 +56,15 @@ namespace Pulse::Parser
 
     TypeSpec AnalyzerContext::exprTypeLogicLit(const LogicLiteralExpr* expr)
     {
-        if (expr->width == 1)
+        if (expr->width == 1 && expr->typeName == "std_logic")
         {
             TypeSpec ts;
             ts.source = expr->source;
             ts.typeName = "std_logic";
             return ts;
         }
-        return makeVectorType(expr->width, expr->source);
+        std::string tName = expr->typeName.empty() ? "std_logic_vector" : expr->typeName;
+        return makeVectorType(expr->width, tName, expr->source);
     }
 
     TypeSpec AnalyzerContext::exprTypeUnaryOp(const UnaryOpExpr* expr)
@@ -88,14 +89,11 @@ namespace Pulse::Parser
 
         if (expr->op == "-")
         {
-            if (operandType.typeName == "integer")
+            if (operandType.typeName == "integer" || operandType.typeName == "signed")
             {
-                TypeSpec res;
-                res.source = expr->source;
-                res.typeName = "integer";
-                return res;
+                return operandType;
             }
-            throw ast_semantic_error("Unary '-' operator requires integer operand.", expr->source);
+            throw ast_semantic_error("Unary '-' operator requires integer or signed operand.", expr->source);
         }
 
         throw ast_semantic_error("Unknown unary operator '" + expr->op + "'", expr->source);
@@ -140,14 +138,51 @@ namespace Pulse::Parser
         // 2. Arithmetic: +, -, *
         if (expr->op == "+" || expr->op == "-" || expr->op == "*")
         {
-            if (leftType.typeName != "integer" || rightType.typeName != "integer")
+            if (leftType.typeName == "integer" && rightType.typeName == "integer")
             {
-                throw ast_semantic_error("Arithmetic operator '" + expr->op + "' requires integer operands.", expr->source);
+                TypeSpec res;
+                res.source = expr->source;
+                res.typeName = "integer";
+                return res;
             }
-            TypeSpec res;
-            res.source = expr->source;
-            res.typeName = "integer";
-            return res;
+            if (leftType.typeName == "signed" && rightType.typeName == "signed")
+            {
+                int wLeft = resolveVectorWidth(leftType);
+                int wRight = resolveVectorWidth(rightType);
+                if (wLeft != wRight || wLeft <= 0 || wRight <= 0)
+                {
+                    throw ast_semantic_error("Arithmetic operator '" + expr->op + "' requires operands of equal width.", expr->source);
+                }
+                return makeVectorType(wLeft, "signed", expr->source);
+            }
+            if (leftType.typeName == "unsigned" && rightType.typeName == "unsigned")
+            {
+                int wLeft = resolveVectorWidth(leftType);
+                int wRight = resolveVectorWidth(rightType);
+                if (wLeft != wRight || wLeft <= 0 || wRight <= 0)
+                {
+                    throw ast_semantic_error("Arithmetic operator '" + expr->op + "' requires operands of equal width.", expr->source);
+                }
+                return makeVectorType(wLeft, "unsigned", expr->source);
+            }
+            if (leftType.typeName == "signed" && rightType.typeName == "integer")
+            {
+                return leftType;
+            }
+            if (leftType.typeName == "integer" && rightType.typeName == "signed")
+            {
+                return rightType;
+            }
+            if (leftType.typeName == "unsigned" && rightType.typeName == "integer")
+            {
+                return leftType;
+            }
+            if (leftType.typeName == "integer" && rightType.typeName == "unsigned")
+            {
+                return rightType;
+            }
+
+            throw ast_semantic_error("Arithmetic operator '" + expr->op + "' requires integer, signed, or unsigned operands.", expr->source);
         }
 
         // 3. Logical: and, or, xor, nand, nor, xnor
@@ -161,7 +196,14 @@ namespace Pulse::Parser
                 res.typeName = "boolean";
                 return res;
             }
-            if (isLogicType(leftType.typeName) && isLogicType(rightType.typeName))
+            if (leftType.typeName == "std_logic" && rightType.typeName == "std_logic")
+            {
+                TypeSpec res;
+                res.source = expr->source;
+                res.typeName = "std_logic";
+                return res;
+            }
+            if (isVectorType(leftType.typeName) && leftType.typeName == rightType.typeName)
             {
                 if (!areTypesCompatible(leftType, rightType))
                 {
@@ -169,7 +211,7 @@ namespace Pulse::Parser
                 }
                 return leftType;
             }
-            throw ast_semantic_error("Logical operator '" + expr->op + "' requires boolean or logic operands of equal width.", expr->source);
+            throw ast_semantic_error("Logical operator '" + expr->op + "' requires boolean or matching vector operands of equal width.", expr->source);
         }
 
         // 4. Relational: =, /=, <, >, <=, >=
@@ -190,12 +232,29 @@ namespace Pulse::Parser
                 res.typeName = "boolean";
                 return res;
             }
-            if (isLogicType(leftType.typeName) && isLogicType(rightType.typeName))
+            if (leftType.typeName == "std_logic" && rightType.typeName == "std_logic")
+            {
+                TypeSpec res;
+                res.source = expr->source;
+                res.typeName = "boolean";
+                return res;
+            }
+            if (isVectorType(leftType.typeName) && leftType.typeName == rightType.typeName)
             {
                 if (!areTypesCompatible(leftType, rightType))
                 {
                     throw ast_semantic_error("Relational operator '" + expr->op + "' requires operands of equal width.", expr->source);
                 }
+                TypeSpec res;
+                res.source = expr->source;
+                res.typeName = "boolean";
+                return res;
+            }
+            if ((leftType.typeName == "signed" && rightType.typeName == "integer") ||
+                (leftType.typeName == "integer" && rightType.typeName == "signed") ||
+                (leftType.typeName == "unsigned" && rightType.typeName == "integer") ||
+                (leftType.typeName == "integer" && rightType.typeName == "unsigned"))
+            {
                 TypeSpec res;
                 res.source = expr->source;
                 res.typeName = "boolean";
@@ -208,9 +267,9 @@ namespace Pulse::Parser
         if (expr->op == "sll" || expr->op == "srl" || expr->op == "sra" ||
             expr->op == "ror" || expr->op == "rol")
         {
-            if (!isLogicType(leftType.typeName))
+            if (!isVectorType(leftType.typeName) && leftType.typeName != "std_logic")
             {
-                throw ast_semantic_error("Shift operator '" + expr->op + "' requires a logic left operand.", expr->source);
+                throw ast_semantic_error("Shift operator '" + expr->op + "' requires a logic/vector left operand.", expr->source);
             }
             if (rightType.typeName != "integer")
             {
@@ -228,13 +287,15 @@ namespace Pulse::Parser
             }
             int wLeft = (leftType.typeName == "std_logic") ? 1 : resolveVectorWidth(leftType);
             int wRight = (rightType.typeName == "std_logic") ? 1 : resolveVectorWidth(rightType);
+            std::string resType = (leftType.typeName == "signed" || leftType.typeName == "unsigned") ? leftType.typeName :
+                                  ((rightType.typeName == "signed" || rightType.typeName == "unsigned") ? rightType.typeName : "std_logic_vector");
             if (wLeft != -1 && wRight != -1)
             {
-                return makeVectorType(wLeft + wRight, expr->source);
+                return makeVectorType(wLeft + wRight, resType, expr->source);
             }
             TypeSpec res;
             res.source = expr->source;
-            res.typeName = "std_logic_vector";
+            res.typeName = resType;
             return res;
         }
 
@@ -276,11 +337,12 @@ namespace Pulse::Parser
             throw ast_semantic_error("Function 'unsigned' expects 1 argument.", expr->source);
         }
         TypeSpec argType = exprType(expr->arguments[0].get());
-        if (!isLogicType(argType.typeName))
+        if (!isVectorType(argType.typeName) && argType.typeName != "std_logic")
         {
-            throw ast_semantic_error("Function 'unsigned' argument must be of logic type.", expr->source);
+            throw ast_semantic_error("Function 'unsigned' argument must be of a vector or logic type.", expr->source);
         }
-        return argType;
+        int w = resolveVectorWidth(argType);
+        return makeVectorType(w, "unsigned", expr->source);
     }
 
     TypeSpec AnalyzerContext::exprTypeFuncSigned(const FunctionCallExpr* expr)
@@ -290,11 +352,12 @@ namespace Pulse::Parser
             throw ast_semantic_error("Function 'signed' expects 1 argument.", expr->source);
         }
         TypeSpec argType = exprType(expr->arguments[0].get());
-        if (!isLogicType(argType.typeName))
+        if (!isVectorType(argType.typeName) && argType.typeName != "std_logic")
         {
-            throw ast_semantic_error("Function 'signed' argument must be of logic type.", expr->source);
+            throw ast_semantic_error("Function 'signed' argument must be of a vector or logic type.", expr->source);
         }
-        return argType;
+        int w = resolveVectorWidth(argType);
+        return makeVectorType(w, "signed", expr->source);
     }
 
     TypeSpec AnalyzerContext::exprTypeFuncToUnsigned(const FunctionCallExpr* expr)
@@ -320,11 +383,11 @@ namespace Pulse::Parser
             {
                 throw ast_semantic_error("Function 'to_unsigned' size argument must be greater than 0.", expr->source);
             }
-            return makeVectorType(static_cast<int>(sizeLit->value), expr->source);
+            return makeVectorType(static_cast<int>(sizeLit->value), "unsigned", expr->source);
         }
         TypeSpec res;
         res.source = expr->source;
-        res.typeName = "std_logic_vector";
+        res.typeName = "unsigned";
         return res;
     }
 
@@ -351,11 +414,11 @@ namespace Pulse::Parser
             {
                 throw ast_semantic_error("Function 'to_signed' size argument must be greater than 0.", expr->source);
             }
-            return makeVectorType(static_cast<int>(sizeLit->value), expr->source);
+            return makeVectorType(static_cast<int>(sizeLit->value), "signed", expr->source);
         }
         TypeSpec res;
         res.source = expr->source;
-        res.typeName = "std_logic_vector";
+        res.typeName = "signed";
         return res;
     }
 
@@ -366,9 +429,9 @@ namespace Pulse::Parser
             throw ast_semantic_error("Function 'to_integer' expects 1 argument.", expr->source);
         }
         TypeSpec argType = exprType(expr->arguments[0].get());
-        if (argType.typeName != "std_logic_vector")
+        if (!isVectorType(argType.typeName))
         {
-            throw ast_semantic_error("Function 'to_integer' argument must be of type 'std_logic_vector'.", expr->source);
+            throw ast_semantic_error("Function 'to_integer' argument must be of a vector type (signed, unsigned, std_logic_vector).", expr->source);
         }
         TypeSpec res;
         res.source = expr->source;
@@ -416,30 +479,32 @@ namespace Pulse::Parser
         {
             throw ast_semantic_error("Function 'std_logic_vector' expects 1 argument.", expr->source);
         }
+
         const auto* binOp = dynamic_cast<const BinaryOpExpr*>(expr->arguments[0].get());
-        if (!binOp || (binOp->op != "downto" && binOp->op != "to"))
+        if (binOp && (binOp->op == "downto" || binOp->op == "to"))
         {
-            // Or if it's casting another logic vector / signed / unsigned
-            TypeSpec argType = exprType(expr->arguments[0].get());
-            if (isLogicType(argType.typeName))
-            {
-                return argType;
-            }
-            throw ast_semantic_error("Function 'std_logic_vector' argument must be a range or logic expression.", expr->source);
+            TypeSpec ts;
+            ts.source = expr->source;
+            ts.typeName = "std_logic_vector";
+            ts.args.push_back(cloneExpression(binOp));
+            checkTypeSpec(ts);
+            return ts;
         }
 
-        TypeSpec ts;
-        ts.source = expr->source;
-        ts.typeName = "std_logic_vector";
-        ts.args.push_back(cloneExpression(binOp));
-        checkTypeSpec(ts);
-        return ts;
+        TypeSpec argType = exprType(expr->arguments[0].get());
+        if (isVectorType(argType.typeName) || argType.typeName == "std_logic")
+        {
+            int w = resolveVectorWidth(argType);
+            return makeVectorType(w, "std_logic_vector", expr->source);
+        }
+
+        throw ast_semantic_error("Function 'std_logic_vector' argument must be a range, vector, or logic expression.", expr->source);
     }
 
     TypeSpec AnalyzerContext::exprTypeSliceOrIndex(const FunctionCallExpr* expr)
     {
         const SymbolInfo& sym = getSymbol(expr->functionName, *expr);
-        if (sym.typeSpec.typeName != "std_logic_vector")
+        if (!isVectorType(sym.typeSpec.typeName))
         {
             throw ast_semantic_error("Cannot index or slice non-vector symbol '" + expr->functionName + "'", expr->source);
         }
@@ -452,7 +517,7 @@ namespace Pulse::Parser
         const auto* binOp = dynamic_cast<const BinaryOpExpr*>(expr->arguments[0].get());
         if (binOp && (binOp->op == "downto" || binOp->op == "to"))
         {
-            // Slicing: sig(7 downto 0) -> std_logic_vector
+            // Slicing: sig(7 downto 0) -> preserves symbol vector type (signed, unsigned, std_logic_vector)
             TypeSpec rangeType = exprType(binOp);
             if (rangeType.typeName != "range")
             {
@@ -460,7 +525,7 @@ namespace Pulse::Parser
             }
             TypeSpec ts;
             ts.source = expr->source;
-            ts.typeName = "std_logic_vector";
+            ts.typeName = sym.typeSpec.typeName;
             ts.args.push_back(cloneExpression(binOp));
             return ts;
         }
@@ -489,9 +554,9 @@ namespace Pulse::Parser
 
         if (expr->attributeName == "length")
         {
-            if (sym.typeSpec.typeName != "std_logic_vector")
+            if (!isVectorType(sym.typeSpec.typeName))
             {
-                throw ast_semantic_error("Attribute 'length' is only valid on std_logic_vector.", expr->source);
+                throw ast_semantic_error("Attribute 'length' is only valid on vector types (std_logic_vector, signed, unsigned).", expr->source);
             }
             TypeSpec res;
             res.source = expr->source;
@@ -502,9 +567,9 @@ namespace Pulse::Parser
         if (expr->attributeName == "left" || expr->attributeName == "right" ||
             expr->attributeName == "high" || expr->attributeName == "low")
         {
-            if (sym.typeSpec.typeName != "std_logic_vector")
+            if (!isVectorType(sym.typeSpec.typeName))
             {
-                throw ast_semantic_error("Attribute '" + expr->attributeName + "' is only valid on std_logic_vector.", expr->source);
+                throw ast_semantic_error("Attribute '" + expr->attributeName + "' is only valid on vector types (std_logic_vector, signed, unsigned).", expr->source);
             }
             TypeSpec res;
             res.source = expr->source;

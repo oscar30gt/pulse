@@ -495,7 +495,8 @@ TEST(Analyzer_Functions, UnsignedAndSignedPass)
         end test;
         architecture behavioral of test is
             signal a : std_logic_vector(7 downto 0);
-            signal b, c : std_logic_vector(7 downto 0);
+            signal b : unsigned(7 downto 0);
+            signal c : signed(7 downto 0);
         begin
             b <= unsigned(a);
             c <= signed(a);
@@ -510,8 +511,8 @@ TEST(Analyzer_Functions, ToUnsignedAndToSignedPass)
         entity test is
         end test;
         architecture behavioral of test is
-            signal a : std_logic_vector(7 downto 0);
-            signal b : std_logic_vector(7 downto 0);
+            signal a : unsigned(7 downto 0);
+            signal b : signed(7 downto 0);
             signal i : integer;
         begin
             a <= to_unsigned(5, 8);
@@ -900,6 +901,167 @@ TEST(Analyzer_Integration, Mux4to1)
                     y <= d3;
                 end if;
             end process;
+        end behavioral;
+    )";
+    expectSemanticSuccess(source);
+}
+
+// ===========================================================================
+// 10. SIGNED AND UNSIGNED TYPES & CONVERSIONS
+// ===========================================================================
+
+TEST(Analyzer_SignedUnsigned, DeclarationsAndRangesPass)
+{
+    const std::string source = R"(
+        entity test is
+            port(
+                s_in : in signed(7 downto 0);
+                u_in : in unsigned(15 downto 0);
+                s_out : out signed(7 downto 0);
+                u_out : out unsigned(15 downto 0)
+            );
+        end test;
+        architecture behavioral of test is
+            signal s_sig : signed(7 downto 0);
+            signal u_sig : unsigned(15 downto 0);
+        begin
+            s_out <= s_in;
+            u_out <= u_in;
+        end behavioral;
+    )";
+    expectSemanticSuccess(source);
+}
+
+TEST(Analyzer_SignedUnsigned, LiteralPrefixInference)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal s : signed(7 downto 0);
+            signal u : unsigned(7 downto 0);
+        begin
+            s <= SX"0A";
+            u <= UX"0A";
+        end behavioral;
+    )";
+    expectSemanticSuccess(source);
+}
+
+TEST(Analyzer_SignedUnsigned, LiteralPrefixMismatchThrows)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal u : unsigned(7 downto 0);
+        begin
+            u <= SX"0A";
+        end behavioral;
+    )";
+    expectSemanticError(source);
+}
+
+TEST(Analyzer_SignedUnsigned, QoLLiteralAssignmentPasses)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal s : signed(7 downto 0);
+            signal u : unsigned(7 downto 0);
+        begin
+            s <= "00001010";
+            u <= "00001010";
+            s <= X"0A";
+            u <= X"0A";
+        end behavioral;
+    )";
+    expectSemanticSuccess(source);
+}
+
+TEST(Analyzer_SignedUnsigned, NonLiteralVectorAssignmentWithoutCastThrows)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal slv : std_logic_vector(7 downto 0);
+            signal s : signed(7 downto 0);
+        begin
+            s <= slv;
+        end behavioral;
+    )";
+    expectSemanticError(source);
+}
+
+TEST(Analyzer_SignedUnsigned, ExplicitVectorCastsPass)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal slv : std_logic_vector(7 downto 0);
+            signal s : signed(7 downto 0);
+            signal u : unsigned(7 downto 0);
+        begin
+            s <= signed(slv);
+            u <= unsigned(slv);
+            slv <= std_logic_vector(s);
+            slv <= std_logic_vector(u);
+            s <= signed(u);
+            u <= unsigned(s);
+        end behavioral;
+    )";
+    expectSemanticSuccess(source);
+}
+
+TEST(Analyzer_SignedUnsigned, ArithmeticAndMixedIntegerPass)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal s1, s2, s3 : signed(7 downto 0);
+            signal u1, u2, u3 : unsigned(7 downto 0);
+            signal i : integer;
+        begin
+            s3 <= s1 + s2 * 2 - 1;
+            u3 <= u1 + u2 + 5;
+        end behavioral;
+    )";
+    expectSemanticSuccess(source);
+}
+
+TEST(Analyzer_SignedUnsigned, SlvArithmeticThrows)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal a, b, c : std_logic_vector(7 downto 0);
+        begin
+            c <= a + b;
+        end behavioral;
+    )";
+    expectSemanticError(source);
+}
+
+TEST(Analyzer_SignedUnsigned, AttributesAndSlicingPass)
+{
+    const std::string source = R"(
+        entity test is
+        end test;
+        architecture behavioral of test is
+            signal s : signed(7 downto 0);
+            signal s_slice : signed(3 downto 0);
+            signal bit_val : std_logic;
+            signal len : integer;
+        begin
+            len <= s'length;
+            bit_val <= s'left;
+            s_slice <= s(3 downto 0);
+            bit_val <= s(2);
         end behavioral;
     )";
     expectSemanticSuccess(source);
