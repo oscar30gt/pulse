@@ -241,6 +241,9 @@ TEST(Analyzer_Scope, ComponentInstantiationUnknownSignalThrows)
 TEST(Analyzer_Scope, ComponentInstantiationValidPasses)
 {
     const std::string source = R"(
+        entity my_comp is
+            port(clk : in std_logic);
+        end my_comp;
         entity test is
         end test;
         architecture behavioral of test is
@@ -1065,4 +1068,89 @@ TEST(Analyzer_SignedUnsigned, AttributesAndSlicingPass)
         end behavioral;
     )";
     expectSemanticSuccess(source);
+}
+
+// ===========================================================================
+// 11. ENTITY-COMPONENT CORRELATION
+// ===========================================================================
+
+TEST(Analyzer_EntityComponent, ComponentPortMismatchThrows)
+{
+    const std::string source = R"(
+        entity my_entity is
+            port(
+                a : in std_logic;
+                b : out std_logic
+            );
+        end my_entity;
+
+        entity top is
+        end top;
+
+        architecture behavioral of top is
+        begin end behavioral;
+
+        architecture behavioral of my_entity is
+            component my_entity is
+                port(
+                    a : in std_logic;
+                    b : out std_logic;
+                    c : in std_logic -- Extra port not in entity
+                );
+            end component;
+        begin
+        end behavioral;
+    )";
+    expectSemanticError(source);
+}
+
+
+TEST(Analyzer_EntityComponent, ComponentPortTypeMismatchThrows)
+{
+    const std::string source = R"(
+        entity my_entity is
+            port(
+                a : in std_logic;
+                b : out std_logic
+            );
+        end my_entity;
+
+        entity top is
+        end top;
+
+        architecture behavioral of top is
+        begin end behavioral;
+
+        architecture behavioral of my_entity is
+            component my_entity is
+                port(
+                    a : in std_logic;
+                    b : out std_logic_vector(7 downto 0) -- Type mismatch with entity
+                );
+            end component;
+        begin
+        end behavioral;
+    )";
+    expectSemanticError(source);
+}
+
+TEST(Analyzer_EntityComponent, ComponentWithNoEntityThrows)
+{
+    const std::string source = R"(
+        entity top is
+        end top;
+
+        architecture behavioral of top is
+        begin end behavioral;
+
+        architecture behavioral of my_entity is
+            component my_entity is
+                port(
+                    a : in std_logic
+                );
+            end component;
+        begin
+        end behavioral;
+    )";
+    expectSemanticError(source);
 }

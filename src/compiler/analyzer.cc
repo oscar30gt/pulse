@@ -1,11 +1,10 @@
 #include "analyzer_internal.h"
 #include <unordered_set>
+#include <algorithm>
 
 namespace Pulse::Parser
 {
-    AnalyzerContext::AnalyzerContext()
-    {
-    }
+    AnalyzerContext::AnalyzerContext() { }
 
     void AnalyzerContext::collectEntities(const ASTRoot& root)
     {
@@ -124,9 +123,28 @@ namespace Pulse::Parser
             {
                 throw ast_semantic_error("Component '" + comp.name + "' already declared in this architecture.", comp.source);
             }
+
+            auto entityIt = m_entities.find(comp.name);
+            if (entityIt == m_entities.end())
+            {
+                throw ast_semantic_error("Component '" + comp.name + "' references unknown entity.", comp.source);
+            }
+
             for (const auto& port : comp.ports)
             {
                 checkTypeSpec(port.typeSpec);
+                auto entityPortIt = std::find_if(entityIt->second->ports.begin(), entityIt->second->ports.end(),
+                    [&port](const PortDeclaration& p) { return p.portName == port.portName; });
+
+                if (entityPortIt == entityIt->second->ports.end())
+                {
+                    throw ast_semantic_error("Component port '" + port.portName + "' does not match any port in the referenced entity '" + comp.name + "'.", port.source);
+                }
+
+                if (!areTypesCompatible(port.typeSpec, entityPortIt->typeSpec))
+                {
+                    throw ast_semantic_error("Component port type does not match entity port type.", port.source);
+                }
             }
             m_components[comp.name] = &comp;
         }

@@ -1,4 +1,5 @@
 #include "analyzer_internal.h"
+#include "ast_internal.h"
 #include <iostream>
 
 namespace Pulse::Parser

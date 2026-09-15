@@ -127,19 +127,24 @@ namespace Pulse::Parser
 
         for (const auto& [formalPort, actualRef] : inst.portMap)
         {
-            bool formalExists = false;
+            const PortDeclaration* portDecl = nullptr;
             for (const auto& p : comp->ports)
             {
                 if (p.portName == formalPort)
                 {
-                    formalExists = true;
+                    portDecl = &p;
                     break;
                 }
             }
 
-            if (!formalExists)
+            if (!portDecl)
             {
                 throw ast_semantic_error("Component '" + inst.componentName + "' has no port named '" + formalPort + "'.", inst.source);
+            }
+
+            if (!areTypesCompatible(portDecl->typeSpec, exprType(&actualRef)))
+            {
+                throw ast_semantic_error("Type mismatch for port '" + formalPort + "' in component instantiation of '" + inst.componentName + "'.", actualRef.source);
             }
 
             // Verify actual signal exists in current scope

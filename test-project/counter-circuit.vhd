@@ -13,32 +13,33 @@ ARCHITECTURE behavioral OF top IS
         PORT (
             clk : IN STD_LOGIC;
             reset : IN STD_LOGIC;
-            count : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+            count : OUT UNSIGNED(31 DOWNTO 0)
         );
     END COMPONENT;
 
-    SIGNAL clk_signal, reset_signal : STD_LOGIC;
-    SIGNAL count_signal : STD_LOGIC_VECTOR(31 DOWNTO 0);
+    SIGNAL reset : STD_LOGIC := '1';
+
+    SIGNAL clk: STD_LOGIC;
+    SIGNAL count : UNSIGNED(31 DOWNTO 0);
 
 BEGIN
 
     clk_inst : clock
     PORT MAP(
-        clk_out => clk_signal
+        clk_out => clk
     );
 
     counter_inst : counter
     PORT MAP(
-        clk => clk_signal,
-        reset => reset_signal,
-        count => count_signal
+        clk => clk,
+        reset => reset,
+        count => count
     );
 
     PROCESS
     BEGIN
-        reset_signal <= '1';
         WAIT FOR 1 fs;
-        reset_signal <= '0';
+        reset <= '0';
         WAIT;
     END PROCESS;
 

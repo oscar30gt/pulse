@@ -6,7 +6,7 @@ END ENTITY clock;
 
 ARCHITECTURE behavioral OF clock IS
 
-    SIGNAL clk_out_internal : STD_LOGIC;
+    SIGNAL clk_out_internal : STD_LOGIC := '0';
 
 BEGIN
 

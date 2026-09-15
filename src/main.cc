@@ -19,6 +19,7 @@
 #include "ast.h"
 #include "blueprint.h"
 #include "analyzer.h"
+#include "normalizer.h"
 // #include "blueprintGenerator.h"
 // #include "linker.h"
 #include "subgraph.h"
@@ -119,6 +120,10 @@ int main(int argc, char* argv[])
             std::cerr << "Error during AST analysis: " << e.what() << '\n';
             return 1;
         }
+
+        normalizeAST(linkedDesign);
+        std::cout << "AST normalization completed successfully.\n";
+        linkedDesign.print();
 
         // for (const auto& ast : astRoots)
         //     ast.print();

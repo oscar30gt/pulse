@@ -1,4 +1,5 @@
 #include "parser_internal.h"
+#include "ast_internal.h"
 
 namespace Pulse::Parser
 {
@@ -31,7 +32,8 @@ namespace Pulse::Parser
             }
         }
 
-        next(); // "begin" keyword
+        expect("begin");
+        int unnamedProcessCounter = 0; // Counter for generating unique names for unnamed processes
 
         // Concurrent region: parse statements until we hit the "end" keyword.
         while (peek() && peek()->value != "end")
@@ -45,7 +47,7 @@ namespace Pulse::Parser
             }
             else if (tok->value == "process") // Unlabeled process statement
             {
-                arch->body.push_back(parseProcess("unlabeled_process"));
+                arch->body.push_back(parseProcess("unnamed_process_" + std::to_string(unnamedProcessCounter++)));
             }
 
             // labeled statements & signal assignments
