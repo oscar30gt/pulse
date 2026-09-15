@@ -19,6 +19,21 @@ namespace Pulse::Parser
 
     // --------------------------------------------------------------------------------------------
 
+    /// Exception type thrown during the compilation process of a project.
+    class ast_error : public std::runtime_error
+    {
+        SourceLocation m_location;
+
+    public:
+        ast_error(const std::string& message, const SourceLocation& location)
+            : std::runtime_error(message), m_location(location) { }
+
+        /// Location of the error inside the source file. Line and column numbers are 1-based.
+        const SourceLocation& location() const { return m_location; }
+    };
+
+    // --------------------------------------------------------------------------------------------
+
     /// Base class for all AST Nodes to allow proper polymorphism without slicing.
     struct ASTNode
     {

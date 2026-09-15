@@ -15,6 +15,7 @@
 #include <filesystem>
 
 #include "parser.h"
+#include "linker.h"
 #include "ast.h"
 #include "blueprint.h"
 #include "analyzer.h"
@@ -102,10 +103,22 @@ int main(int argc, char* argv[])
 
     try
     {
-        // AST building for every source file.
-        std::vector<ASTRoot> astRoots;
+        Linker linker;
         for (const auto& source : sources)
-            astRoots.push_back(fileParsingPipeline(source.string()));
+        {
+            linker.addAST(fileParsingPipeline(source.string()));
+        }
+        ASTRoot linkedDesign = linker.link();
+
+        try {
+            analyzeAST(linkedDesign);
+            std::cout << "AST analysis completed successfully.\n";
+            linkedDesign.print(); 
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error during AST analysis: " << e.what() << '\n';
+            return 1;
+        }
 
         // for (const auto& ast : astRoots)
         //     ast.print();
@@ -166,13 +179,6 @@ ASTRoot fileParsingPipeline(const std::string& filename)
 
     Tokenizer tokenizer(inputFile);
     auto root = VHDLtoAST(tokenizer);
-
-    try {
-        analyzeAST(root);
-    } catch (const std::exception& e) {
-        std::cerr << "Semantic analysis error in file " << filename << ": " << e.what() << '\n';
-        std::exit(1);
-    }
     return root;
 }
 

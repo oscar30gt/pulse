@@ -6,16 +6,13 @@
 namespace Pulse::Parser
 {
     /// Exception type thrown when an error occurs during semantic analysis of the AST.
-    class ast_semantic_error : public std::runtime_error
+    class ast_semantic_error : public ast_error
     {
         SourceLocation m_location;
 
     public:
         ast_semantic_error(const std::string& message, const SourceLocation& location)
-            : std::runtime_error(message), m_location(location) { }
-
-        /// Location of the error inside the source file. Line and column numbers are 1-based.
-        const SourceLocation& location() const { return m_location; }
+            : ast_error(message, location) { }
     };
 
     // --------------------------------------------------------------------------------------------
