@@ -19,7 +19,6 @@
 #include "ast.h"
 #include "blueprint.h"
 #include "analyzer.h"
-#include "normalizer.h"
 // #include "blueprintGenerator.h"
 // #include "linker.h"
 #include "subgraph.h"
@@ -27,7 +26,7 @@
 #include "waveform.h"
 #include "tui.h"
 
-#define VERSION "1.0.0"
+#define PULSE_VERSION "1.0.0"
 
 using namespace Pulse;
 using namespace Pulse::Parser;
@@ -120,39 +119,6 @@ int main(int argc, char* argv[])
             std::cerr << "Error during AST analysis: " << e.what() << '\n';
             return 1;
         }
-
-        normalizeAST(linkedDesign);
-        std::cout << "AST normalization completed successfully.\n";
-        linkedDesign.print();
-
-        // for (const auto& ast : astRoots)
-        //     ast.print();
-
-        // // Linking process
-        // Linker linker;
-        // auto linkedDesign = linker.link(astRoots);
-
-        // // Generating blueprints for subgraphs for the specified architecture.
-        // BlueprintGenerator blueprintGenerator;
-        // auto blueprints = blueprintGenerator.generate(linkedDesign, architecture);
-
-        // // Retreives and instantiates the top-level subgraph for simulation.
-        // auto bp = blueprints.find(topEntity);
-        // if (bp == blueprints.end())
-        //     throw std::runtime_error("Top-level entity '" + topEntity + "' not found. Ensure it exists or provide another entity using the --top option.");
-
-        // Subgraph graph(*bp->second.get(), {}, {});
-        // WaveformRecorder recorder(graph.takeSnapshot());
-
-        // // Simulation
-        // for (simTime_t i = 0; i <= endTime; ++i)
-        // {
-        //     graph.update();
-        //     recorder.record(graph.takeSnapshot(), i);
-        // }
-
-        // // Once simulated, allow user to visualize the waveform of the simulation.
-        // showWaveform(recorder.waveform(), 0, endTime, topEntity);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -202,7 +168,7 @@ void printHelp()
 
 void printVersion()
 {
-    std::cout << "Pulse Simulator. Version " << VERSION << "\n";
+    std::cout << "Pulse Simulator. Version " << PULSE_VERSION << "\n";
 }
 
 void parseArgs(int argc, char* argv[], std::string& projectPath, bool& recursive, std::string& topEntity, std::string& architecture, simTime_t& endTime)

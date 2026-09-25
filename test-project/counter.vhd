@@ -16,7 +16,7 @@ BEGIN
     BEGIN
         IF reset = '1' THEN
             count_internal <= x"00000000";
-        ELSIF rising_edge(clk) THEN
+        ELSIF clk'event AND clk = '1' THEN
             count_internal <= count_internal + 1;
         END IF;
     END PROCESS;

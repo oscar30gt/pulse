@@ -36,7 +36,7 @@ Once inside the project directory, run cmake to configure the build system and t
 
 ```bash
 cmake -B build
-cmake --build build --config Release
+cmake --build build
 ```
 
 > Resulting binaries will be located in `build/bin`.
@@ -88,33 +88,33 @@ $ pulse ./examples/my_project -R
 
 ## Supported Syntax
 
-VHDL language is too large. Here is a list of the supported syntax in Pulse:
+VHDL is a huge language, so Pulse supports a defined subset of VHDL-2008. The tokenizer and the parser check the syntax of that subset, and **everything the parser accepts is analyzed** (types, scopes, drivers, subprogram rules) and reported with a located error message when it is wrong. Anything outside the subset, such as packages, configurations, `generate` and `block` statements or access and file types, is a syntax error. What Pulse supports:
 
-- **Libraries:** For compatibility with other VHDL simulators, Pulse will not give compiler errors when using libraries. However, library declarations will be ignored.
+- **Design units:** entities and architectures. `library` and `use` clauses are accepted and ignored, so designs written for other simulators still compile.
 
-- **Signal types:** IEEE 1164 logic types are supported natively, including `std_logic` and `std_logic_vector`. `to` and `downto` can be used for vector ranges.
+- **Types:** enumerations (including character literals), integer, real and physical (`units`) types, constrained and unconstrained arrays (also multi-dimensional ones, with the limits below), records, and subtypes with range constraints, index constraints and resolution indications. Predefined: `boolean`, `integer`, `natural`, `positive`, `real`, `time`, `severity_level`, `std_logic`, `std_logic_vector`, `unsigned` and `signed`. Declare `character` and `string` yourself when a `report` or `assert` needs a message.
 
-- **Architectures:** Architectures can include component declarations, signal declarations, processes, combinational statements and component instantiations.
+- **Objects:** signals, constants, variables and aliases (of objects, slices, types, subprograms and operators). Entities and components have generics and generic maps, and ports with default values. Bounds that depend on a generic are not checked until the design is instantiated.
 
-- **Signal declarations:** Same as ports. Valid types are `std_logic` and `std_logic_vector` and no default values are supported for now.
+- **Attributes:** the predefined `'event`, `'length`, `'left`, `'right`, `'high`, `'low`, `'range` and `'reverse_range`, plus your own (`attribute a : t; attribute a of x : signal is v;`).
 
-- **Signal assignments:** Assignments using the `<=` operator. Assignments can be done with only a bit or range of the target signal being assigned.
+- **Subprograms:** pure and impure functions and procedures with `constant`, `signal` and `variable` parameters and default values; overloading, operator overloading (`function "+"(...)`), named, positional and partial associations, and conversion functions on formals. The rules of the LRM are checked: purity, no `wait` in functions, a `return` on every path of a function, and no `wait` in a procedure called from a process with a sensitivity list.
 
-- **Processes:** Processes with sensitivity lists and wait statements. Conditional statements using `if`, `elsif`, and `else` are supported. Allowed wait statements are `WAIT FOR <time>`, `WAIT` (forever). Loops and case statements to come in the future.
+- **Concurrent statements:** processes (with a sensitivity list, `all` or `wait` statements), simple, conditional (`when ... else`) and selected (`with ... select`, `select?`) signal assignments, aggregate targets, `assert`, procedure calls and component instantiations with named or positional port and generic maps.
 
-- **Component instantiations:** Component instantiations with port mappings. Port mappings are done by name. Positional port mapping is not supported.
+- **Sequential statements:** signal and variable assignments, `if`, `case` and `case?`, `for`, `while` and plain `loop` with `next` and `exit`, `wait`, `return`, `null`, `assert` and `report`.
 
-- **Functions**: `signed()` and `unsigned()` type conversion functions are supported for comparisons and arithmetic operations.
+- **Expressions:** every VHDL operator (logic, relational, shifts, adding, multiplying, `**`, `abs`, `not`), the VHDL-2008 matching operators (`?=`, `?<`, ...), the condition operator `??`, logical reductions, qualified expressions, type conversions, aggregates and external names. Constants are folded, so ranges, lengths and static values are checked at analysis time.
 
-- **Operators:** Logic: `and`, `or`, `not`, `xor`, `nand`, `nor`, `xnor`; Shifts: `sll`, `srl`, `sra`, `rol`, `ror`; Arithmetic: `+`, `-`, `*`; Comparison: `=`, `/=`, `<`, `>`, `<=`, `>=`; Concatenation: `&`.
+- **Multi-driver rule:** signals of a resolved type (`std_logic` and arrays of it) may have several drivers; any other type may not.
 
-- **Time units:** Units from femtoseconds to seconds. Valid time units are `fs`, `ps`, `ns`, `us`, `ms`, and `s`. Time values can be specified as integers or floating-point numbers.
+- **Time units:** `fs`, `ps`, `ns`, `us`, `ms`, `sec`, `min` and `hr`, written as integers or floating-point numbers.
 
-- **Comments:** Single-line comments using `--`.
+- **Comments:** `--` line comments and `/* */` block comments.
 
 - **File extensions:** When searching for VHDL files, files with the following extensions will be considered: `.vhd`, `.vhdl`.
 
-> More features will be added in the future, including support for generics, sequential logic, and more complex VHDL constructs.
+Known limits: aggregates and slices of multi-dimensional arrays, `entity work.e` direct instantiation, and the `bit` and `bit_vector` types are not supported. Expressions with more than 2000 chained operators, or nested more than 250 levels, are refused with an error.
 
 ## Compilation Pipeline
 
@@ -171,7 +171,7 @@ Pulse will continue to evolve and improve over time. Here are some of the planne
 - Enhanced simulation engine with better performance and support for larger designs.
 - Improved TUI with more interactive features and better visualization options.
 - An optional web-based GUI for waveform visualization using a modern web framework such as React.
-- Verilog support and, eventually, mixed-language (VHDL + Verilog) simulation capabilities.
+- Verilog support.
 
 ## License
 
