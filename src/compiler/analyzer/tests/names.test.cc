@@ -1,4 +1,4 @@
-// analyzer_names.test.cc — the remaining kinds of names and subtype indications: resolution functions, qualified expressions,
+// names.test.cc — the remaining kinds of names and subtype indications: resolution functions, qualified expressions,
 // external names, context clauses, the forms of discrete ranges, statement labels and `open` index constraints.
 
 #include <gtest/gtest.h>
@@ -292,6 +292,24 @@ TEST(Ranges_Forms, ArraysCanBeIndexedByAType)
     EXPECT_TRUE(mentions(arch("type by_color is array (color) of integer; signal tab : by_color; ", "process begin tab(3) <= 1; wait; end process;"), "Type mismatch"));
     EXPECT_EQ(arch("type by_flag is array (boolean) of integer; signal tab : by_flag; "), kOk);
     EXPECT_EQ(arch("type small_array is array (natural range 0 to 3) of integer; signal tab : small_array; ", "process begin tab(3) <= 1; wait; end process;"), kOk);
+}
+
+TEST(Ranges_Forms, SliceBoundsHaveTheIndexType)
+{
+    EXPECT_EQ(arch("type by_color is array (color range <>) of integer; signal tab : by_color(red to blue); signal two : by_color(red to green); ",
+                   "process begin two <= tab(green to blue); wait; end process;"), kOk);
+
+    const std::string message = proc("", "v4 <= v8(red to blue);");
+    EXPECT_TRUE(mentions(message, "The slice bounds have type 'color', but 'std_logic_vector(7 downto 0)' is indexed by 'integer")) << message;
+}
+
+TEST(Ranges_Forms, BothBoundsHaveOneType)
+{
+    EXPECT_EQ(proc("", "for i in red to blue loop col <= i; end loop;"), kOk);
+    EXPECT_EQ(proc("", "for i in 0 to n loop m <= i; end loop;"), kOk) << "a literal takes the type of the other bound";
+
+    const std::string message = proc("", "for i in red to n loop null; end loop;");
+    EXPECT_TRUE(mentions(message, "The bounds of a range have different types: 'color' and 'integer'")) << message;
 }
 
 TEST(Ranges_Forms, SlicesByASubtypeIndication)

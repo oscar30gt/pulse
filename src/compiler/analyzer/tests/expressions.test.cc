@@ -1,4 +1,4 @@
-// analyzer_expressions.test.cc — typing of expressions: operators (LRM and numeric_std width
+// expressions.test.cc — typing of expressions: operators (LRM and numeric_std width
 // rules), literals resolved from context, aggregates, indexing, slicing, conversions and
 // attributes. Rejected programs assert a fragment of their message.
 
@@ -141,6 +141,17 @@ TEST(Semantic_Shifts, ScalarsAndRealShiftAmountsAreRejected)
 {
     EXPECT_TRUE(mentions(check("x <= x sll 1;"), "vectors"));
     EXPECT_TRUE(mentions(check("v8 <= v8 sll 1.5;"), "shift amount"));
+}
+
+TEST(Semantic_Shifts, ArithmeticShiftsAndRotationsToTheRight)
+{
+    // numeric_std defines every shift for unsigned and signed; std_logic_1164 the logical shifts and the rotations.
+    EXPECT_EQ(check("u8 <= u8 sla 1; s8 <= s8 sla 2; u8 <= u8 ror n; v8 <= v8 ror 2;"), kOk);
+
+    const std::string message = check("x <= x ror 1;");
+    EXPECT_TRUE(mentions(message, "Operator 'ror'")) << message;
+    EXPECT_TRUE(mentions(message, "shifts and rotations work on vectors")) << message;
+    EXPECT_TRUE(mentions(check("u8 <= u8 sla 1.5;"), "the shift amount must be an integer"));
 }
 
 // ---- Concatenation --------------------------------------------------------------------------------

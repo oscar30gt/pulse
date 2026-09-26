@@ -84,6 +84,16 @@ TEST(TokenizerEdge_Numbers, MalformedFormsThrowLexicalError)
         EXPECT_NE(lexicalErrorMessage(source), "<no error>") << "should be rejected: " << source;
 }
 
+TEST(TokenizerEdge_Numbers, EveryPartOfABasedLiteralNeedsDigits)
+{
+    for (const std::string source : { "16##", "8#.7#", "2#1.#" })
+    {
+        const std::string message = lexicalErrorMessage(source);
+        EXPECT_NE(message.find("Expected a digit in numeric literal"), std::string::npos) << source << ": " << message;
+    }
+    EXPECT_EQ(lexicalErrorMessage("2#1.1#"), "<no error>");
+}
+
 TEST(TokenizerEdge_Numbers, NumberThenSpacedIdentifierIsTwoTokens)
 {
     auto tokens = lex("10 ns");

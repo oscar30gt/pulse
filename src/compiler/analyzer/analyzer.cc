@@ -7,11 +7,15 @@ namespace Pulse::Parser
         registerDispatchTables();
         registerExpressionHandlers();
         registerSequentialHandlers();
+        loadPrelude();
     }
 
-    /// Supporting a new kind of type definition, declaration or concurrent statement means adding one line here.
+    /// Supporting a new kind of design unit, type definition, declaration or concurrent statement means adding one line here.
     void AnalyzerContext::registerDispatchTables()
     {
+        m_units.add(*this, &AnalyzerContext::analyzeEntity);
+        m_units.add(*this, &AnalyzerContext::analyzeArchitecture);
+
         m_definitions.add(*this, &AnalyzerContext::defineNumeric);
         m_definitions.add(*this, &AnalyzerContext::defineEnumeration);
         m_definitions.add(*this, &AnalyzerContext::definePhysical);
@@ -44,63 +48,73 @@ namespace Pulse::Parser
         m_concurrent.add(*this, &AnalyzerContext::analyzeProcedureCall);
     }
 
-    // ---- Entities -------------------------------------------------------------------------------
-
-    void AnalyzerContext::collectEntities(const ASTRoot& root)
+    /// Nothing a design unit declares outlives it except what joins the library, so the next unit starts from the prelude alone.
+    void AnalyzerContext::beginUnit()
     {
-        m_entities.clear();
-        m_architectureNames.clear();
-
-        for (const auto& child : root.children)
-        {
-            if (auto* architecture = dynamic_cast<const ArchitectureDeclaration*>(child.get()))
-            {
-                m_architectureNames.insert(architecture->name);
-                continue;
-            }
-
-            auto* entity = dynamic_cast<const EntityDeclaration*>(child.get());
-            if (!entity)
-                fail("The analyzer has no handler for this kind of design unit", *child);
-
-            if (!m_entities.emplace(entity->name, entity).second)
-                fail("Entity '" + entity->name + "' is declared twice", *entity);
-        }
+        m_scopes.resize(1);
+        m_architecture = nullptr;
+        m_architectureAttributes.clear();
+        m_loops.clear();
+        m_process = nullptr;
+        m_subprogram = nullptr;
+        m_bodyInProcess = false;
+        m_bodyDepth = 0;
+        m_drivers.clear();
+        m_driverSource = nullptr;
+        m_driverDescription.clear();
+        m_pendingLabelSpecs.clear();
+        m_statementCalls.clear();
+        m_pendingBodies.clear();
     }
 
-    /// Generics and ports are resolved once, in a scope that only sees the predefined types (and the generics).
+    // ---- Entities -------------------------------------------------------------------------------
+
+    /// Generics and ports are resolved once, in a scope that only sees the predefined types (and the generics). The entity
+    /// joins the library only when they are.
     void AnalyzerContext::analyzeEntity(const EntityDeclaration& entity)
     {
+        if (m_entities.count(entity.name))
+            fail("Entity '" + entity.name + "' is declared twice", entity);
+
         pushScope();
         analyzeDeclarations(entity.context);
 
-        EntityInterface interface;
-        interface.generics = resolveGenerics(entity.generics);
-        interface.ports = resolvePorts(entity.ports, "entity '" + entity.name + "'");
+        LibraryEntity unit;
+        unit.declaration = &entity;
+        unit.generics = resolveGenerics(entity.generics);
+        unit.ports = resolvePorts(entity.ports, "entity '" + entity.name + "'");
         popScope();
 
-        m_entityInterfaces[entity.name] = std::move(interface);
+        m_entities.emplace(entity.name, std::move(unit));
     }
 
     // ---- Architectures --------------------------------------------------------------------------
 
+    /// An architecture is analyzed against the entity the library holds for it (LRM 13.5), so the entity may come from an
+    /// earlier file; in the same file it must come first, since units are analyzed in textual order.
     void AnalyzerContext::analyzeArchitecture(const ArchitectureDeclaration& arch)
     {
-        auto entity = m_entities.find(arch.entityName);
-        if (entity == m_entities.end())
+        auto found = m_entities.find(arch.entityName);
+        if (found == m_entities.end())
+        {
+            if (m_fileEntities.count(arch.entityName))
+                fail("Architecture '" + arch.name + "' comes before its entity '" + arch.entityName + "'; an entity must be analyzed "
+                     "before its architectures, so declare it first", arch);
             fail("Architecture '" + arch.name + "' belongs to the unknown entity '" + arch.entityName + "'", arch);
+        }
 
-        m_drivers.clear();
-        m_pendingLabelSpecs.clear();
-        m_statementCalls.clear();
+        LibraryEntity& entity = found->second;
+        if (entity.architectures.count(arch.name))
+            fail("Architecture '" + arch.name + "' of entity '" + arch.entityName + "' is declared twice", arch);
+
+        m_architecture = &arch;
         const size_t firstSubprogram = m_subprograms.size();
 
         pushScope();
         analyzeDeclarations(arch.context);
 
-        const EntityInterface& entityInterface = m_entityInterfaces.at(arch.entityName);
-        declareGenericSymbols(entityInterface.generics);
-        declarePortSymbols(entityInterface.ports);
+        declareGenericSymbols(entity.generics);
+        declarePortSymbols(entity.ports);
         analyzeDeclarations(arch.declarations);
 
         for (const auto& statement : arch.body)
@@ -110,28 +124,47 @@ namespace Pulse::Parser
         checkCallGraph(firstSubprogram);
         checkDrivers();
         popScope();
+
+        m_architecture = nullptr;
+        entity.architectures.insert(arch.name);
     }
 
     // ---- Entry point ----------------------------------------------------------------------------
 
+    /// The design units of a file are analyzed in textual order (LRM 13.1), each against the units already in the library.
     void AnalyzerContext::analyze(const ASTRoot& root)
     {
-        loadPrelude();
-        collectEntities(root);
+        m_fileEntities.clear();
+        for (const auto& unit : root.children)
+            if (auto* entity = dynamic_cast<const EntityDeclaration*>(unit.get()))
+                m_fileEntities.insert(entity->name);
 
-        for (const auto& child : root.children)
-            if (auto* entity = dynamic_cast<const EntityDeclaration*>(child.get()))
-                analyzeEntity(*entity);
+        for (const auto& unit : root.children)
+        {
+            if (!unit)
+                continue;
 
-        for (const auto& child : root.children)
-            if (auto* arch = dynamic_cast<const ArchitectureDeclaration*>(child.get()))
-                analyzeArchitecture(*arch);
+            const auto* handler = m_units.find(*unit);
+            if (!handler)
+                fail("The analyzer has no handler for this kind of design unit", *unit);
+
+            beginUnit();
+            (*handler)(*unit);
+        }
     }
 
-    void analyzeAST(const ASTRoot& root)
+    // ---- What the linker reads ------------------------------------------------------------------
+
+    const ComponentDeclaration* AnalyzerContext::componentOf(const ComponentInstantiation& instance) const
     {
-        AnalyzerContext context;
-        context.analyze(root);
+        auto found = m_instanceComponents.find(&instance);
+        return found == m_instanceComponents.end() ? nullptr : found->second;
+    }
+
+    const SemanticType* AnalyzerContext::interfaceType(const Declaration& genericOrPort) const
+    {
+        auto found = m_interfaceTypes.find(&genericOrPort);
+        return found == m_interfaceTypes.end() ? nullptr : &found->second;
     }
 
 } // namespace Pulse::Parser

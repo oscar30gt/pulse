@@ -1,4 +1,4 @@
-// analyzer_vhdl2008.test.cc — VHDL-2008 forms: concurrent assertions, conditional values in variable assignments, `unaffected`,
+// vhdl2008.test.cc — VHDL-2008 forms: concurrent assertions, conditional values in variable assignments, `unaffected`,
 // matching relational operators, `??`, logical reductions, `case?` / `select?`, and aggregate assignment targets.
 
 #include <gtest/gtest.h>

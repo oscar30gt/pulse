@@ -1,18 +1,18 @@
 // linker.test.cc — GTest suite for Pulse::Parser::Linker
 //
-// Comprehensive test coverage for the linking phase of the VHDL compiler.
-// Tests verify that multiple ASTRoot objects are correctly merged into a
-// single linked design root, that entity and architecture ordering is
-// preserved (entities first, architectures second), and that duplicate
-// declarations are caught and reported as ast_link_error exceptions.
+// The linker runs after analysis: every design file has been analyzed into a DesignLibrary, so each architecture has
+// already found its entity. The linker binds every component instance to the entity with the same name as its
+// component (the default binding of LRM 7.3.3), checks that the component fits that entity, and merges the files into
+// one design in which all entities come first and all architectures after them.
 //
 // Implementation notes:
-//   - The Linker takes ownership of ASTRoot objects via addAST(ASTRoot&&).
-//   - link() returns a new ASTRoot with all entities before all architectures.
-//   - Duplicate entity names across any roots trigger ast_link_error.
-//   - Duplicate architecture names for the same entity trigger ast_link_error.
-//   - Design units that are neither entities nor architectures are passed through, ahead of the entities.
-//   - Null children are skipped.
+//   - Every test compiles real VHDL, one string per design file, the way the compiler does: TestUtil::compileFiles()
+//     parses each file, analyzes the files in dependency order and links them; TestUtil::compileError() returns the
+//     message of the first diagnostic, or "<no error>".
+//   - Binding checks a component once, however many instances it has, and only a component that is instantiated.
+//   - Generics and ports are matched by name. Types must be the same (lengths are compared when both are known), a port
+//     mode must allow the association (LRM 6.5.6.3), and whatever the component leaves out must have a default, except
+//     an output or inout port, which stays open.
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -20,684 +20,396 @@
 #include <vector>
 
 #include "linker.h"
+#include "test_helpers.h"
 
 using namespace Pulse::Parser;
+using TestUtil::compileError;
+using TestUtil::compileFiles;
+using TestUtil::parseSource;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Convenience location used when the test does not care about source positions.
-static constexpr SourceLocation kNoLoc{ 0, 0 };
-
-/// Build an EntityDeclaration node with the given name.
-static std::unique_ptr<EntityDeclaration> makeEntity(const std::string& name,
-                                                      SourceLocation loc = kNoLoc)
-{
-    auto node = std::make_unique<EntityDeclaration>();
-    node->name   = name;
-    node->source = loc;
-    return node;
-}
-
-/// Build an ArchitectureDeclaration node with the given architecture and entity names.
-static std::unique_ptr<ArchitectureDeclaration> makeArch(const std::string& archName,
-                                                          const std::string& entityName,
-                                                          SourceLocation loc = kNoLoc)
-{
-    auto node = std::make_unique<ArchitectureDeclaration>();
-    node->name       = archName;
-    node->entityName = entityName;
-    node->source     = loc;
-    return node;
-}
-
-/// Build an ASTRoot and populate it with the provided children.
-static ASTRoot makeRoot(std::vector<DesignUnitPtr> children)
-{
-    ASTRoot root;
-    root.children = std::move(children);
-    return root;
-}
-
-/// Downcast a generic ASTNode pointer to a specific derived type.
-/// Returns nullptr if the cast fails.
-template <typename T>
-static T* as(ASTNode* node)
-{
-    return dynamic_cast<T*>(node);
-}
-
-template <typename T>
-static const T* as(const ASTNode* node)
-{
-    return dynamic_cast<const T*>(node);
-}
-
-// ===========================================================================
-// 1. EMPTY INPUT
-// ===========================================================================
-
-TEST(Linker_Empty, NoRootsAdded)
-{
-    Linker linker;
-    ASTRoot result = linker.link();
-    EXPECT_TRUE(result.children.empty());
-}
-
-TEST(Linker_Empty, SingleEmptyRoot)
-{
-    Linker linker;
-    linker.addAST(ASTRoot{});
-    ASTRoot result = linker.link();
-    EXPECT_TRUE(result.children.empty());
-}
-
-TEST(Linker_Empty, MultipleEmptyRoots)
-{
-    Linker linker;
-    linker.addAST(ASTRoot{});
-    linker.addAST(ASTRoot{});
-    linker.addAST(ASTRoot{});
-    ASTRoot result = linker.link();
-    EXPECT_TRUE(result.children.empty());
-}
-
-// ===========================================================================
-// 2. SINGLE ROOT — BASIC CORRECTNESS
-// ===========================================================================
-
-TEST(Linker_SingleRoot, SingleEntity)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("my_entity"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 1u);
-
-    auto* entity = as<EntityDeclaration>(result.children[0].get());
-    ASSERT_NE(entity, nullptr);
-    EXPECT_EQ(entity->name, "my_entity");
-}
-
-TEST(Linker_SingleRoot, SingleArchitecture)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeArch("rtl", "my_entity"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 1u);
-
-    auto* arch = as<ArchitectureDeclaration>(result.children[0].get());
-    ASSERT_NE(arch, nullptr);
-    EXPECT_EQ(arch->name, "rtl");
-    EXPECT_EQ(arch->entityName, "my_entity");
-}
-
-TEST(Linker_SingleRoot, EntityAndArchitecture)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("adder"));
-    children.push_back(makeArch("rtl", "adder"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 2u);
-
-    auto* entity = as<EntityDeclaration>(result.children[0].get());
-    auto* arch   = as<ArchitectureDeclaration>(result.children[1].get());
-    ASSERT_NE(entity, nullptr);
-    ASSERT_NE(arch, nullptr);
-    EXPECT_EQ(entity->name, "adder");
-    EXPECT_EQ(arch->name, "rtl");
-}
-
-TEST(Linker_SingleRoot, MultipleEntitiesAndArchitectures)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("entity_a"));
-    children.push_back(makeArch("rtl", "entity_a"));
-    children.push_back(makeEntity("entity_b"));
-    children.push_back(makeArch("behavioral", "entity_b"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 4u);
-
-    // Entities come first
-    auto* ea = as<EntityDeclaration>(result.children[0].get());
-    auto* eb = as<EntityDeclaration>(result.children[1].get());
-    ASSERT_NE(ea, nullptr);
-    ASSERT_NE(eb, nullptr);
-
-    // Architectures come after
-    auto* aa = as<ArchitectureDeclaration>(result.children[2].get());
-    auto* ab = as<ArchitectureDeclaration>(result.children[3].get());
-    ASSERT_NE(aa, nullptr);
-    ASSERT_NE(ab, nullptr);
-}
-
-// ===========================================================================
-// 3. OUTPUT ORDERING: ENTITIES BEFORE ARCHITECTURES
-// ===========================================================================
-
-TEST(Linker_Ordering, ArchBeforeEntityInInputBecomesEntityFirst)
-{
-    // Even though the architecture appears before the entity in the input root,
-    // the linked result must put entities before architectures.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeArch("rtl", "my_entity")); // arch first in input
-    children.push_back(makeEntity("my_entity"));       // entity second in input
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 2u);
-
-    EXPECT_NE(as<EntityDeclaration>(result.children[0].get()), nullptr)
-        << "First child should be an entity";
-    EXPECT_NE(as<ArchitectureDeclaration>(result.children[1].get()), nullptr)
-        << "Second child should be an architecture";
-}
-
-TEST(Linker_Ordering, InterleavedInputProducesGroupedOutput)
-{
-    // Three entities and three architectures interleaved in the input.
-    // The output should have all three entities followed by all three architectures.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("e1"));
-    children.push_back(makeArch("rtl", "e1"));
-    children.push_back(makeEntity("e2"));
-    children.push_back(makeArch("rtl", "e2"));
-    children.push_back(makeEntity("e3"));
-    children.push_back(makeArch("rtl", "e3"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 6u);
-
-    for (size_t i = 0; i < 3; ++i)
-        EXPECT_NE(as<EntityDeclaration>(result.children[i].get()), nullptr)
-            << "Child " << i << " should be an entity";
-
-    for (size_t i = 3; i < 6; ++i)
-        EXPECT_NE(as<ArchitectureDeclaration>(result.children[i].get()), nullptr)
-            << "Child " << i << " should be an architecture";
-}
-
-// ===========================================================================
-// 4. MULTIPLE ROOTS MERGED
-// ===========================================================================
-
-TEST(Linker_MultiRoot, TwoRootsEachWithOneEntity)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> c1;
-    c1.push_back(makeEntity("entity_a"));
-    linker.addAST(makeRoot(std::move(c1)));
-
-    std::vector<DesignUnitPtr> c2;
-    c2.push_back(makeEntity("entity_b"));
-    linker.addAST(makeRoot(std::move(c2)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 2u);
-
-    auto* ea = as<EntityDeclaration>(result.children[0].get());
-    auto* eb = as<EntityDeclaration>(result.children[1].get());
-    ASSERT_NE(ea, nullptr);
-    ASSERT_NE(eb, nullptr);
-    EXPECT_EQ(ea->name, "entity_a");
-    EXPECT_EQ(eb->name, "entity_b");
-}
-
-TEST(Linker_MultiRoot, EntityInOneRootArchInAnother)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> c1;
-    c1.push_back(makeEntity("counter"));
-    linker.addAST(makeRoot(std::move(c1)));
-
-    std::vector<DesignUnitPtr> c2;
-    c2.push_back(makeArch("rtl", "counter"));
-    linker.addAST(makeRoot(std::move(c2)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 2u);
-
-    auto* entity = as<EntityDeclaration>(result.children[0].get());
-    auto* arch   = as<ArchitectureDeclaration>(result.children[1].get());
-    ASSERT_NE(entity, nullptr);
-    ASSERT_NE(arch, nullptr);
-    EXPECT_EQ(entity->name, "counter");
-    EXPECT_EQ(arch->entityName, "counter");
-}
-
-TEST(Linker_MultiRoot, ManyRootsMergedCorrectly)
-{
-    Linker linker;
-
-    for (int i = 0; i < 10; ++i)
-    {
-        std::string name = "entity_" + std::to_string(i);
-        std::vector<DesignUnitPtr> c;
-        c.push_back(makeEntity(name));
-        c.push_back(makeArch("rtl", name));
-        linker.addAST(makeRoot(std::move(c)));
-    }
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 20u);
-
-    // First 10 children must all be entities
-    for (size_t i = 0; i < 10; ++i)
-        EXPECT_NE(as<EntityDeclaration>(result.children[i].get()), nullptr)
-            << "Child " << i << " should be an entity";
-
-    // Last 10 children must all be architectures
-    for (size_t i = 10; i < 20; ++i)
-        EXPECT_NE(as<ArchitectureDeclaration>(result.children[i].get()), nullptr)
-            << "Child " << i << " should be an architecture";
-}
-
-// ===========================================================================
-// 5. SOURCE ROOTS ARE CLEARED AFTER LINKING
-// ===========================================================================
-
-TEST(Linker_Ownership, SourceRootsAreEmptiedAfterLink)
-{
-    // After link() runs, ownership of all nodes has been transferred to the
-    // returned root. Verify that none of the child data leaked or was aliased
-    // by checking that the returned root has exactly the expected count and
-    // that all pointers are non-null.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("e1"));
-    children.push_back(makeArch("rtl", "e1"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-
-    ASSERT_EQ(result.children.size(), 2u);
-    for (const auto& child : result.children)
-        EXPECT_NE(child.get(), nullptr) << "No child should be a null pointer after linking";
-}
-
-// ===========================================================================
-// 6. DUPLICATE ENTITY DETECTION
-// ===========================================================================
-
-TEST(Linker_DuplicateEntities, SameNameInSingleRoot)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("adder"));
-    children.push_back(makeEntity("adder")); // duplicate
-    linker.addAST(makeRoot(std::move(children)));
-
-    EXPECT_THROW(linker.link(), ast_link_error);
-}
-
-TEST(Linker_DuplicateEntities, SameNameAcrossTwoRoots)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> c1;
-    c1.push_back(makeEntity("adder"));
-    linker.addAST(makeRoot(std::move(c1)));
-
-    std::vector<DesignUnitPtr> c2;
-    c2.push_back(makeEntity("adder")); // duplicate in a different root
-    linker.addAST(makeRoot(std::move(c2)));
-
-    EXPECT_THROW(linker.link(), ast_link_error);
-}
-
-TEST(Linker_DuplicateEntities, ThreeRootsThirdIsDuplicate)
-{
-    Linker linker;
-
-    for (const std::string name : { "first", "second", "first" }) // "first" duplicated
-    {
-        std::vector<DesignUnitPtr> c;
-        c.push_back(makeEntity(name));
-        linker.addAST(makeRoot(std::move(c)));
-    }
-
-    EXPECT_THROW(linker.link(), ast_link_error);
-}
-
-TEST(Linker_DuplicateEntities, DuplicateErrorCarriesSourceLocation)
-{
-    Linker linker;
-
-    SourceLocation loc{ 42, 7 };
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("counter"));
-    children.push_back(makeEntity("counter", loc)); // duplicate with known location
-    linker.addAST(makeRoot(std::move(children)));
-
-    try
-    {
-        linker.link();
-        FAIL() << "Expected ast_link_error";
-    }
-    catch (const ast_link_error& e)
-    {
-        EXPECT_EQ(e.location().line,   loc.line);
-        EXPECT_EQ(e.location().column, loc.column);
-    }
-}
-
-TEST(Linker_DuplicateEntities, DifferentNamesDoNotThrow)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("entity_a"));
-    children.push_back(makeEntity("entity_b"));
-    children.push_back(makeEntity("entity_c"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    EXPECT_NO_THROW(linker.link());
-}
-
-// ===========================================================================
-// 7. DUPLICATE ARCHITECTURE DETECTION
-// ===========================================================================
-
-TEST(Linker_DuplicateArchitectures, SameNameSameEntityInSingleRoot)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("adder"));
-    children.push_back(makeArch("rtl", "adder"));
-    children.push_back(makeArch("rtl", "adder")); // duplicate
-    linker.addAST(makeRoot(std::move(children)));
-
-    EXPECT_THROW(linker.link(), ast_link_error);
-}
-
-TEST(Linker_DuplicateArchitectures, SameNameSameEntityAcrossTwoRoots)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> c1;
-    c1.push_back(makeEntity("counter"));
-    c1.push_back(makeArch("rtl", "counter"));
-    linker.addAST(makeRoot(std::move(c1)));
-
-    std::vector<DesignUnitPtr> c2;
-    c2.push_back(makeArch("rtl", "counter")); // duplicate across roots
-    linker.addAST(makeRoot(std::move(c2)));
-
-    EXPECT_THROW(linker.link(), ast_link_error);
-}
-
-TEST(Linker_DuplicateArchitectures, SameArchNameDifferentEntitiesIsAllowed)
-{
-    // "rtl" for "adder" and "rtl" for "multiplier" are distinct; no error expected.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("adder"));
-    children.push_back(makeEntity("multiplier"));
-    children.push_back(makeArch("rtl", "adder"));
-    children.push_back(makeArch("rtl", "multiplier")); // same arch name, different entity
-    linker.addAST(makeRoot(std::move(children)));
-
-    EXPECT_NO_THROW(linker.link());
-}
-
-TEST(Linker_DuplicateArchitectures, MultipleArchsForSameEntityAllowed)
-{
-    // One entity may have several differently-named architectures.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("counter"));
-    children.push_back(makeArch("rtl",        "counter"));
-    children.push_back(makeArch("behavioral", "counter"));
-    children.push_back(makeArch("structural", "counter"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    EXPECT_NO_THROW(linker.link());
-}
-
-TEST(Linker_DuplicateArchitectures, DuplicateArchErrorCarriesSourceLocation)
-{
-    Linker linker;
-
-    SourceLocation loc{ 10, 3 };
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("fifo"));
-    children.push_back(makeArch("rtl", "fifo"));
-    children.push_back(makeArch("rtl", "fifo", loc)); // duplicate with known location
-    linker.addAST(makeRoot(std::move(children)));
-
-    try
-    {
-        linker.link();
-        FAIL() << "Expected ast_link_error";
-    }
-    catch (const ast_link_error& e)
-    {
-        EXPECT_EQ(e.location().line,   loc.line);
-        EXPECT_EQ(e.location().column, loc.column);
-    }
-}
-
-// ===========================================================================
-// 8. UNKNOWN / NULL NODES ARE SKIPPED
-// ===========================================================================
-
-TEST(Linker_UnknownNodes, NullChildrenAreSkipped)
-{
-    // Inserting null unique_ptrs should not crash or count toward the result.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(nullptr);
-    children.push_back(makeEntity("my_entity"));
-    children.push_back(nullptr);
-    children.push_back(makeArch("rtl", "my_entity"));
-    children.push_back(nullptr);
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result;
-    EXPECT_NO_THROW(result = linker.link());
-    EXPECT_EQ(result.children.size(), 2u);
-}
-
-// ===========================================================================
-// 9. EXCEPTION TYPE HIERARCHY
-// ===========================================================================
-
-TEST(Linker_Exceptions, LinkErrorIsAlsoAstError)
-{
-    // ast_link_error must be catchable as compiler_error (base class).
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("adder"));
-    children.push_back(makeEntity("adder"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    EXPECT_THROW(linker.link(), compiler_error);
-}
-
-TEST(Linker_Exceptions, LinkErrorMessageMentionsEntityName)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("my_dup_entity"));
-    children.push_back(makeEntity("my_dup_entity"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    try
-    {
-        linker.link();
-        FAIL() << "Expected ast_link_error";
-    }
-    catch (const ast_link_error& e)
-    {
-        EXPECT_NE(std::string(e.what()).find("my_dup_entity"), std::string::npos)
-            << "Error message should mention the duplicate entity name";
-    }
-}
-
-TEST(Linker_Exceptions, LinkErrorMessageMentionsArchAndEntityName)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("fifo"));
-    children.push_back(makeArch("rtl", "fifo"));
-    children.push_back(makeArch("rtl", "fifo"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    try
-    {
-        linker.link();
-        FAIL() << "Expected ast_link_error";
-    }
-    catch (const ast_link_error& e)
-    {
-        std::string msg(e.what());
-        EXPECT_NE(msg.find("rtl"),  std::string::npos)
-            << "Error message should mention the duplicate architecture name";
-        EXPECT_NE(msg.find("fifo"), std::string::npos)
-            << "Error message should mention the target entity name";
-    }
-}
-
-// ===========================================================================
-// 10. EDGE CASES
-// ===========================================================================
-
-TEST(Linker_EdgeCases, LinkCalledTwiceOnSameLinkerYieldsEmpty)
-{
-    // After link() has moved ownership out of all roots, a second call on the
-    // same linker should return an empty root (roots were cleared internally).
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("e1"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot first  = linker.link();
-    ASTRoot second = linker.link(); // roots already consumed
-
-    EXPECT_EQ(first.children.size(), 1u);
-    EXPECT_TRUE(second.children.empty());
-}
-
-TEST(Linker_EdgeCases, LargeNumberOfDistinctEntities)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    for (int i = 0; i < 500; ++i)
-        children.push_back(makeEntity("entity_" + std::to_string(i)));
-
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result;
-    EXPECT_NO_THROW(result = linker.link());
-    EXPECT_EQ(result.children.size(), 500u);
-}
-
-TEST(Linker_EdgeCases, LargeNumberOfDistinctArchitecturesForOneEntity)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("top"));
-    for (int i = 0; i < 200; ++i)
-        children.push_back(makeArch("arch_" + std::to_string(i), "top"));
-
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result;
-    EXPECT_NO_THROW(result = linker.link());
-    EXPECT_EQ(result.children.size(), 201u); // 1 entity + 200 architectures
-}
-
-TEST(Linker_EdgeCases, EntityNameCaseSensitivity)
-{
-    // "Adder" and "adder" are distinct names; both should link without error.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("Adder"));
-    children.push_back(makeEntity("adder"));
-    children.push_back(makeEntity("ADDER"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result;
-    EXPECT_NO_THROW(result = linker.link());
-    EXPECT_EQ(result.children.size(), 3u);
-}
-
-TEST(Linker_EdgeCases, ArchitectureNameCaseSensitivity)
-{
-    // "RTL" and "rtl" for the same entity are distinct; should not collide.
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("counter"));
-    children.push_back(makeArch("RTL", "counter"));
-    children.push_back(makeArch("rtl", "counter"));
-    children.push_back(makeArch("Rtl", "counter"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result;
-    EXPECT_NO_THROW(result = linker.link());
-    EXPECT_EQ(result.children.size(), 4u);
-}
-
-TEST(Linker_EdgeCases, EntityAndArchNamesPreservedExactly)
-{
-    Linker linker;
-
-    std::vector<DesignUnitPtr> children;
-    children.push_back(makeEntity("my_special_entity_123"));
-    children.push_back(makeArch("my_special_arch_456", "my_special_entity_123"));
-    linker.addAST(makeRoot(std::move(children)));
-
-    ASTRoot result = linker.link();
-    ASSERT_EQ(result.children.size(), 2u);
-
-    auto* entity = as<EntityDeclaration>(result.children[0].get());
-    auto* arch   = as<ArchitectureDeclaration>(result.children[1].get());
-    ASSERT_NE(entity, nullptr);
-    ASSERT_NE(arch, nullptr);
-    EXPECT_EQ(entity->name,       "my_special_entity_123");
-    EXPECT_EQ(arch->name,         "my_special_arch_456");
-    EXPECT_EQ(arch->entityName,   "my_special_entity_123");
-}
 namespace
 {
-    /// A design unit the linker knows nothing about (a package, say, once the AST has one).
+    constexpr const char* kOk = "<no error>";
+
+    bool mentions(const std::string& message, const std::string& text)
+    {
+        return message.find(text) != std::string::npos;
+    }
+
+    template <typename T>
+    const T* as(const DesignUnitPtr& unit)
+    {
+        return dynamic_cast<const T*>(unit.get());
+    }
+
+    /// A file with the entity `e`, declared with `generics` and `ports`, and an architecture of it.
+    std::string entityFile(const std::string& generics, const std::string& ports)
+    {
+        return "entity e is " + (generics.empty() ? "" : "generic (" + generics + "); ") + (ports.empty() ? "" : "port (" + ports + "); ")
+               + "end e; architecture rtl of e is begin end rtl;";
+    }
+
+    /// A file with a top level design that declares the component `component` and instantiates it with `instance`.
+    std::string topFile(const std::string& component, const std::string& instance)
+    {
+        return "entity top is end top; architecture rtl of top is " + component
+               + " signal s1, s2 : std_logic; signal w8 : std_logic_vector(7 downto 0); begin " + instance + " end rtl;";
+    }
+
+    /// Compiles the file of the entity and the top level file, and returns the first diagnostic: the one of binding the
+    /// instance of `e` when both files analyze cleanly.
+    std::string linkError(const std::string& entity, const std::string& top)
+    {
+        return compileError({ entity, top });
+    }
+
+    /// The location of the ast_link_error that linking `sources` fails with.
+    SourceLocation linkErrorLocation(const std::vector<std::string>& sources)
+    {
+        try
+        {
+            compileFiles(sources);
+        }
+        catch (const ast_link_error& e)
+        {
+            return e.location();
+        }
+        ADD_FAILURE() << "expected an ast_link_error";
+        return { 0, 0 };
+    }
+}
+
+// ===========================================================================
+// 1. MERGING THE FILES OF A DESIGN
+// ===========================================================================
+
+TEST(Linker_Merging, NoUnitsGiveAnEmptyDesign)
+{
+    EXPECT_TRUE(compileFiles({}).children.empty());
+    EXPECT_TRUE(compileFiles({ "", "  -- only a comment\n" }).children.empty());
+}
+
+TEST(Linker_Merging, EntitiesComeFirstThenArchitectures)
+{
+    const ASTRoot design = compileFiles({
+        "entity a is end a; architecture rtl of a is begin end rtl; entity b is end b; architecture rtl of b is begin end rtl;",
+        "entity c is end c; architecture rtl of c is begin end rtl;",
+    });
+
+    ASSERT_EQ(design.children.size(), 6u);
+    for (size_t i = 0; i < 3; ++i)
+        EXPECT_NE(as<EntityDeclaration>(design.children[i]), nullptr) << "child " << i << " should be an entity";
+    for (size_t i = 3; i < 6; ++i)
+        EXPECT_NE(as<ArchitectureDeclaration>(design.children[i]), nullptr) << "child " << i << " should be an architecture";
+
+    EXPECT_EQ(as<EntityDeclaration>(design.children[0])->name, "a");
+    EXPECT_EQ(as<EntityDeclaration>(design.children[2])->name, "c");
+    EXPECT_EQ(as<ArchitectureDeclaration>(design.children[5])->entityName, "c");
+}
+
+TEST(Linker_Merging, AnArchitectureJoinsItsEntityFromAnotherFile)
+{
+    const ASTRoot design = compileFiles({ "architecture rtl of counter is begin q <= clk; end rtl;",
+                                          "entity counter is port (clk : in std_logic; q : out std_logic); end counter;" });
+
+    ASSERT_EQ(design.children.size(), 2u);
+    EXPECT_EQ(as<EntityDeclaration>(design.children[0])->name, "counter");
+    EXPECT_EQ(as<ArchitectureDeclaration>(design.children[1])->entityName, "counter");
+}
+
+TEST(Linker_Merging, ContextClausesTravelWithTheirUnit)
+{
+    const ASTRoot design = compileFiles({ "architecture rtl of e is begin end rtl;",
+                                          "library ieee; use ieee.std_logic_1164.all; entity e is end e;" });
+
+    ASSERT_EQ(design.children.size(), 2u);
+    EXPECT_EQ(design.children[0]->context.size(), 2u) << "the entity kept its library and use clauses";
+    EXPECT_TRUE(design.children[1]->context.empty());
+}
+
+TEST(Linker_Merging, ASecondLinkFindsNothingLeft)
+{
+    DesignLibrary library;
+    std::vector<ASTRoot> files = TestUtil::analyzeFiles({ "entity e is end e;" }, library);
+
+    Linker linker(library);
+    linker.addAST(std::move(files[0]));
+
+    const ASTRoot first = linker.link();
+    const ASTRoot second = linker.link();
+    EXPECT_EQ(first.children.size(), 1u);
+    EXPECT_TRUE(second.children.empty()) << "the first link took the units";
+}
+
+TEST(Linker_Merging, ManyFiles)
+{
+    std::vector<std::string> files;
+    for (int i = 0; i < 500; ++i)
+    {
+        const std::string name = "e" + std::to_string(i);
+        files.push_back("entity " + name + " is end " + name + "; architecture rtl of " + name + " is begin end rtl;");
+    }
+
+    ASTRoot design;
+    EXPECT_NO_THROW(design = compileFiles(files));
+    EXPECT_EQ(design.children.size(), 1000u);
+}
+
+// ===========================================================================
+// 2. BINDING INSTANCES TO ENTITIES
+// ===========================================================================
+
+TEST(Linker_Binding, AnInstanceIsBoundToTheEntityOfItsComponent)
+{
+    const std::string leaf = "entity leaf is port (i : in std_logic; o : out std_logic); end leaf; architecture rtl of leaf is begin o <= i; end rtl;";
+    const std::string top = "entity top is end top; architecture rtl of top is "
+                            "component leaf is port (i : in std_logic; o : out std_logic); end component; signal a, b : std_logic; "
+                            "begin u1 : leaf port map (i => a, o => b); end rtl;";
+
+    EXPECT_EQ(compileError({ leaf, top }), kOk);
+    EXPECT_EQ(compileError({ top, leaf }), kOk) << "the order of the files does not matter";
+    EXPECT_EQ(compileError({ leaf + "\n" + top }), kOk) << "both in one file";
+}
+
+TEST(Linker_Binding, AnInstanceNeedsAnEntity)
+{
+    const std::string message = compileError({ "entity top is end top; architecture rtl of top is component ghost is end component; begin u1 : ghost; end rtl;" });
+    EXPECT_TRUE(mentions(message, "Component 'ghost' has no entity of the same name, so instance 'u1' cannot be bound")) << message;
+}
+
+TEST(Linker_Binding, TheMissingEntityIsReportedAtTheInstance)
+{
+    const SourceLocation at = linkErrorLocation({ "entity top is end top;\narchitecture rtl of top is\n    component ghost is end component;\n"
+                                                  "begin\n    u1 : ghost;\nend rtl;" });
+    EXPECT_EQ(at.line, 5u);
+    EXPECT_EQ(at.column, 5u) << "an instance is located where its statement starts, at its label";
+}
+
+TEST(Linker_Binding, AComponentWithoutInstancesNeedsNoEntity)
+{
+    EXPECT_EQ(compileError({ "entity top is end top; architecture rtl of top is component ghost is port (a : in std_logic); end component; "
+                             "begin end rtl;" }), kOk) << "only an instance is bound (LRM 7.3.3)";
+}
+
+TEST(Linker_Binding, EveryArchitectureBindsItsOwnComponent)
+{
+    // Two architectures declare their own component `e`; only the second one does not fit the entity.
+    const std::string good = "architecture a1 of top is component e is port (a : in std_logic); end component; signal s : std_logic; "
+                             "begin u1 : e port map (a => s); end a1;";
+    const std::string bad = "architecture a2 of top is component e is port (a : in integer); end component; signal n : integer; "
+                            "begin u1 : e port map (a => n); end a2;";
+
+    const std::string message = compileError({ entityFile("", "a : in std_logic"), "entity top is end top; " + good + " " + bad });
+    EXPECT_TRUE(mentions(message, "Port 'a' of component 'e' has type 'integer' but the entity declares 'std_logic'")) << message;
+    EXPECT_EQ(compileError({ entityFile("", "a : in std_logic"), "entity top is end top; " + good }), kOk);
+}
+
+TEST(Linker_Binding, AComponentIsCheckedOnceForAllItsInstances)
+{
+    std::string instances;
+    for (int i = 0; i < 2000; ++i)
+        instances += "u" + std::to_string(i) + " : e port map (a => s1); ";
+
+    EXPECT_EQ(linkError(entityFile("", "a : in std_logic"), topFile("component e is port (a : in std_logic); end component;", instances)), kOk);
+}
+
+// ===========================================================================
+// 3. GENERICS
+// ===========================================================================
+
+TEST(Linker_Generics, TheComponentMayRestateOrOmitADefault)
+{
+    const std::string entity = entityFile("w : natural := 8", "d : in std_logic_vector(w - 1 downto 0)");
+    EXPECT_EQ(linkError(entity, topFile("component e is generic (w : natural := 8); port (d : in std_logic_vector(w - 1 downto 0)); end component;",
+                                   "u : e port map (d => w8);")), kOk);
+    EXPECT_EQ(linkError(entity, topFile("component e is generic (w : natural); port (d : in std_logic_vector(w - 1 downto 0)); end component;",
+                                   "u : e generic map (w => 8) port map (d => w8);")), kOk);
+}
+
+TEST(Linker_Generics, EveryGenericOfTheComponentExistsInTheEntity)
+{
+    const std::string message = linkError(entityFile("w : natural := 8", ""), topFile("component e is generic (other : natural := 1); end component;", "u : e;"));
+    EXPECT_TRUE(mentions(message, "Generic 'other' of component 'e' does not exist in entity 'e'")) << message;
+}
+
+TEST(Linker_Generics, TheTypesMustBeTheSame)
+{
+    const std::string message = linkError(entityFile("w : natural := 8", ""), topFile("component e is generic (w : std_logic := '0'); end component;", "u : e;"));
+    EXPECT_TRUE(mentions(message, "Generic 'w' of component 'e' has type 'std_logic' but the entity declares 'integer")) << message;
+    EXPECT_EQ(linkError(entityFile("w : natural := 8", ""), topFile("component e is generic (w : integer := 8); end component;", "u : e;")), kOk)
+        << "natural and integer are one type with different ranges";
+}
+
+TEST(Linker_Generics, AnEntityGenericWithoutDefaultMustBeDeclared)
+{
+    const std::string message = linkError(entityFile("w : natural", ""), topFile("component e is end component;", "u : e;"));
+    EXPECT_TRUE(mentions(message, "Component 'e' does not declare the generic 'w' of entity 'e', which has no default value")) << message;
+    EXPECT_EQ(linkError(entityFile("w : natural := 4", ""), topFile("component e is end component;", "u : e;")), kOk) << "a default takes its place";
+}
+
+// ===========================================================================
+// 4. PORTS: NAMES, TYPES AND LENGTHS
+// ===========================================================================
+
+TEST(Linker_Ports, EveryPortOfTheComponentExistsInTheEntity)
+{
+    const std::string message = linkError(entityFile("", "a : in std_logic"),
+                                     topFile("component e is port (a : in std_logic; x : in std_logic); end component;", "u : e port map (a => s1, x => s2);"));
+    EXPECT_TRUE(mentions(message, "Port 'x' of component 'e' does not exist in entity 'e'")) << message;
+}
+
+TEST(Linker_Ports, TheTypesMustBeTheSame)
+{
+    const std::string message = linkError(entityFile("", "a : in std_logic; b : out std_logic"),
+                                     topFile("component e is port (a : in std_logic; b : out std_logic_vector(7 downto 0)); end component;",
+                                             "u : e port map (a => s1, b => w8);"));
+    EXPECT_TRUE(mentions(message, "Port 'b' of component 'e' has type 'std_logic_vector(7 downto 0)' but the entity declares 'std_logic'")) << message;
+}
+
+TEST(Linker_Ports, LengthsKnownOnBothSidesMustAgree)
+{
+    const std::string entity = entityFile("", "d : in std_logic_vector(7 downto 0)");
+    const std::string message = linkError(entity, topFile("component e is port (d : in std_logic_vector(3 downto 0)); end component;", "u : e port map (d => w8(3 downto 0));"));
+    EXPECT_TRUE(mentions(message, "has type 'std_logic_vector(3 downto 0)' but the entity declares 'std_logic_vector(7 downto 0)'")) << message;
+
+    EXPECT_EQ(linkError(entity, topFile("component e is port (d : in std_logic_vector(0 to 7)); end component;", "u : e port map (d => w8);")), kOk)
+        << "only the length matters, not the bounds or the direction";
+    EXPECT_EQ(linkError(entityFile("w : natural := 8", "d : in std_logic_vector(w - 1 downto 0)"),
+                   topFile("component e is port (d : in std_logic_vector(7 downto 0)); end component;", "u : e port map (d => w8);")), kOk)
+        << "a length that depends on a generic is only known per instance";
+}
+
+TEST(Linker_Ports, TheCheckIsReportedAtTheComponentPort)
+{
+    const SourceLocation at = linkErrorLocation({ entityFile("", "a : in std_logic"),
+                                                  "entity top is end top;\narchitecture rtl of top is\n    component e is\n        port (a : in integer);\n"
+                                                  "    end component;\n    signal n : integer;\nbegin\n    u : e port map (a => n);\nend rtl;" });
+    EXPECT_EQ(at.line, 4u);
+    EXPECT_EQ(at.column, 15u);
+}
+
+// ===========================================================================
+// 5. PORTS: MODES (LRM 6.5.6.3)
+// ===========================================================================
+
+TEST(Linker_Modes, AComponentPortBindsToAnEntityPortItCanBeAssociatedWith)
+{
+    struct Case { const char* entityMode; const char* componentMode; bool binds; };
+    const Case cases[] = {
+        { "in", "in", true },       { "in", "inout", true },    { "in", "out", false },
+        { "out", "out", true },     { "out", "inout", true },   { "out", "in", false },
+        { "inout", "inout", true }, { "inout", "in", false },   { "inout", "out", false },
+    };
+
+    for (const Case& c : cases)
+    {
+        const std::string message = linkError(entityFile("", std::string("p : ") + c.entityMode + " std_logic"),
+                                         topFile(std::string("component e is port (p : ") + c.componentMode + " std_logic); end component;",
+                                                 "u : e port map (p => s1);"));
+        const std::string what = std::string("entity ") + c.entityMode + ", component " + c.componentMode + ": " + message;
+
+        if (c.binds)
+            EXPECT_EQ(message, kOk) << what;
+        else
+            EXPECT_TRUE(mentions(message, std::string("Port 'p' of component 'e' has mode '") + c.componentMode + "' but the entity declares '"
+                                          + c.entityMode + "'")) << what;
+    }
+}
+
+TEST(Linker_Modes, TheMessageSaysWhichModesFit)
+{
+    const std::string message = linkError(entityFile("", "p : out std_logic"), topFile("component e is port (p : in std_logic); end component;", "u : e port map (p => s1);"));
+    EXPECT_TRUE(mentions(message, "which only a port of mode 'out' or 'inout' can be bound to")) << message;
+}
+
+// ===========================================================================
+// 6. WHAT THE COMPONENT LEAVES OUT
+// ===========================================================================
+
+TEST(Linker_Omissions, AnInputWithoutDefaultMustBeDeclared)
+{
+    const std::string component = "component e is port (a : in std_logic); end component;";
+    const std::string message = linkError(entityFile("", "a : in std_logic; b : in std_logic"), topFile(component, "u : e port map (a => s1);"));
+    EXPECT_TRUE(mentions(message, "Component 'e' does not declare the input port 'b' of entity 'e', which has no default value")) << message;
+
+    EXPECT_EQ(linkError(entityFile("", "a : in std_logic; b : in std_logic := '0'"), topFile(component, "u : e port map (a => s1);")), kOk)
+        << "the default gives the input its value";
+}
+
+TEST(Linker_Omissions, OutputsAndInoutsMayStayOpen)
+{
+    EXPECT_EQ(linkError(entityFile("", "a : in std_logic; y : out std_logic; io : inout std_logic"),
+                   topFile("component e is port (a : in std_logic); end component;", "u : e port map (a => s1);")), kOk);
+}
+
+// ===========================================================================
+// 7. ERRORS AND TREES THAT WERE NOT ANALYZED
+// ===========================================================================
+
+TEST(Linker_Errors, LinkErrorsAreCompilerErrors)
+{
+    const std::vector<std::string> unbound = { "entity top is end top; architecture rtl of top is component ghost is end component; begin u1 : ghost; end rtl;" };
+    EXPECT_THROW(compileFiles(unbound), ast_link_error);
+    EXPECT_THROW(compileFiles(unbound), compiler_error);
+}
+
+TEST(Linker_Errors, AFailedLinkLeavesTheFilesInTheLinker)
+{
+    DesignLibrary library;
+    std::vector<ASTRoot> files = TestUtil::analyzeFiles(
+        { "entity top is end top; architecture rtl of top is component ghost is end component; begin u1 : ghost; end rtl;" }, library);
+
+    Linker linker(library);
+    linker.addAST(std::move(files[0]));
+    EXPECT_THROW(linker.link(), ast_link_error);
+    EXPECT_THROW(linker.link(), ast_link_error) << "binding comes before merging, so nothing was taken";
+}
+
+TEST(Linker_Errors, AnInstanceThatWasNotAnalyzedIsRefused)
+{
+    DesignLibrary library;
+    Linker linker(library);
+    linker.addAST(parseSource("entity leaf is end leaf; entity top is end top; "
+                              "architecture rtl of top is component leaf is end component; begin u1 : leaf; end rtl;"));
+
+    try
+    {
+        linker.link();
+        FAIL() << "expected ast_link_error";
+    }
+    catch (const ast_link_error& e)
+    {
+        EXPECT_TRUE(mentions(e.what(), "Instance 'u1' was not analyzed")) << e.what();
+    }
+}
+
+TEST(Linker_Errors, AnEntityThatWasNotAnalyzedIsRefused)
+{
+    // The top level file is analyzed, and its component with it; the file of the entity is only parsed.
+    DesignLibrary library;
+    ASTRoot leaf = parseSource("entity leaf is port (a : in std_logic); end leaf;");
+    ASTRoot top = parseSource("entity top is end top; architecture rtl of top is component leaf is port (a : in std_logic); end component; "
+                              "signal s : std_logic; begin u1 : leaf port map (a => s); end rtl;");
+    library.analyze(top);
+
+    Linker linker(library);
+    linker.addAST(std::move(leaf));
+    linker.addAST(std::move(top));
+
+    try
+    {
+        linker.link();
+        FAIL() << "expected ast_link_error";
+    }
+    catch (const ast_link_error& e)
+    {
+        EXPECT_TRUE(mentions(e.what(), "The port 'a' of entity 'leaf' was not analyzed")) << e.what();
+    }
+}
+
+namespace
+{
+    /// A design unit the parser cannot build yet (a package, one day): the linker passes it through.
     struct OpaqueUnit final : DesignUnit
     {
         std::unique_ptr<ASTNode> clone() const override { return std::make_unique<OpaqueUnit>(); }
@@ -705,39 +417,37 @@ namespace
     };
 }
 
-TEST(Linker_OtherUnits, UnknownUnitsAreKeptAheadOfEntities)
+TEST(Linker_Trees, OtherUnitsAreKeptAheadOfEntities)
 {
-    ASTRoot root;
-    root.children.push_back(makeEntity("e"));
-    root.children.push_back(std::make_unique<OpaqueUnit>());
-    root.children.push_back(makeArch("rtl", "e"));
+    DesignLibrary library;
+    std::vector<ASTRoot> files = TestUtil::analyzeFiles({ "entity e is end e; architecture rtl of e is begin end rtl;" }, library);
 
-    Linker linker;
-    linker.addAST(std::move(root));
-    ASTRoot linked = linker.link();
+    ASTRoot other;
+    other.children.push_back(std::make_unique<OpaqueUnit>());
 
-    ASSERT_EQ(linked.children.size(), 3u);
-    EXPECT_NE(dynamic_cast<OpaqueUnit*>(linked.children[0].get()), nullptr);
-    EXPECT_NE(dynamic_cast<EntityDeclaration*>(linked.children[1].get()), nullptr);
-    EXPECT_NE(dynamic_cast<ArchitectureDeclaration*>(linked.children[2].get()), nullptr);
+    Linker linker(library);
+    linker.addAST(std::move(files[0]));
+    linker.addAST(std::move(other));
+    const ASTRoot design = linker.link();
+
+    ASSERT_EQ(design.children.size(), 3u);
+    EXPECT_NE(as<OpaqueUnit>(design.children[0]), nullptr);
+    EXPECT_NE(as<EntityDeclaration>(design.children[1]), nullptr);
+    EXPECT_NE(as<ArchitectureDeclaration>(design.children[2]), nullptr);
 }
 
-TEST(Linker_Context, ContextClausesTravelWithTheirUnit)
+TEST(Linker_Trees, NullUnitsAreSkipped)
 {
-    auto entity = makeEntity("e");
-    auto library = std::make_unique<LibraryClause>();
-    library->names = { "ieee" };
-    entity->context.push_back(std::move(library));
+    DesignLibrary library;
+    ASTRoot root = parseSource("entity e is end e; architecture rtl of e is begin end rtl;");
+    root.children.insert(root.children.begin(), nullptr);
+    root.children.push_back(nullptr);
+    library.analyze(root);
 
-    ASTRoot root;
-    root.children.push_back(makeArch("rtl", "e"));
-    root.children.push_back(std::move(entity));
-
-    Linker linker;
+    Linker linker(library);
     linker.addAST(std::move(root));
-    ASTRoot linked = linker.link();
 
-    ASSERT_EQ(linked.children.size(), 2u);
-    ASSERT_EQ(linked.children[0]->context.size(), 1u) << "the entity kept its library clause";
-    EXPECT_TRUE(linked.children[1]->context.empty());
+    ASTRoot design;
+    EXPECT_NO_THROW(design = linker.link());
+    EXPECT_EQ(design.children.size(), 2u);
 }

@@ -44,6 +44,7 @@ namespace Pulse::Parser
 
         checkGenericMap(instance, *component);
         checkPortMap(instance, *component);
+        m_instanceComponents[&instance] = component->component;
     }
 
     void AnalyzerContext::checkGenericMap(const ComponentInstantiation& instance, const Symbol& component)

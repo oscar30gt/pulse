@@ -1,4 +1,4 @@
-// analyzer_foundation.test.cc — the resolved type system: prelude, subtypes, ranges, constants,
+// foundation.test.cc — the resolved type system: prelude, subtypes, ranges, constants,
 // enumerations, physical types (time), records and components. Every rejected program also
 // asserts a fragment of its message, so the diagnostics stay useful.
 
@@ -378,24 +378,19 @@ TEST(Semantic_Records, DuplicateFieldsAreRejected)
 
 // ---- Components -----------------------------------------------------------------------------------
 
-TEST(Semantic_Components, ComponentMustMatchItsEntity)
+TEST(Semantic_Components, AComponentIsAnalyzedOnItsOwn)
 {
-    const std::string entity = "entity adder is port (a : in std_logic_vector(7 downto 0); s : out std_logic_vector(7 downto 0)); end adder;\n";
-    const auto design = [&](const std::string& componentPorts)
-    {
-        return analysisError(entity + "entity top is end top; architecture r of top is component adder port (" + componentPorts
-                             + "); end component; begin end r;");
-    };
-
-    EXPECT_EQ(design("a : in std_logic_vector(7 downto 0); s : out std_logic_vector(7 downto 0)"), kOk);
-    EXPECT_TRUE(mentions(design("x : in std_logic"), "does not exist"));
-    EXPECT_TRUE(mentions(design("a : in std_logic_vector(3 downto 0)"), "has type"));
-    EXPECT_TRUE(mentions(design("a : out std_logic_vector(7 downto 0)"), "mode"));
+    // The entity an instance stands for is bound, and compared with its component, when the design is linked (LRM 7.3.3).
+    EXPECT_EQ(check("component ghost port (a : in std_logic); end component;"), kOk);
+    EXPECT_EQ(analysisError("entity adder is port (a : in std_logic_vector(7 downto 0)); end adder;\n"
+                            "entity top is end top; architecture r of top is component adder port (a : out integer); end component; begin end r;"), kOk);
 }
 
-TEST(Semantic_Components, ComponentWithoutEntityIsRejected)
+TEST(Semantic_Components, TheDeclarationsOfAComponentAreChecked)
 {
-    EXPECT_TRUE(mentions(check("component ghost port (a : in std_logic); end component;"), "no entity"));
+    EXPECT_TRUE(mentions(check("component c port (a : in nothing); end component;"), "Unknown type 'nothing'"));
+    EXPECT_TRUE(mentions(check("component c port (a : in std_logic; a : out std_logic); end component;"), "Port 'a' is declared twice in component 'c'"));
+    EXPECT_TRUE(mentions(check("component c port (a : in std_logic := 3); end component;"), "Type mismatch"));
 }
 
 // ---- Structure ------------------------------------------------------------------------------------

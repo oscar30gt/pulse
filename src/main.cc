@@ -103,22 +103,34 @@ int main(int argc, char* argv[])
 
     try
     {
-        Linker linker;
+        std::vector<ASTRoot> files;
         for (const auto& source : sources)
         {
-            linker.addAST(fileParsingPipeline(source.string()));
+            files.push_back(fileParsingPipeline(source.string()));
+        }
+
+        // Every file is analyzed into the work library after the files that declare the entities it needs.
+        DesignLibrary work;
+        for (size_t index : analysisOrder(files))
+        {
+            try {
+                work.analyze(files[index]);
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error during AST analysis of " << sources[index].string() << ": " << e.what() << '\n';
+                return 1;
+            }
+        }
+        std::cout << "AST analysis completed successfully.\n";
+
+        // Linking binds every component instance to its entity and merges the files into one design.
+        Linker linker(work);
+        for (auto& file : files)
+        {
+            linker.addAST(std::move(file));
         }
         ASTRoot linkedDesign = linker.link();
-
-        try {
-            analyzeAST(linkedDesign);
-            std::cout << "AST analysis completed successfully.\n";
-            linkedDesign.print(); 
-        }
-        catch (const std::exception& e) {
-            std::cerr << "Error during AST analysis: " << e.what() << '\n';
-            return 1;
-        }
+        linkedDesign.print();
     }
 
     // --------------------------------------------------------------------------------------------

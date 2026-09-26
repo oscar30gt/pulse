@@ -1,4 +1,4 @@
-// analyzer_subprograms.test.cc — functions and procedures: declarations and bodies, parameters, calls, overload
+// subprograms.test.cc — functions and procedures: declarations and bodies, parameters, calls, overload
 // resolution, operator overloading, return rules, purity and the wait rules. Every rejected program asserts a fragment of
 // its message.
 

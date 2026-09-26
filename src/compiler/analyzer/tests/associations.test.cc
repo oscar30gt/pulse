@@ -1,4 +1,4 @@
-// analyzer_associations.test.cc — port maps in every form: named, positional, `open`, element-by-element associations of one
+// associations.test.cc — port maps in every form: named, positional, `open`, element-by-element associations of one
 // port, and conversions on the formal or on the actual.
 
 #include <gtest/gtest.h>

@@ -1,4 +1,4 @@
-// analyzer_statements.test.cc — processes, sequential statements, case/with choices, loops,
+// statements.test.cc — processes, sequential statements, case/with choices, loops,
 // component instantiation and the multiple-driver rule.
 
 #include <gtest/gtest.h>

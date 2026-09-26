@@ -998,9 +998,12 @@ TEST(Analyzer_SignedUnsigned, AttributesAndSlicingPass)
 
 // ===========================================================================
 // 11. ENTITY-COMPONENT CORRELATION
+//
+// A component is compared with the entity of the same name when an instance of it is bound, which the linker does
+// (see linker/tests/linker.test.cc). The analysis only checks the component itself.
 // ===========================================================================
 
-TEST(Analyzer_EntityComponent, ComponentPortMismatchThrows)
+TEST(Analyzer_EntityComponent, ComponentPortMismatchIsLeftToTheLinker)
 {
     const std::string source = R"(
         entity my_entity is
@@ -1027,11 +1030,11 @@ TEST(Analyzer_EntityComponent, ComponentPortMismatchThrows)
         begin
         end behavioral;
     )";
-    expectSemanticError(source);
+    expectSemanticSuccess(source);
 }
 
 
-TEST(Analyzer_EntityComponent, ComponentPortTypeMismatchThrows)
+TEST(Analyzer_EntityComponent, ComponentPortTypeMismatchIsLeftToTheLinker)
 {
     const std::string source = R"(
         entity my_entity is
@@ -1057,10 +1060,10 @@ TEST(Analyzer_EntityComponent, ComponentPortTypeMismatchThrows)
         begin
         end behavioral;
     )";
-    expectSemanticError(source);
+    expectSemanticSuccess(source);
 }
 
-TEST(Analyzer_EntityComponent, ComponentWithNoEntityThrows)
+TEST(Analyzer_EntityComponent, ArchitectureOfAMissingEntityThrows)
 {
     const std::string source = R"(
         entity top is

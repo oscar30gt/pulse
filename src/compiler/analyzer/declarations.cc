@@ -87,19 +87,15 @@ namespace Pulse::Parser
 
     // ---- Components -----------------------------------------------------------------------------
 
+    /// A component is analyzed on its own: which entity its instances stand for is decided by the linker (LRM 7.3.3), which
+    /// then checks the component against that entity.
     void AnalyzerContext::declareComponent(const ComponentDeclaration& decl)
     {
-        auto entity = m_entityInterfaces.find(decl.name);
-        if (entity == m_entityInterfaces.end())
-            fail("Component '" + decl.name + "' has no entity of the same name", decl);
-
         // The component's own generics are visible in its ports, so they are resolved in a scope of their own.
         pushScope();
         std::vector<FormalInfo> generics = resolveGenerics(decl.generics);
         std::vector<FormalInfo> ports = resolvePorts(decl.ports, "component '" + decl.name + "'");
         popScope();
-
-        checkComponentAgainstEntity(decl, entity->second, generics, ports);
 
         Symbol symbol;
         symbol.kind = SymbolKind::Component;

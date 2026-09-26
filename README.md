@@ -90,13 +90,13 @@ $ pulse ./examples/my_project -R
 
 VHDL is a huge language, so Pulse supports a defined subset of VHDL-2008. The tokenizer and the parser check the syntax of that subset, and **everything the parser accepts is analyzed** (types, scopes, drivers, subprogram rules) and reported with a located error message when it is wrong. Anything outside the subset, such as packages, configurations, `generate` and `block` statements or access and file types, is a syntax error. What Pulse supports:
 
-- **Design units:** entities and architectures. `library` and `use` clauses are accepted and ignored, so designs written for other simulators still compile.
+- **Design units:** entities and architectures. `library` and `use` clauses are accepted and ignored, so designs written for other simulators still compile. A design can span several files: each file is analyzed into the `work` library after the files that declare the entities it needs, so an architecture may live in another file than its entity (within one file, an entity comes before its architectures, as in any VHDL tool). When the design is linked, every component instance is bound to the entity of the same name, whose generics and ports must match the component's.
 
 - **Types:** enumerations (including character literals), integer, real and physical (`units`) types, constrained and unconstrained arrays (also multi-dimensional ones, with the limits below), records, and subtypes with range constraints, index constraints and resolution indications. Predefined: `boolean`, `integer`, `natural`, `positive`, `real`, `time`, `severity_level`, `std_logic`, `std_logic_vector`, `unsigned` and `signed`. Declare `character` and `string` yourself when a `report` or `assert` needs a message.
 
 - **Objects:** signals, constants, variables and aliases (of objects, slices, types, subprograms and operators). Entities and components have generics and generic maps, and ports with default values. Bounds that depend on a generic are not checked until the design is instantiated.
 
-- **Attributes:** the predefined `'event`, `'length`, `'left`, `'right`, `'high`, `'low`, `'range` and `'reverse_range`, plus your own (`attribute a : t; attribute a of x : signal is v;`).
+- **Attributes:** the predefined `'event`, `'length`, `'left`, `'right`, `'high`, `'low`, `'range` and `'reverse_range`, plus your own (`attribute a : t; attribute a of x : signal is v;`). As the LRM requires, an architecture's own attributes are specified in its declarative part.
 
 - **Subprograms:** pure and impure functions and procedures with `constant`, `signal` and `variable` parameters and default values; overloading, operator overloading (`function "+"(...)`), named, positional and partial associations, and conversion functions on formals. The rules of the LRM are checked: purity, no `wait` in functions, a `return` on every path of a function, and no `wait` in a procedure called from a process with a sensitivity list.
 

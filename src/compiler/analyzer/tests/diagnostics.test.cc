@@ -1,4 +1,4 @@
-// analyzer_diagnostics.test.cc — the less common accepting and rejecting paths of the analyzer, one test per rule:
+// diagnostics.test.cc — the less common accepting and rejecting paths of the analyzer, one test per rule:
 // aggregates of every shape, multi-dimensional arrays, record and array formals of subprograms, aliases, attribute
 // specifications of every entity class, choices, range constraints of every scalar class, units, operators on vectors and
 // physical values, function return paths, and the structure of a design.
@@ -468,6 +468,7 @@ TEST(Diagnostics_Operators, PhysicalValues)
     EXPECT_TRUE(mentions(proc("t <= t + n;"), "physical values can only be added to or subtracted from values of the same type"));
     EXPECT_TRUE(mentions(proc("t <= t / t;"), "Type mismatch for signal 't': expected 'time' but the value has type 'universal integer'"));
     EXPECT_TRUE(mentions(proc("n <= t * t;"), "two physical values can only be divided, and only by the same type"));
+    EXPECT_TRUE(mentions(proc("t <= 2 / t;"), "a physical value can only be multiplied or divided by a number"));
 }
 
 TEST(Diagnostics_Operators, UniversalIntegersAndRealsMix)
@@ -589,8 +590,8 @@ TEST(Diagnostics_Design, EntitiesAndArchitectures)
 
 TEST(Diagnostics_Design, ComponentsAndInstances)
 {
-    EXPECT_TRUE(mentions(analysisError("entity e is end e; architecture r of e is component c is end component; begin u : c; end r;"),
-                         "Component 'c' has no entity of the same name"));
+    EXPECT_EQ(analysisError("entity e is end e; architecture r of e is component c is end component; begin u : c; end r;"), kOk)
+        << "the instance is bound to an entity by the linker, not by the analysis";
     EXPECT_TRUE(mentions(analysisError("entity e is end e; architecture r of e is component e is end component; begin u : e; u : e; end r;"),
                          "'u' is already declared in this region"));
     EXPECT_TRUE(mentions(analysisError("entity e is end e; architecture r of e is begin u : nothing; end r;"), "Unknown component 'nothing'"));

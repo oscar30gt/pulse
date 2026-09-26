@@ -1,4 +1,4 @@
-// analyzer_generics.test.cc — generics of entities and components, generic maps, port defaults, and types whose bounds depend
+// generics.test.cc — generics of entities and components, generic maps, port defaults, and types whose bounds depend
 // on a generic (they are constants of an instance, so the checks that need their value are skipped).
 
 #include <gtest/gtest.h>
@@ -166,26 +166,18 @@ TEST(Generics_Bounds, CaseOverAVectorOfUnknownLengthNeedsOthers)
 }
 
 // ===========================================================================
-// 3. COMPONENTS AND ENTITIES
+// 3. COMPONENTS
+//
+// A component is analyzed on its own. Whether it fits the entity of the same name is checked when an instance of it
+// is bound, at link time (see linker/tests/linker.test.cc).
 // ===========================================================================
 
-TEST(Generics_Components, TheComponentMustMatchTheGenericsOfItsEntity)
-{
-    const std::string entityGenerics = "w : natural := 8";
-    const std::string entityPorts = "d : in std_logic_vector(w - 1 downto 0)";
-    EXPECT_EQ(top(entityGenerics, entityPorts, "component e is generic (w : natural := 8); port (d : in std_logic_vector(w - 1 downto 0)); end component; ",
-                  "u : e port map (d => w8);"), kOk);
-    EXPECT_EQ(top(entityGenerics, entityPorts, "component e is generic (w : natural); port (d : in std_logic_vector(w - 1 downto 0)); end component; ",
-                  "u : e generic map (w => 8) port map (d => w8);"), kOk)
-        << "the component may omit the default";
-}
-
-TEST(Generics_Components, GenericMismatchesAreReported)
+TEST(Generics_Components, AComponentIsNotComparedWithItsEntityByTheAnalysis)
 {
     const std::string entity = "w : natural := 8";
-    EXPECT_TRUE(mentions(top(entity, "", "component e is generic (other : natural); end component; ", ""),
-                         "Generic 'other' of component 'e' does not exist in entity 'e'"));
-    EXPECT_TRUE(mentions(top(entity, "", "component e is generic (w : std_logic); end component; ", ""), "has type 'std_logic' but the entity declares"));
+    EXPECT_EQ(top(entity, "", "component e is generic (other : natural); end component; ", ""), kOk);
+    EXPECT_EQ(top(entity, "", "component e is generic (w : std_logic); end component; ", ""), kOk);
+    EXPECT_EQ(top("", "d : in std_logic_vector(7 downto 0)", "component e is port (d : in std_logic_vector(3 downto 0)); end component; ", ""), kOk);
 }
 
 TEST(Generics_Components, ComponentGenericsAreVisibleInTheirPorts)
@@ -194,14 +186,6 @@ TEST(Generics_Components, ComponentGenericsAreVisibleInTheirPorts)
                   "component e is generic (w : natural := 8); port (d : in std_logic_vector(w - 1 downto 0)); end component; ", ""), kOk);
     EXPECT_TRUE(mentions(top("w : natural := 8", "d : in std_logic_vector(w - 1 downto 0)",
                              "component e is port (d : in std_logic_vector(w - 1 downto 0)); end component; ", ""), "'w' is not declared"));
-}
-
-TEST(Generics_Components, LengthsThatAreKnownOnBothSidesMustAgree)
-{
-    EXPECT_TRUE(mentions(top("", "d : in std_logic_vector(7 downto 0)", "component e is port (d : in std_logic_vector(3 downto 0)); end component; ", ""),
-                         "has type"));
-    EXPECT_EQ(top("w : natural := 8", "d : in std_logic_vector(w - 1 downto 0)", "component e is port (d : in std_logic_vector(7 downto 0)); end component; ",
-                  ""), kOk) << "an unknown length is compatible with a known one";
 }
 
 // ===========================================================================

@@ -29,8 +29,8 @@ namespace Pulse::Parser
     /// Every type gets exactly the operators the LRM predefines for it, plus the numeric_std / std_logic_1164
     /// operators for the IEEE vectors (unsigned, signed, std_logic_vector), whose result widths follow numeric_std
     /// (`+`/`-` give the wider operand, `*` the sum of the widths, ...). Literal operands must be typed by the caller
-    /// before the rules run. Implemented in analyzer_operator_rules.cc (numeric, relational) and
-    /// analyzer_operator_arrays.cc (logical, shifts, concatenation, numeric_std, matching).
+    /// before the rules run. Implemented in operator_rules.cc (numeric, relational) and
+    /// operator_arrays.cc (logical, shifts, concatenation, numeric_std, matching).
     class OperatorRules
     {
         const TypeInfo* m_boolean = nullptr;
@@ -50,7 +50,7 @@ namespace Pulse::Parser
         RuleResult unary(UnaryOperator op, const SemanticType& operand) const;
 
     private:
-        // -- numeric (analyzer_operator_rules.cc)
+        // -- numeric (operator_rules.cc)
         /// `+` and `-`: numbers of the same type, or physical quantities of the same type.
         RuleResult additive(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;
         /// `*`, `/`, `mod`, `rem`: numbers of the same type; a physical value times or divided by a number; two physical
@@ -61,13 +61,13 @@ namespace Pulse::Parser
         /// Unary `+`, `-`, `abs` on numbers; `-` and `abs` also on `signed` vectors.
         RuleResult signedUnary(UnaryOperator op, const SemanticType& operand) const;
 
-        // -- relational (analyzer_operator_rules.cc)
+        // -- relational (operator_rules.cc)
         /// `=` and `/=`: any two operands of the same type (universal literals unify with typed numbers).
         RuleResult equality(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;
         /// `<`, `<=`, `>`, `>=`: scalars, and one-dimensional arrays of scalars, of the same type.
         RuleResult ordering(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;
 
-        // -- arrays: logical, shift, concatenation, numeric_std (analyzer_operator_arrays.cc)
+        // -- arrays: logical, shift, concatenation, numeric_std (operator_arrays.cc)
         /// `and or nand nor xor xnor` on boolean, std_logic and arrays of them; both operands need the same type and, for
         /// arrays, the same length when it is known.
         RuleResult logical(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;
@@ -85,7 +85,7 @@ namespace Pulse::Parser
         /// Comparisons of `unsigned`/`signed` with the same vector type or with an integer.
         RuleResult vectorComparison(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;
 
-        // -- VHDL-2008 matching (analyzer_operator_arrays.cc)
+        // -- VHDL-2008 matching (operator_arrays.cc)
         /// `?= ?/= ?< ?<= ?> ?>=`: std_logic values, or arrays of them (`?=`, `?/=`), or unsigned/signed vectors; the result
         /// is std_logic.
         RuleResult matching(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;

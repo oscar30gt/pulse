@@ -1,4 +1,4 @@
-// analyzer_types.test.cc — GTest suite for Pulse::Parser semantic analysis of the
+// types.test.cc — GTest suite for Pulse::Parser semantic analysis of the
 // user-defined VHDL type system: type/subtype declarations, scoping, assignment
 // compatibility, generic type conversion, and array attribute inference.
 

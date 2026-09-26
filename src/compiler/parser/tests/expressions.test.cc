@@ -36,6 +36,15 @@ TEST(ParserExpressions, FullLadder)
     EXPECT_EQ(renderValue("a = b and c /= d"), "((a = b) and (c /= d))");
 }
 
+TEST(ParserExpressions, EveryShiftOperatorSitsBetweenRelationalAndAdding)
+{
+    for (const std::string op : { "sll", "srl", "sla", "sra", "rol", "ror" })
+    {
+        EXPECT_EQ(renderValue("a " + op + " b + 1 = c"), "((a " + op + " (b + 1)) = c)") << op;
+        EXPECT_TRUE(rejects("a " + op + " 1 " + op + " 2")) << op << " cannot be chained without parentheses";
+    }
+}
+
 TEST(ParserExpressions, SignAppliesToTheFirstTerm)
 {
     EXPECT_EQ(renderValue("-a * b + c"), "((- (a * b)) + c)");

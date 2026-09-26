@@ -89,55 +89,70 @@ namespace Pulse::Parser
         bool ok() const { return problem.empty(); }
     };
 
-    /// One semantic analysis run over a linked design.
+    /// The analysis state of a design library: every design file analyzed into it, one at a time.
     ///
-    /// The analyzer walks every entity, then every architecture, and validates them against the VHDL typing
-    /// rules: names resolve through nested scopes, every expression gets a SemanticType, every assignment and
-    /// port connection is checked for compatibility, and signals with several drivers are rejected. Every node the
-    /// parser can build has a handler; any violation throws ast_semantic_error with a message that describes the problem.
+    /// The design units of a file are analyzed in textual order, each against the units analyzed before it: an entity
+    /// resolves its generics and ports and joins the library, and an architecture is validated against the entity it
+    /// belongs to, which must already be in the library. Every unit is checked against the VHDL typing rules: names
+    /// resolve through nested scopes, every expression gets a SemanticType, every assignment and port connection is
+    /// checked for compatibility, and signals with several drivers are rejected. Every node the parser can build has a
+    /// handler; any violation throws ast_semantic_error with a message that describes the problem. What analysis cannot
+    /// know, the entity a component instance stands for, is left to the linker, which reads the components and the
+    /// interface types recorded here.
     ///
     /// The class is deliberately one type with many small member functions, spread over the
-    /// analyzer/analyzer_*.cc files, one per responsibility (each group below names its file). Node kinds are
+    /// analyzer/*.cc files, one per responsibility (each group below names its file). Node kinds are
     /// routed to their handler through NodeDispatch tables, so supporting a new construct means writing a
     /// handler and adding one registration line.
     ///
-    /// The object holds the mutable state of a run (scope stack, type arena, driver table). It is neither
+    /// The object holds the mutable state of the library (scope stack, type arena, entities, driver table). It is neither
     /// copyable nor movable because the dispatch tables capture `this`.
     class AnalyzerContext
     {
     public:
-        /// Builds the dispatch tables. The prelude is not loaded here but by analyze().
+        /// Builds the dispatch tables and loads the prelude, which every file analyzed afterwards shares.
         AnalyzerContext();
         AnalyzerContext(const AnalyzerContext&) = delete;
         AnalyzerContext& operator=(const AnalyzerContext&) = delete;
 
-        /// Analyzes a whole linked design: loads the prelude, registers and checks every entity, then checks every
-        /// architecture against the entity it belongs to.
+        /// Analyzes the design units of one design file in textual order: an entity joins the library, an architecture is
+        /// checked against the entity of the library it belongs to.
         /// @throws ast_semantic_error on the first violation found.
         void analyze(const ASTRoot& root);
 
+        /// The component an analyzed instance instantiates, or nullptr.
+        const ComponentDeclaration* componentOf(const ComponentInstantiation& instance) const;
+        /// The type resolved for a generic or a port of an analyzed entity or component, or nullptr.
+        const SemanticType* interfaceType(const Declaration& genericOrPort) const;
+
     private:
-        /// The generics and ports of an entity, resolved once in a scope that only sees the predefined types.
-        struct EntityInterface
+        /// An entity of the library: its generics and ports, resolved once in a scope that only sees the predefined types,
+        /// and the names of the architectures analyzed for it so far.
+        struct LibraryEntity
         {
+            const EntityDeclaration* declaration = nullptr;
             std::vector<FormalInfo> generics;
             std::vector<FormalInfo> ports;
+            std::unordered_set<std::string> architectures;
         };
 
-        /// Stack of declarative regions, innermost last. Index 0 is the prelude scope; each architecture, process,
+        /// Stack of declarative regions, innermost last. Index 0 is the prelude scope; each entity, architecture, process,
         /// subprogram body and for-loop pushes one more.
         std::vector<Scope> m_scopes;
         /// Arena owning every TypeInfo created by declarations. Symbols and SemanticTypes only hold raw pointers into it,
-        /// so addresses must stay stable for the whole run (hence unique_ptr).
+        /// so addresses must stay stable for the whole life of the library (hence unique_ptr).
         std::vector<std::unique_ptr<TypeInfo>> m_types;
         /// Arena owning every subprogram declared by the design; symbols only hold pointers to them.
         std::vector<std::unique_ptr<SubprogramInfo>> m_subprograms;
-        /// Entities of the design by name, filled by collectEntities().
-        std::unordered_map<std::string, const EntityDeclaration*> m_entities;
-        /// Generics and ports of every entity, resolved by analyzeEntity().
-        std::unordered_map<std::string, EntityInterface> m_entityInterfaces;
-        /// Architectures of the design by name (attribute specifications may name them).
-        std::unordered_set<std::string> m_architectureNames;
+        /// Entities of the library by name, added by analyzeEntity() once they are analyzed.
+        std::unordered_map<std::string, LibraryEntity> m_entities;
+        /// Names of the entities the file being analyzed declares, to tell an architecture written above its entity from an
+        /// architecture of an unknown entity.
+        std::unordered_set<std::string> m_fileEntities;
+        /// The component each analyzed instance instantiates, for the linker.
+        std::unordered_map<const ComponentInstantiation*, const ComponentDeclaration*> m_instanceComponents;
+        /// The type of every generic and port of the analyzed entities and components, for the linker.
+        std::unordered_map<const Declaration*, SemanticType> m_interfaceTypes;
         /// Predefined types the analyzer needs to name; set by bindPreludeTypes().
         PreludeTypes m_std;
         /// Predefined operator typing rules (pure functions over SemanticType).
@@ -149,6 +164,8 @@ namespace Pulse::Parser
         /// Subprogram chosen for every call expression and every operator that resolved to a user-declared function.
         std::unordered_map<const ASTNode*, const SubprogramInfo*> m_resolvedCalls;
 
+        /// Design unit node kind -> analyze* handler.
+        NodeDispatch<DesignUnit, void> m_units;
         /// Expression node kind -> typeOf* handler.
         NodeDispatch<Expression, SemanticType, const SemanticType*> m_expressions;
         /// Type definition node kind -> define* handler that fills a fresh TypeInfo.
@@ -161,6 +178,10 @@ namespace Pulse::Parser
         NodeDispatch<Statement, void> m_sequential;
 
         // ---- Statement context -------------------------------------------------------------------
+        /// The architecture being analyzed, or nullptr in an entity. Attribute specifications of the architecture name it.
+        const ArchitectureDeclaration* m_architecture = nullptr;
+        /// Attributes specified for the architecture being analyzed, so that none is specified twice.
+        std::unordered_set<std::string> m_architectureAttributes;
         /// Labels of the loops enclosing the statement being analyzed, outermost first (unlabeled loops store "").
         /// empty() means `exit`/`next` are illegal here.
         std::vector<std::string> m_loops;
@@ -233,7 +254,7 @@ namespace Pulse::Parser
         };
         std::vector<PendingBody> m_pendingBodies;
 
-        // ---- Diagnostics and scopes (analyzer_scopes.cc) --------------------------------------------
+        // ---- Diagnostics and scopes (scopes.cc) -----------------------------------------------------
 
         /// Throws ast_semantic_error(message) located at `location`. Every diagnostic of the analyzer goes through here.
         [[noreturn]] void fail(const std::string& message, const SourceLocation& location) const;
@@ -267,7 +288,7 @@ namespace Pulse::Parser
         /// Finds a visible physical unit by name (`ns`) together with the type that owns it.
         std::optional<UnitRef> findUnit(const std::string& unit) const;
 
-        // ---- Prelude (analyzer_prelude.cc) -----------------------------------------------------------
+        // ---- Prelude (prelude.cc) --------------------------------------------------------------------
 
         /// Parses the embedded VHDL prelude and declares its types in the base scope (scope 0), then binds m_std.
         void loadPrelude();
@@ -277,7 +298,7 @@ namespace Pulse::Parser
         /// IEEE vectors get their VectorFamily.
         void applyPreludeTraits(TypeInfo& info) const;
 
-        // ---- Type specifications (analyzer_type_specs.cc) --------------------------------------------
+        // ---- Type specifications (type_specs.cc) -----------------------------------------------------
 
         /// Resolves a type or subtype name to its SemanticType (base type plus the constraint the name stands for).
         /// @throws ast_semantic_error if the name is unknown or does not name a type.
@@ -299,7 +320,7 @@ namespace Pulse::Parser
         SemanticType constrainReal(const SemanticType& base, const TypeSpec& spec);
         SemanticType constrainPhysical(const SemanticType& base, const TypeSpec& spec);
 
-        // ---- Resolution functions (analyzer_resolution.cc) -------------------------------------------
+        // ---- Resolution functions (resolution.cc) ----------------------------------------------------
 
         /// Applies the resolution indication of `spec` (`f t` or `(f) t`) to `type`: `f` must be a function from an array of
         /// the type to the type; the subtype becomes resolved.
@@ -308,7 +329,7 @@ namespace Pulse::Parser
         /// type, and the base type as result).
         bool isResolutionFunction(const std::string& name, const SemanticType& type) const;
 
-        // ---- Ranges (analyzer_ranges.cc) -------------------------------------------------------------
+        // ---- Ranges (ranges.cc) ----------------------------------------------------------------------
 
         /// True when `expr` is a discrete range: `a to b`, `a downto b`, `x'range`, `x'reverse_range`, a discrete type name or
         /// a subtype indication with a range.
@@ -331,7 +352,7 @@ namespace Pulse::Parser
         };
         IndexConstraint analyzeIndexConstraint(const std::vector<ExpressionPtr>& ranges, const TypeInfo& arrayInfo);
 
-        // ---- Constant folding (analyzer_constants.cc) ------------------------------------------------
+        // ---- Constant folding (constants.cc) ---------------------------------------------------------
 
         /// Constant folding: the value of `expr` when it is known at analysis time (literals, constants, arithmetic,
         /// physical quantities, attributes of constrained types), else nullopt. Never reports errors: callers type-check the
@@ -353,7 +374,7 @@ namespace Pulse::Parser
         /// Folds `expr` and returns its integer value, or reports that `what` must be a static integer expression.
         int64_t requireStaticInteger(const Expression& expr, const std::string& what, const SemanticType* expected = nullptr);
 
-        // ---- Type declarations (analyzer_type_decls.cc, analyzer_type_defs.cc) -----------------------
+        // ---- Type declarations (type_decls.cc, type_defs.cc) -----------------------------------------
 
         /// Analyzes `type name is <definition>;`: builds a fresh TypeInfo through the handler for the definition kind and
         /// declares the name (after the definition, so a type cannot refer to itself).
@@ -377,7 +398,7 @@ namespace Pulse::Parser
         /// Resolves an array element or record field type, which must be fully constrained.
         SemanticType requireElementType(const TypeSpec& spec, const std::string& arrayName);
 
-        // ---- Declarations (analyzer_declarations.cc) -------------------------------------------------
+        // ---- Declarations (declarations.cc) ----------------------------------------------------------
 
         /// Analyzes a declarative part in source order (so a name must be declared before it is used); afterwards every
         /// subprogram declared in it must have a body.
@@ -400,22 +421,20 @@ namespace Pulse::Parser
         /// The initial value of an object must be constant (no signal, port or variable reads) and assignable to `target`.
         void checkInitialValue(const Expression& init, const SemanticType& target, const std::string& what);
 
-        // ---- Generics and ports (analyzer_generics.cc) -----------------------------------------------
+        // ---- Generics and ports (generics.cc) --------------------------------------------------------
 
         /// Resolves the generics of an entity or component and declares each as a generic constant in the current scope.
-        /// A default must be static and assignable.
+        /// A default must be static and assignable. The type of each is recorded for the linker.
         std::vector<FormalInfo> resolveGenerics(const std::vector<std::unique_ptr<GenericDeclaration>>& generics);
         /// Resolves the ports of an entity or component (duplicates are errors, defaults must be static and assignable).
+        /// The type of each is recorded for the linker.
         std::vector<FormalInfo> resolvePorts(const std::vector<std::unique_ptr<PortDeclaration>>& ports, const std::string& owner);
         /// Declares already resolved generics as constants of the current scope.
         void declareGenericSymbols(const std::vector<FormalInfo>& generics);
         /// Declares already resolved ports as signals (with their mode) in the current scope.
         void declarePortSymbols(const std::vector<FormalInfo>& ports);
-        /// Requires a component's formals to exist in the entity with the same mode and type (lengths only when both are known).
-        void checkComponentAgainstEntity(const ComponentDeclaration& decl, const EntityInterface& entity,
-                                         const std::vector<FormalInfo>& generics, const std::vector<FormalInfo>& ports);
 
-        // ---- Association lists (analyzer_associations.cc) --------------------------------------------
+        // ---- Association lists (associations.cc) -----------------------------------------------------
 
         /// Matches the associations of a map or call with the formals: positional before named, every formal at most once
         /// (unless associated element by element), every formal without a default associated. Looks at no types.
@@ -447,7 +466,7 @@ namespace Pulse::Parser
         };
         std::optional<Designator> designate(const std::vector<FormalInfo>& formals, const Expression& formalPart, std::string& problem) const;
 
-        // ---- Expression typing (analyzer_expr.cc) ----------------------------------------------------
+        // ---- Expression typing (expr.cc) -------------------------------------------------------------
 
         /// Fills m_expressions. Adding support for a new expression node is one line here.
         void registerExpressionHandlers();
@@ -474,7 +493,7 @@ namespace Pulse::Parser
         /// A pure function may only read what it declares itself: reports an access to something declared outside.
         void checkObjectAccess(const RootObject& root, const ASTNode& at, bool write);
 
-        // ---- Literals (analyzer_expr_literals.cc) ----------------------------------------------------
+        // ---- Literals (expr_literals.cc) -------------------------------------------------------------
 
         /// Integer literal: universal integer.
         SemanticType typeOfInteger(const IntegerLiteralExpr& expr, const SemanticType* expected);
@@ -491,7 +510,7 @@ namespace Pulse::Parser
         /// physical unit. Explains ambiguity and unknown names in the message.
         SemanticType enumerationLiteralType(const std::string& literal, const SemanticType* expected, const ASTNode& node);
 
-        // ---- Aggregates (analyzer_aggregates.cc) -----------------------------------------------------
+        // ---- Aggregates (aggregates.cc) --------------------------------------------------------------
 
         /// Aggregate `(a, b)` / `(0 => a, others => b)`: typed from the expected array or record type.
         SemanticType typeOfAggregate(const AggregateExpr& expr, const SemanticType* expected);
@@ -500,7 +519,7 @@ namespace Pulse::Parser
         /// Record aggregate: positional or named, each field assigned exactly once.
         SemanticType recordAggregate(const AggregateExpr& expr, const SemanticType& expected);
 
-        // ---- Names: index, slice, conversion, qualified, external (analyzer_expr_names.cc) -----------
+        // ---- Names: index, slice, conversion, qualified, external (expr_names.cc) --------------------
 
         /// `prefix(args)`: a type conversion when the prefix names a type, a function call when it names a function, else an
         /// index or slice of an array.
@@ -524,7 +543,7 @@ namespace Pulse::Parser
         /// True when `arg` is a range argument (a slice), not an index: `a to b`, `x'range`, a type mark or a subtype indication.
         bool isRangeArgument(const Expression& arg) const;
 
-        // ---- Attributes (analyzer_expr_attributes.cc, analyzer_attributes.cc) ------------------------
+        // ---- Attributes (expr_attributes.cc, attributes.cc) ------------------------------------------
 
         /// Value attributes ('event 'length 'left 'right 'high 'low) and user-declared attributes. ('range is only valid
         /// where a range is expected.)
@@ -555,7 +574,7 @@ namespace Pulse::Parser
         /// True when a symbol belongs to the class an attribute specification names.
         bool symbolHasClass(const Symbol& symbol, EntityClass entityClass) const;
 
-        // ---- Operators (analyzer_expr_operators.cc) --------------------------------------------------
+        // ---- Operators (expr_operators.cc) -----------------------------------------------------------
 
         /// Unary operator: a design-declared function first, then the predefined rules; only `not` passes the expected type down.
         SemanticType typeOfUnary(const UnaryOpExpr& expr, const SemanticType* expected);
@@ -574,7 +593,7 @@ namespace Pulse::Parser
         std::optional<SemanticType> typeOfUserOperator(const Expression& node, const std::string& symbol,
                                                        const std::vector<const Expression*>& operands, const SemanticType* expected);
 
-        // ---- Compatibility (analyzer_compat.cc) ------------------------------------------------------
+        // ---- Compatibility (compat.cc) ---------------------------------------------------------------
 
         /// Checks that a value of type `value` may be assigned to `target`; `what` names the context
         /// for the message (e.g. "signal 'y'"). Also range-checks static values.
@@ -592,18 +611,21 @@ namespace Pulse::Parser
         /// LRM 9.3.6: numeric types convert to each other; arrays convert when dimensionality and element type match.
         bool closelyRelated(const SemanticType& from, const SemanticType& to) const;
 
-        // ---- Entities, architectures, concurrent statements (analyzer.cc, analyzer_statements.cc) ---
+        // ---- Design units and concurrent statements (analyzer.cc, statements.cc, instances.cc) ------
 
-        /// Fills the type-definition, declaration and statement tables. One line per supported node kind.
+        /// Fills the design-unit, type-definition, declaration and statement tables. One line per supported node kind.
         void registerDispatchTables();
         /// Fills the sequential-statement table.
         void registerSequentialHandlers();
-        /// Indexes the entities by name; a duplicate name is an error.
-        void collectEntities(const ASTRoot& root);
-        /// Resolves the generics and ports of an entity (duplicates are errors) and stores them in m_entityInterfaces.
+        /// Brings the context back to the library alone before a design unit: only the prelude is in scope and nothing an
+        /// earlier unit left (even one whose analysis failed) is pending.
+        void beginUnit();
+        /// Resolves the generics and ports of an entity (duplicates are errors) and adds the entity to the library; the
+        /// library must not have an entity of that name yet.
         void analyzeEntity(const EntityDeclaration& entity);
         /// Opens a scope with the generics and ports of the entity, analyzes the declarative part and every concurrent
-        /// statement, then verifies the multiple-driver rule. Fails if the entity is unknown.
+        /// statement, then verifies the multiple-driver rule. Fails if the entity is not in the library or already has an
+        /// architecture of that name.
         void analyzeArchitecture(const ArchitectureDeclaration& arch);
         /// Routes a statement of the architecture body to its handler and marks it as the current driver source.
         void analyzeConcurrentStatement(const Statement& statement);
@@ -636,7 +658,7 @@ namespace Pulse::Parser
         /// `proc(args);` in an architecture (a concurrent call) or in a process or subprogram (a sequential call).
         void analyzeProcedureCall(const ProcedureCallStatement& statement);
 
-        // ---- Processes and sequential statements (analyzer_sequential.cc, analyzer_loops.cc) --------
+        // ---- Processes and sequential statements (sequential.cc, loops.cc) --------------------------
 
         /// Process: checks the sensitivity list names signals, then analyzes the local declarations and the body in a fresh scope.
         void analyzeProcess(const ProcessStatement& process);
@@ -677,7 +699,7 @@ namespace Pulse::Parser
         /// `return [value];` inside a subprogram: a function returns a value of its result type, a procedure none.
         void analyzeReturn(const ReturnStatement& statement);
 
-        // ---- Choices (analyzer_choices.cc) -----------------------------------------------------------
+        // ---- Choices (choices.cc) --------------------------------------------------------------------
 
         /// The list of choices behind a formal (`choices =>` of an aggregate, `when choices` of a case); fails when it is not
         /// one, or when `others` shares its list with other choices.
@@ -697,7 +719,7 @@ namespace Pulse::Parser
         void analyzeMatchingChoices(const std::vector<const ChoiceListExpr*>& lists, const SemanticType& selector,
                                     const ASTNode& at, const std::string& what);
 
-        // ---- Signal drivers (analyzer_drivers.cc) ----------------------------------------------------
+        // ---- Signal drivers (drivers.cc) -------------------------------------------------------------
 
         /// Attributes the signal assignments analyzed next to `statement` (a process, instance or concurrent assignment).
         void beginDriverSource(const Statement& statement);
@@ -708,7 +730,7 @@ namespace Pulse::Parser
         /// elements of an array. Called at the end of each architecture.
         void checkDrivers();
 
-        // ---- Subprograms (analyzer_subprograms.cc) ---------------------------------------------------
+        // ---- Subprograms (subprograms.cc) ------------------------------------------------------------
 
         /// `function f(...) return t;` / `procedure p(...);`: registers the profile so calls can resolve to it.
         void declareSubprogram(const SubprogramDeclaration& decl);
@@ -730,7 +752,7 @@ namespace Pulse::Parser
         const SubprogramInfo& selectBySignature(const std::vector<const SubprogramInfo*>& overloads, const SignatureExpr& signature,
                                                 const ASTNode& at);
 
-        // ---- Calls and overload resolution (analyzer_calls.cc) ---------------------------------------
+        // ---- Calls and overload resolution (calls.cc) ------------------------------------------------
 
         /// A call of the function or procedure overloads visible under `name` with the given associations. Picks the overload
         /// the actuals (and, for functions, the expected result type) select, checks the actuals and records the call.
@@ -748,7 +770,7 @@ namespace Pulse::Parser
         /// `f(int, bit) return bit` for diagnostics.
         std::string describeProfile(const SubprogramInfo& info) const;
 
-        // ---- Purity and body rules (analyzer_purity.cc) ----------------------------------------------
+        // ---- Purity and body rules (purity.cc) -------------------------------------------------------
 
         /// True when every path through `statements` ends in a `return` (or never ends).
         bool alwaysReturns(const std::vector<StatementPtr>& statements) const;
@@ -760,7 +782,7 @@ namespace Pulse::Parser
         /// Notes that the code being analyzed calls `callee` (for checkCallGraph).
         void noteCall(const SubprogramInfo& callee, const ASTNode& at);
 
-        // ---- Aliases (analyzer_aliases.cc) -----------------------------------------------------------
+        // ---- Aliases (aliases.cc) --------------------------------------------------------------------
 
         /// `alias name [: subtype] is target [signature];` for objects, types, subprograms and enumeration literals.
         void declareAlias(const AliasDeclaration& decl);

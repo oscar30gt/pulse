@@ -158,6 +158,34 @@ TEST(AstPrinter, OperatorSpellings)
     EXPECT_STREQ(toString(UnaryOperator::Not), "not");
 }
 
+TEST(AstPrinter, EveryOperatorHasItsSourceSpelling)
+{
+    const std::vector<std::pair<BinaryOperator, std::string>> binary = {
+        { BinaryOperator::And, "and" }, { BinaryOperator::Or, "or" }, { BinaryOperator::Nand, "nand" }, { BinaryOperator::Nor, "nor" },
+        { BinaryOperator::Xor, "xor" }, { BinaryOperator::Xnor, "xnor" },
+        { BinaryOperator::Eq, "=" }, { BinaryOperator::Neq, "/=" }, { BinaryOperator::Lt, "<" }, { BinaryOperator::Le, "<=" },
+        { BinaryOperator::Gt, ">" }, { BinaryOperator::Ge, ">=" },
+        { BinaryOperator::MatchEq, "?=" }, { BinaryOperator::MatchNeq, "?/=" }, { BinaryOperator::MatchLt, "?<" },
+        { BinaryOperator::MatchLe, "?<=" }, { BinaryOperator::MatchGt, "?>" }, { BinaryOperator::MatchGe, "?>=" },
+        { BinaryOperator::Sll, "sll" }, { BinaryOperator::Srl, "srl" }, { BinaryOperator::Sla, "sla" }, { BinaryOperator::Sra, "sra" },
+        { BinaryOperator::Rol, "rol" }, { BinaryOperator::Ror, "ror" },
+        { BinaryOperator::Add, "+" }, { BinaryOperator::Sub, "-" }, { BinaryOperator::Mul, "*" }, { BinaryOperator::Div, "/" },
+        { BinaryOperator::Mod, "mod" }, { BinaryOperator::Rem, "rem" }, { BinaryOperator::Pow, "**" },
+        { BinaryOperator::Concat, "&" }, { BinaryOperator::To, "to" }, { BinaryOperator::Downto, "downto" },
+    };
+    for (const auto& [op, spelling] : binary)
+        EXPECT_EQ(toString(op), spelling);
+
+    const std::vector<std::pair<UnaryOperator, std::string>> unary = {
+        { UnaryOperator::Plus, "+" }, { UnaryOperator::Minus, "-" }, { UnaryOperator::Abs, "abs" }, { UnaryOperator::Not, "not" },
+        { UnaryOperator::Condition, "??" }, { UnaryOperator::ReduceAnd, "and" }, { UnaryOperator::ReduceOr, "or" },
+        { UnaryOperator::ReduceNand, "nand" }, { UnaryOperator::ReduceNor, "nor" }, { UnaryOperator::ReduceXor, "xor" },
+        { UnaryOperator::ReduceXnor, "xnor" },
+    };
+    for (const auto& [op, spelling] : unary)
+        EXPECT_EQ(toString(op), spelling);
+}
+
 TEST(AstPrinter, RootPrintsItsDesignUnits)
 {
     ASTRoot root;

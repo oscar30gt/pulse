@@ -1,6 +1,7 @@
 #ifndef PULSE_VHDL_LINKER_H
 #define PULSE_VHDL_LINKER_H
 
+#include "analyzer.h"
 #include "ast.h"
 
 namespace Pulse::Parser
@@ -16,28 +17,36 @@ namespace Pulse::Parser
 
     // --------------------------------------------------------------------------------------------
 
-    /// Merges the ASTs of several source files into one design.
+    /// Links the analyzed files of a design into one design.
     ///
-    /// Each file is tokenized and parsed on its own, so an architecture can refer to an entity that lives in another
-    /// file. The linker takes every parsed file (addAST), then link() produces a single ASTRoot in which all entities come
-    /// first and all architectures after them, ready for the analyzer, which resolves the references between them.
-    /// Linking only checks name collisions across files; it does not type check anything.
+    /// Every file is analyzed into a DesignLibrary before it is linked, so each architecture has already found its entity,
+    /// wherever it was declared. What analysis leaves open is the entity a component instance stands for: the linker binds
+    /// every instance to the entity with the same name as its component (the default binding of LRM 7.3.3) and checks that
+    /// the component fits that entity. Every generic and port of the component must exist in the entity with the same type,
+    /// every port with a mode the association allows, and whatever the component leaves out must have a default, unless it
+    /// is an output or inout port, which simply stays open. link() then produces a single ASTRoot in which all entities come
+    /// first and all architectures after them.
     class Linker
     {
+        /// Library the files were analyzed into: it knows the component of every instance and the type of every generic
+        /// and port.
+        const DesignLibrary& m_library;
         /// AST roots added so far, in the order they were added.
-        std::vector<ASTRoot> m_roots; /// List of AST roots to be linked together. 
+        std::vector<ASTRoot> m_roots; /// List of AST roots to be linked together.
 
     public:
-        /// Creates an empty linker.
-        explicit Linker();
+        /// Creates a linker for design files analyzed into `library`.
+        explicit Linker(const DesignLibrary& library);
 
         /// Adds an AST root to the linker for processing.
-        /// @param root Pointer to the AST root to be added. The linker will take ownership
+        /// @param root Root of a file analyzed into the linker's library. The linker will take ownership
         ///             and roots will be moved so they will no longer be valid after this call.
         void addAST(ASTRoot&& root);
 
-        /// Links all added AST roots into a single design representation.
+        /// Binds every component instance of the added roots to its entity, then links the roots into a single design
+        /// representation.
         /// @returns A new ASTRoot containing the linked design.
+        /// @throws ast_link_error if an instance cannot be bound to an entity; the added roots are then left untouched.
         ASTRoot link();
     };
 

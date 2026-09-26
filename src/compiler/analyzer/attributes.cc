@@ -143,14 +143,17 @@ namespace Pulse::Parser
 
         switch (decl.entityClass)
         {
+            // LRM 7.2: the attributes of a design unit are specified in the declarative part of that very unit.
             case EntityClass::Entity:
-                if (!m_entities.count(item))
-                    fail("'" + item + "' is not an entity of this design", at);
-                return;
+                fail("An attribute of an entity can only be specified in the declarative part of that entity, so '" + item
+                     + "' cannot be given one here", at);
 
             case EntityClass::Architecture:
-                if (!m_architectureNames.count(item))
-                    fail("'" + item + "' is not an architecture of this design", at);
+                if (!m_architecture || item != m_architecture->name || m_process || m_subprogram)
+                    fail("An attribute of an architecture can only be specified in the declarative part of that architecture, so '" + item
+                         + "' cannot be given one here", at);
+                if (!m_architectureAttributes.insert(attribute).second)
+                    fail("The attribute '" + attribute + "' is already specified for '" + item + "'", at);
                 return;
 
             case EntityClass::Configuration: case EntityClass::Package: case EntityClass::Group:

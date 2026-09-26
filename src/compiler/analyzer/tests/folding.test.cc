@@ -1,4 +1,4 @@
-// analyzer_folding.test.cc — constant folding of every operator and attribute.
+// folding.test.cc — constant folding of every operator and attribute.
 //
 // A folded value is observable through the static checks that use it: a constant is assigned to a subtype whose range holds only
 // the expected value, so a wrong fold is an error on the accepting side and a missing one is an error on the rejecting side.

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "analyzer.h"
+#include "linker.h"
 #include "parser.h"
 #include "tokenizer.h"
 
@@ -79,6 +80,45 @@ namespace TestUtil
         try
         {
             analyzeSource(source);
+        }
+        catch (const compiler_error& e)
+        {
+            return e.what();
+        }
+        return "<no error>";
+    }
+
+    /// Parses every source as a design file of its own and analyzes the files into `library`, in the order analysisOrder()
+    /// gives. Returns the parsed files: the library refers to them, so they must outlive it.
+    inline std::vector<ASTRoot> analyzeFiles(const std::vector<std::string>& sources, DesignLibrary& library)
+    {
+        std::vector<ASTRoot> files;
+        for (const std::string& source : sources)
+            files.push_back(parseSource(source));
+
+        for (size_t index : analysisOrder(files))
+            library.analyze(files[index]);
+        return files;
+    }
+
+    /// Compiles design files like the compiler does: parses each, analyzes them in dependency order, then links them.
+    inline ASTRoot compileFiles(const std::vector<std::string>& sources)
+    {
+        DesignLibrary library;
+        std::vector<ASTRoot> files = analyzeFiles(sources, library);
+
+        Linker linker(library);
+        for (ASTRoot& file : files)
+            linker.addAST(std::move(file));
+        return linker.link();
+    }
+
+    /// Message of the diagnostic raised while compiling `sources` (parsing, analysis or linking), or "<no error>".
+    inline std::string compileError(const std::vector<std::string>& sources)
+    {
+        try
+        {
+            compileFiles(sources);
         }
         catch (const compiler_error& e)
         {

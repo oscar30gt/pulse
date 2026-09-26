@@ -1,4 +1,4 @@
-// analyzer_aliases_attributes.test.cc — aliases of objects, types and subprograms, and user-declared attributes: their
+// aliases_attributes.test.cc — aliases of objects, types and subprograms, and user-declared attributes: their
 // declaration, their specification for every class of item, and reading their values.
 
 #include <gtest/gtest.h>
@@ -330,11 +330,41 @@ TEST(Attributes_Specifications, ValuesMustBeConstant)
     EXPECT_EQ(arch("constant k : integer := 3; attribute w : integer; attribute w of a : signal is k * 2; "), kOk);
 }
 
-TEST(Attributes_Specifications, EntitiesAndArchitecturesAreNamedByTheDesign)
+TEST(Attributes_Specifications, ADesignUnitIsSpecifiedInItsOwnDeclarativePart)
 {
-    EXPECT_EQ(analysisError("entity t is end t; architecture r of t is attribute a1 : integer; attribute a1 of t : entity is 1; attribute a1 of r : architecture is 2; begin end r;"), kOk);
-    EXPECT_TRUE(mentions(arch("attribute a1 : integer; attribute a1 of nothing : entity is 1; "), "'nothing' is not an entity of this design"));
-    EXPECT_TRUE(mentions(arch("attribute a1 : integer; attribute a1 of nothing : architecture is 1; "), "'nothing' is not an architecture of this design"));
+    // LRM 7.2: an attribute of an entity or an architecture is specified in the declarative part of that very unit.
+    EXPECT_EQ(analysisError("entity t is end t; architecture r of t is attribute a1 : integer; attribute a1 of r : architecture is 2; begin end r;"), kOk);
+
+    const std::string entity = analysisError("entity t is end t; architecture r of t is attribute a1 : integer; attribute a1 of t : entity is 1; begin end r;");
+    EXPECT_TRUE(mentions(entity, "An attribute of an entity can only be specified in the declarative part of that entity, so 't' cannot be given one here"))
+        << entity;
+    EXPECT_TRUE(mentions(arch("attribute a1 : integer; attribute a1 of nothing : entity is 1; "), "declarative part of that entity"));
+
+    const std::string other = arch("attribute a1 : integer; attribute a1 of other : architecture is 1; ");
+    EXPECT_TRUE(mentions(other, "An attribute of an architecture can only be specified in the declarative part of that architecture, so 'other' cannot "
+                                "be given one here")) << other;
+}
+
+TEST(Attributes_Specifications, AnArchitectureIsNotSpecifiedFromAProcessOrASubprogram)
+{
+    // `arch()` analyzes the architecture `a` of the entity `t`.
+    EXPECT_EQ(arch("attribute a1 : integer; attribute a1 of a : architecture is 1; "), kOk);
+    EXPECT_TRUE(mentions(proc("attribute a1 : integer; ", "null;", "attribute a1 of a : architecture is 1;"), "declarative part of that architecture"));
+    const std::string subprogram = arch("attribute a1 : integer; procedure touch is attribute a1 of a : architecture is 1; begin end;");
+    EXPECT_TRUE(mentions(subprogram, "declarative part of that architecture")) << subprogram;
+}
+
+TEST(Attributes_Specifications, AllOrOthersOfTheEntityClassNameNothingInAnArchitecture)
+{
+    // `all` and `others` name the items of the class declared in this declarative part, and no entity is declared in one.
+    EXPECT_EQ(arch("attribute a1 : integer; attribute a2 : integer; attribute a1 of all : entity is 1; attribute a2 of others : entity is 2; "), kOk);
+}
+
+TEST(Attributes_Specifications, AnArchitectureAttributeIsSpecifiedOnce)
+{
+    EXPECT_TRUE(mentions(arch("attribute a1 : integer; attribute a1 of a : architecture is 1; attribute a1 of a : architecture is 2; "),
+                         "The attribute 'a1' is already specified for 'a'"));
+    EXPECT_EQ(arch("attribute a1 : integer; attribute a2 : integer; attribute a1 of a : architecture is 1; attribute a2 of a : architecture is 2; "), kOk);
 }
 
 TEST(Attributes_Specifications, ClassesWithNothingToName)

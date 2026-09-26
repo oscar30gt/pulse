@@ -1,6 +1,5 @@
 #include "analyzer_internal.h"
 
-#include <algorithm>
 #include <unordered_set>
 
 namespace Pulse::Parser
@@ -25,6 +24,7 @@ namespace Pulse::Parser
             if (generic->defaultValue)
                 checkInitialValue(*generic->defaultValue, formal.type, "generic '" + generic->name + "'");
 
+            m_interfaceTypes[generic.get()] = formal.type;
             formals.push_back(formal);
             declareGenericSymbols({ formal });
         }
@@ -69,6 +69,7 @@ namespace Pulse::Parser
             if (port->defaultValue)
                 checkInitialValue(*port->defaultValue, formal.type, "port '" + port->name + "'");
 
+            m_interfaceTypes[port.get()] = formal.type;
             formals.push_back(std::move(formal));
         }
         return formals;
@@ -85,62 +86,6 @@ namespace Pulse::Parser
             symbol.isPort = true;
             symbol.objectId = newObjectId();
             declare(port.name, std::move(symbol), port.location);
-        }
-    }
-
-    // ---- Components against their entity --------------------------------------------------------
-
-    namespace
-    {
-        /// Same type, and the same length when both lengths are known (a generic-dependent length is not).
-        bool sameFormalType(const SemanticType& a, const SemanticType& b)
-        {
-            if (a.info != b.info)
-                return false;
-
-            const auto lengthA = staticLength(a);
-            const auto lengthB = staticLength(b);
-            return !lengthA || !lengthB || *lengthA == *lengthB;
-        }
-
-        const FormalInfo* findFormal(const std::vector<FormalInfo>& formals, const std::string& name)
-        {
-            auto match = std::find_if(formals.begin(), formals.end(), [&](const FormalInfo& f) { return f.name == name; });
-            return match == formals.end() ? nullptr : &*match;
-        }
-    } // anonymous namespace
-
-    void AnalyzerContext::checkComponentAgainstEntity(const ComponentDeclaration& decl, const EntityInterface& entity,
-                                                      const std::vector<FormalInfo>& generics, const std::vector<FormalInfo>& ports)
-    {
-        for (size_t i = 0; i < generics.size(); ++i)
-        {
-            const FormalInfo& generic = generics[i];
-            const FormalInfo* match = findFormal(entity.generics, generic.name);
-            if (!match)
-                fail("Generic '" + generic.name + "' of component '" + decl.name + "' does not exist in entity '" + decl.name + "'",
-                     *decl.generics[i]);
-
-            if (!sameFormalType(generic.type, match->type))
-                fail("Generic '" + generic.name + "' of component '" + decl.name + "' has type '" + describe(generic.type)
-                     + "' but the entity declares '" + describe(match->type) + "'", *decl.generics[i]);
-        }
-
-        for (size_t i = 0; i < ports.size(); ++i)
-        {
-            const FormalInfo& port = ports[i];
-            const FormalInfo* match = findFormal(entity.ports, port.name);
-            if (!match)
-                fail("Port '" + port.name + "' of component '" + decl.name + "' does not exist in entity '" + decl.name + "'",
-                     *decl.ports[i]);
-
-            if (port.mode != match->mode)
-                fail("Port '" + port.name + "' of component '" + decl.name + "' has mode '" + toString(port.mode)
-                     + "' but the entity declares '" + toString(match->mode) + "'", *decl.ports[i]);
-
-            if (!sameFormalType(port.type, match->type))
-                fail("Port '" + port.name + "' of component '" + decl.name + "' has type '" + describe(port.type)
-                     + "' but the entity declares '" + describe(match->type) + "'", *decl.ports[i]);
         }
     }
 

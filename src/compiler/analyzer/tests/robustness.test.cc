@@ -1,4 +1,4 @@
-// analyzer_robustness.test.cc — the analyzer never crashes, hangs or throws anything but a compiler_error.
+// robustness.test.cc — the analyzer never crashes, hangs or throws anything but a compiler_error.
 //
 //  * A design that uses every construct the parser can build analyzes cleanly.
 //  * Every node that only makes sense inside another construct is rejected when used as a value.
@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "analyzer.h"
-#include "linker.h"
 #include "parser.h"
 #include "test_helpers.h"
 #include "tokenizer.h"
@@ -23,14 +22,10 @@ using namespace Pulse::Parser;
 
 namespace
 {
-    /// Parses, links and analyzes one source, like the compiler does.
+    /// Parses, analyzes and links one source, like the compiler does.
     void compile(const std::string& source)
     {
-        Tokenizer tokenizer(source);
-        Linker linker;
-        linker.addAST(VHDLtoAST(tokenizer));
-        ASTRoot design = linker.link();
-        analyzeAST(design);
+        TestUtil::compileFiles({ source });
     }
 
     /// The message of the error the source fails with, or "<no error>".

@@ -152,6 +152,13 @@ TEST(ParserDeclarations, AliasOfAnOperatorOrCharacter)
     EXPECT_EQ(as<AliasDeclaration>(declarations.at(1).get())->name, "'1'");
 }
 
+TEST(ParserDeclarations, AnAliasIsNamedByAnIdentifierACharacterOrAnOperator)
+{
+    const SyntaxError error = syntaxError(inArchitecture("alias 3 is word;"));
+    ASSERT_TRUE(error.thrown);
+    EXPECT_NE(error.message.find("Expected a name"), std::string::npos) << error.message;
+}
+
 TEST(ParserDeclarations, AttributeDeclaration)
 {
     auto declarations = declarationsOf("attribute keep : boolean;");

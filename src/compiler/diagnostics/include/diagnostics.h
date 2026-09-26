@@ -17,7 +17,7 @@ namespace Pulse::Parser
     // --------------------------------------------------------------------------------------------
 
     /// Base exception type for every failure raised by the compilation pipeline.
-    /// Tokenizer, parser, linker and analyzer errors all derive from it, so callers can
+    /// Tokenizer, parser, analyzer and linker errors all derive from it, so callers can
     /// rely on catching this single type for any diagnosable problem in a source file.
     class compiler_error : public std::runtime_error
     {

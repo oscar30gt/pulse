@@ -1,13 +1,16 @@
 #ifndef PULSE_COMPILER_SEMANTIC_TYPE_H
 #define PULSE_COMPILER_SEMANTIC_TYPE_H
 
-// Resolved (semantic) types used by the analyzer.
+// Resolved (semantic) types produced by the analyzer.
 //
 // The AST only holds *names* of types (TypeSpec). The analyzer resolves each name once into a
 // SemanticType, and from then on every question ("are these compatible?", "how wide is this?")
 // is answered by comparing TypeInfo identity, never strings. A subtype shares the TypeInfo of its
 // base type and only carries its own constraint, so `natural` and `integer` are the same type
 // with different ranges, while two same-named types from different scopes stay different.
+//
+// The header is public because the linker reads the types a DesignLibrary resolved for the
+// generics and ports it binds; every file of one library shares the same TypeInfo objects.
 
 #include "ast.h"
 
