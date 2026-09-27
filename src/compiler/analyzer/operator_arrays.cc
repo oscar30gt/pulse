@@ -6,16 +6,6 @@ namespace Pulse::Parser
 {
     namespace
     {
-        /// `len-1 downto 0` (or `0 to len-1` when `ascending`); no bounds when the length is unknown.
-        SemanticType arrayOfLength(const TypeInfo& info, std::optional<int64_t> length, bool ascending = false)
-        {
-            SemanticType type;
-            type.info = &info;
-            if (length && *length > 0)
-                type.dims = { ascending ? Bounds{ 0, *length - 1, true } : Bounds{ *length - 1, 0, false } };
-            return type;
-        }
-
         std::optional<int64_t> sumOf(std::optional<int64_t> a, std::optional<int64_t> b)
         {
             return a && b ? std::optional<int64_t>(*a + *b) : std::nullopt;
@@ -25,7 +15,25 @@ namespace Pulse::Parser
         {
             return !type.dims.empty() && type.dims.front().ascending;
         }
+
+        /// Why an operator on std_logic values or vectors has no overload: std_logic_1164 and numeric_std only declare it
+        /// for their own types.
+        std::string ieeeOnly(const std::string& op, const std::string& type)
+        {
+            return "'" + op + "' is not defined for '" + type + "'; std_logic_1164 and numeric_std declare it for std_logic, "
+                   "std_logic_vector, unsigned and signed";
+        }
     } // anonymous namespace
+
+    // ---- Operand classes ------------------------------------------------------------------------
+
+    /// The predefined logical operators, reductions and shifts are those of boolean and of arrays of boolean (LRM 9.2); the
+    /// ones of std_logic come from the IEEE builtins of the prelude.
+    bool OperatorRules::isBooleanBased(const SemanticType& type) const
+    {
+        if (type.info == m_boolean) return true;
+        return isOneDimensionalArray(type) && type.info->element.info == m_boolean;
+    }
 
     // ---- Logical operators and shifts -----------------------------------------------------------
 
@@ -36,6 +44,9 @@ namespace Pulse::Parser
 
         if (l.info != r.info)
             return RuleResult::failure(operatorProblem(toString(op), l, r, "both operands must have the same type"));
+
+        if (!isBooleanBased(l))
+            return RuleResult::failure(operatorProblem(toString(op), l, r, ieeeOnly(toString(op), l.info->name)));
 
         const auto leftLength = staticLength(l);
         const auto rightLength = staticLength(r);
@@ -51,6 +62,9 @@ namespace Pulse::Parser
         if (!isLogicalOperand(operand, m_boolean))
             return RuleResult::failure(operatorProblem("not", operand, "'not' works on boolean, std_logic and arrays of them"));
 
+        if (!isBooleanBased(operand))
+            return RuleResult::failure(operatorProblem("not", operand, ieeeOnly("not", operand.info->name)));
+
         return RuleResult::success(isArray(operand) ? operand : typeOf(*operand.info));
     }
 
@@ -61,6 +75,9 @@ namespace Pulse::Parser
 
         if (!isIntegerClass(r))
             return RuleResult::failure(operatorProblem(toString(op), l, r, "the shift amount must be an integer"));
+
+        if (!isBooleanBased(l))
+            return RuleResult::failure(operatorProblem(toString(op), l, r, ieeeOnly(toString(op), l.info->name)));
 
         return RuleResult::success(l);
     }
@@ -110,42 +127,25 @@ namespace Pulse::Parser
         const bool arithmetic = op == BinaryOperator::Add || op == BinaryOperator::Sub || op == BinaryOperator::Mul
                              || op == BinaryOperator::Div || op == BinaryOperator::Mod || op == BinaryOperator::Rem;
 
-        if (leftVector && rightVector)
-        {
-            if (l.info != r.info)
-                return RuleResult::failure(operatorProblem(name, l, r, "unsigned and signed values cannot be mixed; convert one of them"));
-
-            const auto a = staticLength(l), b = staticLength(r);
-            if (op == BinaryOperator::Add || op == BinaryOperator::Sub)
-                return RuleResult::success(arrayOfLength(*l.info, a && b ? std::optional<int64_t>(std::max(*a, *b)) : std::nullopt));
-            if (op == BinaryOperator::Mul) return RuleResult::success(arrayOfLength(*l.info, sumOf(a, b)));
-            if (op == BinaryOperator::Div) return RuleResult::success(arrayOfLength(*l.info, a));
-            if (op == BinaryOperator::Mod || op == BinaryOperator::Rem) return RuleResult::success(arrayOfLength(*l.info, b));
-            return RuleResult::failure(operatorProblem(name, l, r, "operator '" + name + "' is not defined for " + l.info->name));
-        }
+        // Every valid combination is a numeric_std builtin of the prelude, resolved before these rules: what reaches them
+        // only needs its explanation.
+        if (leftVector && rightVector && l.info != r.info)
+            return RuleResult::failure(operatorProblem(name, l, r, "unsigned and signed values cannot be mixed; convert one of them"));
 
         const SemanticType& vector = leftVector ? l : r;
         const SemanticType& scalar = leftVector ? r : l;
-        if (!isIntegerClass(scalar))
+        if ((!leftVector || !rightVector) && !isIntegerClass(scalar))
             return RuleResult::failure(operatorProblem(name, l, r, describe(vector) + " can only be combined with another " + vector.info->name
                                                        + " or with an integer"));
 
-        if (!arithmetic)
-            return RuleResult::failure(operatorProblem(name, l, r, "operator '" + name + "' is not defined for " + vector.info->name));
-
-        return RuleResult::success(arrayOfLength(*vector.info, staticLength(vector)));
+        return RuleResult::failure(operatorProblem(name, l, r, "operator '" + name + "' is not defined for " + vector.info->name));
     }
 
     RuleResult OperatorRules::vectorComparison(BinaryOperator op, const SemanticType& l, const SemanticType& r) const
     {
-        const bool sameVectors = isNumericVector(l) && isNumericVector(r) && l.info == r.info;
-        const bool withInteger = (isNumericVector(l) && isIntegerClass(r)) || (isNumericVector(r) && isIntegerClass(l));
-
-        if (!sameVectors && !withInteger)
-            return RuleResult::failure(operatorProblem(toString(op), l, r, "unsigned and signed values can only be compared with the same type or with an integer; "
-                                                                 "convert the other operand"));
-
-        return RuleResult::success(typeOf(*m_boolean));
+        // The comparisons numeric_std declares are builtins of the prelude, resolved before these rules.
+        return RuleResult::failure(operatorProblem(toString(op), l, r, "unsigned and signed values can only be compared with the same type or with an integer; "
+                                                             "convert the other operand"));
     }
 
     // ---- Reductions -----------------------------------------------------------------------------
@@ -155,6 +155,9 @@ namespace Pulse::Parser
         if (!isOneDimensionalArray(operand) || !isLogicalScalar(operand.info->element, m_boolean))
             return RuleResult::failure(operatorProblem(toString(op), operand,
                 "a logical reduction works on a one-dimensional array of boolean or std_logic"));
+
+        if (!isBooleanBased(operand))
+            return RuleResult::failure(operatorProblem(toString(op), operand, ieeeOnly(toString(op), operand.info->name)));
 
         return RuleResult::success(typeOf(*operand.info->element.info));
     }

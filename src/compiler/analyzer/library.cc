@@ -27,6 +27,46 @@ namespace Pulse::Parser
         return m_context->interfaceType(genericOrPort);
     }
 
+    const SemanticType* DesignLibrary::typeOf(const Expression& expr) const
+    {
+        return m_context->recordedType(expr);
+    }
+
+    const ASTNode* DesignLibrary::declarationOf(const SymbolExpr& name) const
+    {
+        return m_context->declarationOf(name);
+    }
+
+    std::optional<CallTarget> DesignLibrary::calleeOf(const ASTNode& callOrOperator) const
+    {
+        return m_context->calleeOf(callOrOperator);
+    }
+
+    const SemanticType* DesignLibrary::objectType(const Declaration& decl) const
+    {
+        return m_context->objectType(decl);
+    }
+
+    const EntityDeclaration* DesignLibrary::entity(const std::string& name) const
+    {
+        return m_context->entity(name);
+    }
+
+    const ArchitectureDeclaration* DesignLibrary::architecture(const std::string& entityName, const std::string& name) const
+    {
+        return m_context->architecture(entityName, name);
+    }
+
+    const TypeInfo* DesignLibrary::predefinedType(const std::string& name) const
+    {
+        return m_context->predefinedType(name);
+    }
+
+    const ArchitectureDeclaration* DesignLibrary::latestArchitecture(const std::string& entityName) const
+    {
+        return m_context->latestArchitecture(entityName);
+    }
+
     void analyzeAST(const ASTRoot& root)
     {
         DesignLibrary library;

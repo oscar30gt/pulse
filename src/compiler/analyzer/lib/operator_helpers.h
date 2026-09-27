@@ -115,6 +115,17 @@ namespace Pulse::Parser
         return "Operator '" + op + "' cannot be applied to '" + describe(operand) + "'" + (reason.empty() ? "" : ": " + reason);
     }
 
+    /// A one-dimensional array of `info` with `length` elements, `length-1 downto 0` (or `0 to length-1` when `ascending`);
+    /// unconstrained when the length is unknown.
+    inline SemanticType arrayOfLength(const TypeInfo& info, std::optional<int64_t> length, bool ascending = false)
+    {
+        SemanticType type;
+        type.info = &info;
+        if (length && *length > 0)
+            type.dims = { ascending ? Bounds{ 0, *length - 1, true } : Bounds{ *length - 1, 0, false } };
+        return type;
+    }
+
     /// Result of applying an arithmetic operator to typed operands: the base type without subtype constraint.
     inline SemanticType baseResult(const SemanticType& type)
     {

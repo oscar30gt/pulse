@@ -42,6 +42,7 @@ namespace Pulse::Parser
         if (decl.initialValue)
             checkInitialValue(*decl.initialValue, symbol.type, "signal '" + decl.name + "'");
 
+        m_objectTypes[&decl] = symbol.type;
         declare(decl.name, std::move(symbol), decl);
     }
 
@@ -55,6 +56,7 @@ namespace Pulse::Parser
         if (decl.initialValue)
             checkInitialValue(*decl.initialValue, symbol.type, "variable '" + decl.name + "'");
 
+        m_objectTypes[&decl] = symbol.type;
         declare(decl.name, std::move(symbol), decl);
     }
 
@@ -82,6 +84,7 @@ namespace Pulse::Parser
 
         checkAssignable(symbol.type, valueType, decl.value.get(), *decl.value, what);
         symbol.value = fold(*decl.value, &symbol.type);
+        m_objectTypes[&decl] = symbol.type;
         declare(decl.name, std::move(symbol), decl);
     }
 

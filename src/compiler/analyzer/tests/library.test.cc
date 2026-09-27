@@ -256,3 +256,73 @@ TEST(Library_Robustness, AFailedFileLeavesTheLibraryUsable)
     EXPECT_THROW(library.analyze(failing), ast_semantic_error);
     EXPECT_NO_THROW(library.analyze(later)) << "the failed architecture left no scope behind and never joined the library, but its entity did";
 }
+
+// ===========================================================================
+// 6. WHAT THE ELABORATOR READS
+// ===========================================================================
+
+TEST(Library_Elaboration, ArchitecturesAreFoundInAnalysisOrder)
+{
+    const ASTRoot file = parseSource("entity e is end e; architecture a1 of e is begin end a1; architecture a2 of e is begin end a2;");
+    DesignLibrary library;
+    library.analyze(file);
+
+    const auto* entity = TestUtil::nodeAs<EntityDeclaration>(file.children.at(0).get());
+    EXPECT_EQ(library.entity("e"), entity);
+    EXPECT_EQ(library.entity("missing"), nullptr);
+
+    ASSERT_NE(library.latestArchitecture("e"), nullptr);
+    EXPECT_EQ(library.latestArchitecture("e")->name, "a2") << "the default binding picks the most recently analyzed architecture";
+    ASSERT_NE(library.architecture("e", "a1"), nullptr);
+    EXPECT_EQ(library.architecture("e", "a1")->name, "a1");
+    EXPECT_EQ(library.architecture("e", "a3"), nullptr);
+    EXPECT_EQ(library.latestArchitecture("missing"), nullptr);
+}
+
+TEST(Library_Elaboration, NamesDenoteTheirDeclarations)
+{
+    const ASTRoot file = parseSource(
+        "entity e is generic (w : natural := 2); port (a : in std_logic; y : out std_logic); end e;"
+        "architecture rtl of e is"
+        "    type state_t is (idle, busy);"
+        "    constant c : std_logic := '1';"
+        "    signal s : state_t;"
+        "begin"
+        "    process (a)"
+        "        variable v : std_logic;"
+        "    begin"
+        "        v := a and c;"
+        "        for i in 0 to w loop s <= idle; end loop;"
+        "        y <= v;"
+        "    end process;"
+        "end rtl;");
+    DesignLibrary library;
+    library.analyze(file);
+
+    const auto* entity = TestUtil::nodeAs<EntityDeclaration>(file.children.at(0).get());
+    const auto* arch = TestUtil::nodeAs<ArchitectureDeclaration>(file.children.at(1).get());
+    const auto* process = TestUtil::nodeAs<ProcessStatement>(arch->body.at(0).get());
+
+    const auto* variableAssignment = TestUtil::nodeAs<VariableAssignment>(process->body.at(0).get());
+    const auto* andOp = TestUtil::nodeAs<BinaryOpExpr>(variableAssignment->value.get());
+    const auto* a = TestUtil::nodeAs<SymbolExpr>(andOp->left.get());
+    const auto* c = TestUtil::nodeAs<SymbolExpr>(andOp->right.get());
+    const auto* v = TestUtil::nodeAs<SymbolExpr>(variableAssignment->target.get());
+    EXPECT_EQ(library.declarationOf(*a), entity->ports.at(0).get());
+    EXPECT_EQ(library.declarationOf(*c), arch->declarations.at(1).get());
+    EXPECT_EQ(library.declarationOf(*v), process->declarations.at(0).get());
+
+    const auto* loop = TestUtil::nodeAs<ForLoopStatement>(process->body.at(1).get());
+    const auto* range = TestUtil::nodeAs<BinaryOpExpr>(loop->range.get());
+    EXPECT_EQ(library.declarationOf(*TestUtil::nodeAs<SymbolExpr>(range->right.get())), entity->generics.at(0).get());
+
+    const auto* inLoop = TestUtil::nodeAs<SignalAssignment>(loop->body.at(0).get());
+    EXPECT_EQ(library.declarationOf(*TestUtil::nodeAs<SymbolExpr>(inLoop->target.get())), arch->declarations.at(2).get());
+    EXPECT_EQ(library.declarationOf(*TestUtil::nodeAs<SymbolExpr>(inLoop->value.get())), nullptr) << "idle is a literal, not an object";
+    ASSERT_NE(library.typeOf(*inLoop->value), nullptr);
+    EXPECT_EQ(library.typeOf(*inLoop->value)->info->name, "state_t");
+
+    const auto* signal = TestUtil::nodeAs<SignalDeclaration>(arch->declarations.at(2).get());
+    ASSERT_NE(library.objectType(*signal), nullptr);
+    EXPECT_EQ(library.objectType(*signal)->info->name, "state_t");
+}

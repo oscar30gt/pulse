@@ -1,109 +1,242 @@
 #include "processBox.h"
 
+#include <algorithm>
+#include <stdexcept>
+
 namespace Pulse::Engine
 {
+    // -------- Program ---------------------------------------------------------------------------
+
+    ProcessProgram::ProcessProgram()
+        : m_instructions(std::make_shared<const std::vector<std::unique_ptr<ProcessInstruction>>>())
+    { }
+
+    ProcessProgram::ProcessProgram(std::vector<std::unique_ptr<ProcessInstruction>> instructions)
+        : m_instructions(std::make_shared<const std::vector<std::unique_ptr<ProcessInstruction>>>(std::move(instructions)))
+    {
+        for (const auto& instruction : *m_instructions)
+            if (!instruction)
+                throw std::invalid_argument("A process program cannot contain a null instruction.");
+    }
+
+    size_t ProcessProgram::size() const
+    {
+        return m_instructions->size();
+    }
+
+    bool ProcessProgram::empty() const
+    {
+        return m_instructions->empty();
+    }
+
+    const ProcessInstruction& ProcessProgram::operator[](size_t index) const
+    {
+        return *(*m_instructions)[index];
+    }
+
+    // -------- Process box -----------------------------------------------------------------------
+
     ProcessBox::ProcessBox(
         const PortInitializer& inPorts,
         const PortInitializer& outPorts,
-        std::vector<std::unique_ptr<ProcessInstruction>> instructions
+        ProcessProgram instructions
     ) : Component(inPorts, outPorts),
         m_instructions(std::move(instructions))
     {
-        for (const auto& [outportName, outWire] : outPorts) if (outWire)
+        const auto wireOf = [this](const std::string& port) -> Wire*
         {
-            outputSrcs.emplace(outportName, SignalSource(outWire->width()));
-
+            Wire* wire = nullptr;
             try {
-                outputSrcs.at(outportName).addTarget(outWire);
+                wire = getPort(port);
             }
-            catch (const std::exception& e)
+            catch (const std::invalid_argument&) {
+                throw std::runtime_error("ProcessBox construction failed: an instruction uses the unknown port '" + port + "'.");
+            }
+            if (!wire)
+                throw std::runtime_error("ProcessBox construction failed: no wire is connected to port '" + port + "'.");
+            return wire;
+        };
+
+        m_resolved.resize(m_instructions.size());
+        for (size_t i = 0; i < m_instructions.size(); ++i)
+        {
+            const ProcessInstruction& instruction = m_instructions[i];
+            ResolvedInstruction& resolved = m_resolved[i];
+
+            switch (instruction.kind)
             {
-                throw std::runtime_error("ProcessBox construction failed: Unable to connect output port '" + outportName + "' to its wire. " + e.what());
+                case ProcessInstructionKind::Assignment:
+                {
+                    const auto& assignment = static_cast<const ProcessInstructionAssignment&>(instruction);
+                    resolved.first = wireOf(assignment.targetPort);
+                    resolved.second = wireOf(assignment.sourcePort);
+                    break;
+                }
+                case ProcessInstructionKind::Branch:
+                    resolved.first = wireOf(static_cast<const ProcessInstructionBranch&>(instruction).conditionPort);
+                    break;
+
+                case ProcessInstructionKind::WaitOn:
+                {
+                    const auto& wait = static_cast<const ProcessInstructionWaitOn&>(instruction);
+                    if (!wait.conditionPort.empty())
+                        resolved.first = wireOf(wait.conditionPort);
+                    for (const std::string& port : wait.sensitivity)
+                        resolved.sensitivity.push_back(wireOf(port));
+                    break;
+                }
+                default:
+                    break;
             }
         }
     }
 
     ProcessBox::~ProcessBox() = default;
 
+    bool ProcessBox::conditionMet(const Wire* condition)
+    {
+        const LogicVector value = condition->peek();
+        return (value.mask & 1ULL) == 0 && (value.value & 1ULL) != 0;
+    }
+
+    void ProcessBox::assign(size_t index)
+    {
+        const auto& assignment = static_cast<const ProcessInstructionAssignment&>(m_instructions[index]);
+        Wire* target = m_resolved[index].first;
+        const LogicVector value = m_resolved[index].second->peek();
+
+        if (!assignment.deferred)
+        {
+            target->drive(value);
+            return;
+        }
+
+        // A later assignment to the same signal in the same run replaces the earlier one.
+        auto pending = std::find_if(m_pending.begin(), m_pending.end(), [target](const auto& entry) { return entry.first == target; });
+        if (pending != m_pending.end())
+            pending->second = value;
+        else
+            m_pending.emplace_back(target, value);
+    }
+
+    void ProcessBox::commit()
+    {
+        // Moved out first: driving a wire may reach components that run again, never this process within a commit.
+        std::vector<std::pair<Wire*, LogicVector>> pending = std::move(m_pending);
+        m_pending.clear();
+
+        for (const auto& [wire, value] : pending)
+            wire->drive(value);
+    }
+
     // --------------------------------------------------------------------------------------------
 
     SequentialProcessBox::SequentialProcessBox(
         const PortInitializer& inPorts,
         const PortInitializer& outPorts,
-        std::vector<std::unique_ptr<ProcessInstruction>> instructions
+        ProcessProgram instructions
     ) : ProcessBox(inPorts, outPorts, std::move(instructions)),
-        m_waitCounter(0),
         m_instructionPointer(0),
-        m_waitingForever(false)
+        m_waitCounter(0),
+        m_state(State::Running)
     { }
 
     SequentialProcessBox::~SequentialProcessBox() = default;
 
+    bool SequentialProcessBox::waitOnSatisfied()
+    {
+        const auto& wait = static_cast<const ProcessInstructionWaitOn&>(m_instructions[m_instructionPointer]);
+        const ResolvedInstruction& resolved = m_resolved[m_instructionPointer];
+
+        if (wait.hasTimeout && --m_waitCounter == 0)
+            return true;
+
+        const bool event = std::any_of(resolved.sensitivity.begin(), resolved.sensitivity.end(), [](const Wire* wire) { return wire->event(); });
+        return event && (!resolved.first || conditionMet(resolved.first));
+    }
+
     void SequentialProcessBox::update()
     {
-        if (m_waitingForever)
-            return;
-
-        if (m_waitCounter > 0)
+        switch (m_state)
         {
-            m_waitCounter--;
+            case State::WaitingForever:
+                return;
 
-            if (m_waitCounter != 0)
-                return; // Still waiting, do not proceed to the next instruction
+            case State::WaitingTime:
+                if (--m_waitCounter != 0)
+                    return; // Still waiting, do not proceed to the next instruction
+                break;
 
-            m_instructionPointer++;
+            case State::WaitingOn:
+                if (!waitOnSatisfied())
+                    return;
+                break;
+
+            case State::Running:
+                exec();
+                return;
         }
 
+        // Resuming after a wait: continue with the instruction that follows it.
+        m_state = State::Running;
+        m_instructionPointer++;
         exec();
     }
 
     void SequentialProcessBox::exec()
     {
-        uint8_t iterationCount = 0;
+        // The body restarts from the top after its last instruction. Wrapping twice in one run means no wait
+        // instruction was reached, so the process would never suspend.
+        size_t wraps = 0;
 
         while (true)
         {
-            if (m_instructionPointer >= m_instructions.size()) m_instructionPointer = 0;
-            auto* instPtr = m_instructions[m_instructionPointer].get();
-
-            if (auto* assign = dynamic_cast<ProcessInstructionAssignment*>(instPtr))
+            if (m_instructionPointer >= m_instructions.size())
             {
-                auto value = getPort(assign->sourcePort)->peek();
-                outputSrcs.at(assign->targetPort).drive(value);
+                m_instructionPointer = 0;
+                if (++wraps == 2 || m_instructions.empty())
+                    throw std::runtime_error("ProcessBox: Possible infinite loop detected. No wait instruction found in the process.");
             }
 
-            else if (auto* branch = dynamic_cast<ProcessInstructionBranch*>(instPtr))
+            const ProcessInstruction& instruction = m_instructions[m_instructionPointer];
+
+            switch (instruction.kind)
             {
-                bool conditionValue = (bool)(getPort(branch->conditionPort)->peek());
-                if (!conditionValue)
+                case ProcessInstructionKind::Assignment:
+                    assign(m_instructionPointer);
+                    break;
+
+                case ProcessInstructionKind::Branch:
+                    if (!conditionMet(m_resolved[m_instructionPointer].first))
+                        m_instructionPointer += static_cast<const ProcessInstructionBranch&>(instruction).branchLength; // Skip if false
+                    break;
+
+                case ProcessInstructionKind::BranchAlways:
+                    m_instructionPointer += static_cast<const ProcessInstructionBranchAlways&>(instruction).branchLength; // Unconditionally skip
+                    break;
+
+                case ProcessInstructionKind::Wait:
+                    if ((m_waitCounter = static_cast<const ProcessInstructionWait&>(instruction).waitTime) != 0)
+                    {
+                        m_state = State::WaitingTime;
+                        return;
+                    }
+                    break;
+
+                case ProcessInstructionKind::WaitForever:
+                    m_state = State::WaitingForever;
+                    return;
+
+                case ProcessInstructionKind::WaitOn:
                 {
-                    m_instructionPointer += branch->branchLength; // Skip if false
+                    const auto& wait = static_cast<const ProcessInstructionWaitOn&>(instruction);
+                    m_waitCounter = wait.hasTimeout ? std::max<simTime_t>(wait.timeout, 1) : 0;
+                    m_state = State::WaitingOn;
+                    return;
                 }
             }
 
-            else if (auto* wait = dynamic_cast<ProcessInstructionWait*>(instPtr))
-            {
-                if ((m_waitCounter = wait->waitTime) != 0)
-                    break; // <- Only exit. If no waits are found, the process will run indefinitely. (developer's responsibility to avoid infinite loops)
-            }
-
-            else if (auto* waitForever = dynamic_cast<ProcessInstructionWaitForever*>(instPtr))
-            {
-                m_waitingForever = true;
-                break; // <- Only exit. If no waits are found, the process will run indefinitely. (developer's responsibility to avoid infinite loops)
-            }
-
-            else if (auto* branchAlways = dynamic_cast<ProcessInstructionBranchAlways*>(instPtr))
-            {
-                m_instructionPointer += branchAlways->branchLength; // Unconditionally skip
-            }
-
             m_instructionPointer++;
-
-            if (++iterationCount > 10)
-            {
-                throw std::runtime_error("ProcessBox: Possible infinite loop detected. No wait instruction found in the process.");
-            }
         }
     }
 
@@ -112,34 +245,25 @@ namespace Pulse::Engine
     CombinationalProcessBox::CombinationalProcessBox(
         const PortInitializer& inPorts,
         const PortInitializer& outPorts,
-        std::vector<std::unique_ptr<ProcessInstruction>> instructions,
+        ProcessProgram instructions,
         const std::vector<Wire*>& sensList
     ) : ProcessBox(inPorts, outPorts, std::move(instructions)),
-        m_changed(false)
+        m_initialized(false)
     {
         for (auto* wire : sensList) if (wire)
-        {
-            auto drain = std::make_unique<SignalDrain>(wire->width(), this, &CombinationalProcessBox::onSensitivityChange);
-            drain->addSource(wire);
-            m_sensitivityList.push_back(std::move(drain));
-        }
+            m_sensitivityList.push_back(wire);
     }
 
     CombinationalProcessBox::~CombinationalProcessBox() = default;
 
-    bool CombinationalProcessBox::onSensitivityChange(ttl_t)
-    {
-        m_changed = true;
-        return true;
-    }
-
     void CombinationalProcessBox::update()
     {
-        if (m_changed)
-        {
-            m_changed = false;
+        const bool triggered = !m_initialized
+            || std::any_of(m_sensitivityList.begin(), m_sensitivityList.end(), [](const Wire* wire) { return wire->event(); });
+
+        m_initialized = true;
+        if (triggered)
             exec();
-        }
     }
 
     void CombinationalProcessBox::exec()
@@ -147,26 +271,25 @@ namespace Pulse::Engine
         size_t instructionPointer = 0;
         while (instructionPointer < m_instructions.size())
         {
-            auto* instPtr = m_instructions[instructionPointer].get();
+            const ProcessInstruction& instruction = m_instructions[instructionPointer];
 
-            if (auto* assign = dynamic_cast<ProcessInstructionAssignment*>(instPtr))
+            switch (instruction.kind)
             {
-                auto value = getPort(assign->sourcePort)->peek();
-                outputSrcs[assign->targetPort].drive(value);
-            }
+                case ProcessInstructionKind::Assignment:
+                    assign(instructionPointer);
+                    break;
 
-            else if (auto* branch = dynamic_cast<ProcessInstructionBranch*>(instPtr))
-            {
-                bool conditionValue = (bool)(getPort(branch->conditionPort)->peek());
-                if (!conditionValue)
-                {
-                    instructionPointer += branch->branchLength; // Skip if false
-                }
-            }
+                case ProcessInstructionKind::Branch:
+                    if (!conditionMet(m_resolved[instructionPointer].first))
+                        instructionPointer += static_cast<const ProcessInstructionBranch&>(instruction).branchLength; // Skip if false
+                    break;
 
-            else if (auto* branchAlways = dynamic_cast<ProcessInstructionBranchAlways*>(instPtr))
-            {
-                instructionPointer += branchAlways->branchLength; // Unconditionally skip
+                case ProcessInstructionKind::BranchAlways:
+                    instructionPointer += static_cast<const ProcessInstructionBranchAlways&>(instruction).branchLength; // Unconditionally skip
+                    break;
+
+                default:
+                    throw std::runtime_error("ProcessBox: A process with a sensitivity list cannot contain a wait instruction.");
             }
 
             instructionPointer++;

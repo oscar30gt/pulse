@@ -545,9 +545,9 @@ TEST(Analyzer_Types, UnsignedStdLogicVectorGenericConversionsPass)
     )");
 }
 
-TEST(Analyzer_Types, RisingEdgeAndToIntegerNoLongerExist)
+TEST(Analyzer_Types, RisingEdgeIsAnIeeeBuiltinButToIntegerOfAVectorIsNot)
 {
-    expectSemanticError(R"(
+    expectSemanticSuccess(R"(
         entity test is
             port(clk : in std_logic);
         end test;

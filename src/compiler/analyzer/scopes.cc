@@ -43,6 +43,13 @@ namespace Pulse::Parser
 
     void AnalyzerContext::declare(const std::string& name, Symbol symbol, const ASTNode& node)
     {
+        // An object declared by a node is declared by that node (a signal, constant, variable or alias declaration, or the
+        // for-loop of a loop parameter).
+        const bool object = symbol.kind == SymbolKind::Signal || symbol.kind == SymbolKind::Constant
+                         || symbol.kind == SymbolKind::Variable || symbol.kind == SymbolKind::LoopParameter;
+        if (object && !symbol.declaration)
+            symbol.declaration = &node;
+
         declare(name, std::move(symbol), node.source);
     }
 

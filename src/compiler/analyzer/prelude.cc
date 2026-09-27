@@ -3,7 +3,9 @@
 #include "parser.h"
 #include "tokenizer.h"
 
+#include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace Pulse::Parser
 {
@@ -38,6 +40,75 @@ namespace Pulse::Parser
             type unsigned is array (natural range <>) of std_logic;
             type signed is array (natural range <>) of std_logic;
         )";
+
+        /// The subprograms of the IEEE packages std_logic_1164 and numeric_std, as declarations without a body: the analyzer
+        /// resolves calls and operators against them, and the elaborator implements them natively. The operators the LRM
+        /// declares implicitly for every type (`=` and `<` on any type, integer arithmetic, `&` ...) are not here: the
+        /// predefined operator rules handle them.
+        std::string ieeeSignatures()
+        {
+            const char* const logical[] = { "and", "or", "nand", "nor", "xor", "xnor" };
+            std::string text;
+
+            const auto function = [&text](const std::string& designator, const std::string& parameters, const std::string& result)
+            {
+                text += "function " + designator + " (" + parameters + ") return " + result + ";\n";
+            };
+            const auto op = [](const std::string& symbol) { return "\"" + symbol + "\""; };
+
+            // ---- std_logic_1164 (and numeric_std's logical operators on its vectors) ----
+            for (const char* name : logical)
+                function(op(name), "l, r : std_logic", "std_logic");
+            function(op("not"), "l : std_logic", "std_logic");
+            function(op("??"), "l : std_logic", "boolean");
+
+            for (const char* vector : { "std_logic_vector", "unsigned", "signed" })
+            {
+                const std::string type = vector;
+                for (const char* name : logical)
+                {
+                    function(op(name), "l, r : " + type, type);
+                    function(op(name), "l : " + type, "std_logic");     // VHDL-2008 logical reduction
+                }
+                function(op("not"), "l : " + type, type);
+            }
+
+            for (const char* name : { "sll", "srl", "rol", "ror" })
+                function(op(name), "l : std_logic_vector; r : integer", "std_logic_vector");
+
+            function("rising_edge", "signal s : std_logic", "boolean");
+            function("falling_edge", "signal s : std_logic", "boolean");
+
+            // ---- numeric_std ----
+            for (const auto& [vector, integer] : { std::pair<std::string, std::string>{ "unsigned", "natural" }, { "signed", "integer" } })
+            {
+                for (const char* name : { "+", "-", "*", "/", "mod", "rem" })
+                {
+                    function(op(name), "l, r : " + vector, vector);
+                    function(op(name), "l : " + vector + "; r : " + integer, vector);
+                    function(op(name), "l : " + integer + "; r : " + vector, vector);
+                }
+                for (const char* name : { "=", "/=", "<", "<=", ">", ">=" })
+                {
+                    function(op(name), "l, r : " + vector, "boolean");
+                    function(op(name), "l : " + vector + "; r : " + integer, "boolean");
+                    function(op(name), "l : " + integer + "; r : " + vector, "boolean");
+                }
+                for (const char* name : { "sll", "srl", "sla", "sra", "rol", "ror" })
+                    function(op(name), "arg : " + vector + "; count : integer", vector);
+                for (const char* name : { "shift_left", "shift_right", "rotate_left", "rotate_right" })
+                    function(name, "arg : " + vector + "; count : natural", vector);
+                function("resize", "arg : " + vector + "; new_size : natural", vector);
+            }
+
+            function(op("-"), "arg : signed", "signed");
+            function(op("abs"), "arg : signed", "signed");
+            function("to_integer", "arg : unsigned", "natural");
+            function("to_integer", "arg : signed", "integer");
+            function("to_unsigned", "arg, size : natural", "unsigned");
+            function("to_signed", "arg : integer; size : natural", "signed");
+            return text;
+        }
 
         /// Properties of predefined types that VHDL text cannot express.
         struct PreludeTrait
@@ -85,16 +156,33 @@ namespace Pulse::Parser
         m_rules = OperatorRules(m_std.boolean, m_std.stdLogic);
     }
 
-    void AnalyzerContext::loadPrelude()
+    AnalyzerContext::AnalyzerContext(PreludeTag)
     {
-        Tokenizer tokenizer(kPreludeSource);
-        static const std::vector<DeclarationPtr> declarations = parseDeclarations(tokenizer);
+        registerDispatchTables();
+        registerExpressionHandlers();
+        registerSequentialHandlers();
+
+        static const std::vector<DeclarationPtr> declarations = []
+        {
+            Tokenizer tokenizer(std::string(kPreludeSource) + ieeeSignatures());
+            return parseDeclarations(tokenizer);
+        }();
 
         m_loadingPrelude = true;
         pushScope();
         analyzeDeclarations(declarations);
         m_loadingPrelude = false;
 
+        bindPreludeTypes();
+    }
+
+    /// The prelude is analyzed once, into a context that lives until the program ends. Its types and builtin subprograms
+    /// never change afterwards, so every library starts from a copy of its scope that refers to them.
+    void AnalyzerContext::loadPrelude()
+    {
+        static const AnalyzerContext prelude{ PreludeTag{} };
+
+        m_scopes = { prelude.m_scopes.front() };
         bindPreludeTypes();
     }
 

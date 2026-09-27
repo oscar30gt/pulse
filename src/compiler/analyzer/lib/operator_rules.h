@@ -84,6 +84,8 @@ namespace Pulse::Parser
         RuleResult numericVector(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;
         /// Comparisons of `unsigned`/`signed` with the same vector type or with an integer.
         RuleResult vectorComparison(BinaryOperator op, const SemanticType& l, const SemanticType& r) const;
+        /// Boolean, or a one-dimensional array of boolean: the types the LRM predefines the logical operators for.
+        bool isBooleanBased(const SemanticType& type) const;
 
         // -- VHDL-2008 matching (operator_arrays.cc)
         /// `?= ?/= ?< ?<= ?> ?>=`: std_logic values, or arrays of them (`?=`, `?/=`), or unsigned/signed vectors; the result

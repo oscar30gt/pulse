@@ -127,6 +127,7 @@ namespace Pulse::Parser
 
         m_architecture = nullptr;
         entity.architectures.insert(arch.name);
+        entity.architectureOrder.push_back(&arch);
     }
 
     // ---- Entry point ----------------------------------------------------------------------------
@@ -165,6 +166,76 @@ namespace Pulse::Parser
     {
         auto found = m_interfaceTypes.find(&genericOrPort);
         return found == m_interfaceTypes.end() ? nullptr : &found->second;
+    }
+
+    // ---- What the elaborator reads --------------------------------------------------------------
+
+    const SemanticType* AnalyzerContext::recordedType(const Expression& expr) const
+    {
+        auto found = m_expressionTypes.find(&expr);
+        return found == m_expressionTypes.end() ? nullptr : &found->second;
+    }
+
+    const ASTNode* AnalyzerContext::declarationOf(const SymbolExpr& name) const
+    {
+        auto found = m_denotations.find(&name);
+        return found == m_denotations.end() ? nullptr : found->second;
+    }
+
+    std::optional<CallTarget> AnalyzerContext::calleeOf(const ASTNode& callOrOperator) const
+    {
+        auto found = m_resolvedCalls.find(&callOrOperator);
+        if (found == m_resolvedCalls.end())
+            return std::nullopt;
+
+        const SubprogramInfo& info = *found->second;
+        CallTarget target;
+        target.name = info.name;
+        target.builtin = info.builtin;
+        target.declaration = info.declaration;
+        for (const FormalInfo& parameter : info.parameters)
+            target.parameters.push_back(parameter.name);
+        return target;
+    }
+
+    const SemanticType* AnalyzerContext::objectType(const Declaration& decl) const
+    {
+        auto found = m_objectTypes.find(&decl);
+        return found == m_objectTypes.end() ? nullptr : &found->second;
+    }
+
+    const EntityDeclaration* AnalyzerContext::entity(const std::string& name) const
+    {
+        auto found = m_entities.find(name);
+        return found == m_entities.end() ? nullptr : found->second.declaration;
+    }
+
+    const ArchitectureDeclaration* AnalyzerContext::architecture(const std::string& entityName, const std::string& name) const
+    {
+        auto found = m_entities.find(entityName);
+        if (found == m_entities.end())
+            return nullptr;
+
+        for (const ArchitectureDeclaration* arch : found->second.architectureOrder)
+            if (arch->name == name)
+                return arch;
+        return nullptr;
+    }
+
+    const TypeInfo* AnalyzerContext::predefinedType(const std::string& name) const
+    {
+        auto found = m_scopes.front().symbols.find(name);
+        if (found == m_scopes.front().symbols.end() || found->second.kind != SymbolKind::Type)
+            return nullptr;
+        return found->second.type.info;
+    }
+
+    const ArchitectureDeclaration* AnalyzerContext::latestArchitecture(const std::string& entityName) const
+    {
+        auto found = m_entities.find(entityName);
+        if (found == m_entities.end() || found->second.architectureOrder.empty())
+            return nullptr;
+        return found->second.architectureOrder.back();
     }
 
 } // namespace Pulse::Parser

@@ -62,6 +62,7 @@ namespace Pulse::Parser
             formal.name = parameter->name;
             formal.mode = parameter->mode;
             formal.location = parameter->source;
+            formal.declaration = parameter.get();
             formal.hasDefault = parameter->defaultValue != nullptr;
 
             switch (parameter->objectClass)
@@ -168,9 +169,14 @@ namespace Pulse::Parser
     {
         SubprogramInfo profile = resolveSubprogramSpec(*decl.spec);
         checkOperatorProfile(profile, decl);
+        profile.declaration = &decl;
+
+        // The IEEE subprograms of the prelude have no body in VHDL: the elaborator implements them natively.
+        profile.builtin = m_loadingPrelude;
 
         SubprogramInfo& info = registerSubprogram(std::move(profile), decl, false);
-        m_pendingBodies.push_back({ &info, m_scopes.size() - 1, decl.source });
+        if (!info.builtin)
+            m_pendingBodies.push_back({ &info, m_scopes.size() - 1, decl.source });
     }
 
     void AnalyzerContext::checkBodiesDefined()
@@ -192,6 +198,7 @@ namespace Pulse::Parser
     {
         SubprogramInfo profile = resolveSubprogramSpec(*decl.spec);
         checkOperatorProfile(profile, decl);
+        profile.declaration = &decl;
 
         SubprogramInfo& info = registerSubprogram(profile, decl, true);
         info.hasBody = true;        // before the body is analyzed, so the subprogram can call itself
@@ -221,6 +228,7 @@ namespace Pulse::Parser
             symbol.mode = parameter.mode;
             symbol.isParameter = true;
             symbol.objectId = newObjectId();
+            symbol.declaration = parameter.declaration;
             declare(parameter.name, std::move(symbol), parameter.location);
         }
 

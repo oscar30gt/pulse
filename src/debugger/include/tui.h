@@ -2,6 +2,10 @@
 #define PULSE_TUI_H
 
 #include <cstdint>
+#include <map>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "waveform.h"
 
@@ -43,8 +47,19 @@ namespace Pulse::Debugger
         std::string name;           ///< Display name with collapse/expand glyph (e.g. "▶ ALU", "clk").
         const Wave* wave = nullptr; ///< Pointer to the wave trace data, or nullptr if this row is a component.
         std::string path;           ///< Unique hierarchical path identifier (e.g. "root/CPU/ALU").
-        bool isGraph = false;       ///< True if this row represents a collapsible component/subgraph node.
+        bool isGraph = false;       ///< True if the row can be collapsed and expanded: a component, or a logic vector (into bits).
     };
+
+    /// Flattens the waveform hierarchy under the root component into display rows. A component, and a logic vector
+    /// whose path is in `expandedPaths`, is followed by its children: signals and components for a component, one row per
+    /// bit (named after its VHDL index, leftmost first) for a vector.
+    /// @param waveform The top-level circuit waveform.
+    /// @param expandedPaths Paths of the rows currently expanded.
+    /// @param[out] rows Output vector populated with the display rows.
+    /// @param rootName Name of the root component.
+    /// @param[out] bitWaves Storage for the waves of the bits of expanded vectors, by path; the rows point into it.
+    void collectRows(const WaveformData& waveform, const std::unordered_set<std::string>& expandedPaths, std::vector<Row>& rows,
+                     const std::string& rootName, std::map<std::string, Wave>& bitWaves);
 
     // --------------------------------------------------------------------------------------------
     // Renderer auxiliary functions

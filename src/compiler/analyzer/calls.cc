@@ -151,7 +151,8 @@ namespace Pulse::Parser
     SemanticType AnalyzerContext::typeOfFunctionCall(const std::string& name, const ASTNode& node, const std::vector<const Expression*>& arguments,
                                                      const SemanticType* expected)
     {
-        return resolveCall(name, node, arguments, expected, true).returnType;
+        const SubprogramInfo& callee = resolveCall(name, node, arguments, expected, true);
+        return callee.builtin ? builtinCallResult(callee, node, arguments) : callee.returnType;
     }
 
 } // namespace Pulse::Parser

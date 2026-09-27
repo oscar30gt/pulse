@@ -29,9 +29,11 @@ namespace Pulse::Parser
         if (overloads.empty())
             return std::nullopt;
 
+        // The IEEE builtins are matched once the operands are typed (typeOfBuiltinOperator), so an operator chain is not typed
+        // again for every builtin overload.
         const bool anyFits = std::any_of(overloads.begin(), overloads.end(), [&](const SubprogramInfo* candidate)
         {
-            return candidate->isFunction && candidate->parameters.size() == operands.size()
+            return !candidate->builtin && candidate->isFunction && candidate->parameters.size() == operands.size()
                 && candidateProblem(*candidate, operands, node).empty();
         });
 
@@ -51,6 +53,9 @@ namespace Pulse::Parser
 
         const SemanticType operand = exprType(*expr.operand, expr.op == UnaryOperator::Not ? expected : nullptr);
 
+        if (auto builtin = typeOfBuiltinOperator(expr, operatorSymbol(toString(expr.op)), { operand }, expected))
+            return *builtin;
+
         const RuleResult result = m_rules.unary(expr.op, operand);
         if (!result.ok())
             fail(result.problem, expr);
@@ -69,6 +74,9 @@ namespace Pulse::Parser
             return *user;
 
         const OperandTypes operands = typeOperands(expr, expected);
+
+        if (auto builtin = typeOfBuiltinOperator(expr, operatorSymbol(toString(expr.op)), { operands.left, operands.right }, expected))
+            return *builtin;
 
         const RuleResult result = m_rules.binary(expr.op, operands.left, operands.right, expected);
         if (!result.ok())

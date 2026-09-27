@@ -18,6 +18,11 @@ namespace Pulse::Parser
         std::vector<FormalInfo> parameters;
         SemanticType returnType;                ///< Functions only
         SourceLocation location;                ///< Where it was first declared
+        /// A predefined IEEE subprogram of the prelude (std_logic_1164, numeric_std): it has no body in VHDL, the elaborator
+        /// implements it natively.
+        bool builtin = false;
+        /// The declaration, or the body when it was declared by its body.
+        const Declaration* declaration = nullptr;
 
         bool hasBody = false;                   ///< A body has been analyzed for it
         bool containsWait = false;              ///< Its body has a wait statement

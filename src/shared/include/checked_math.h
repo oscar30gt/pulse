@@ -1,14 +1,14 @@
-#ifndef PULSE_COMPILER_CHECKED_MATH_H
-#define PULSE_COMPILER_CHECKED_MATH_H
+#ifndef PULSE_SHARED_CHECKED_MATH_H
+#define PULSE_SHARED_CHECKED_MATH_H
 
-// Overflow-checked 64-bit arithmetic: constant folding and unit definitions give up
+// Overflow-checked 64-bit arithmetic: constant folding (analyzer, elaborator) and unit definitions give up
 // (nullopt) or report a diagnostic instead of silently wrapping around.
 
 #include <cstdint>
 #include <limits>
 #include <optional>
 
-namespace Pulse::Parser
+namespace Pulse
 {
     constexpr int64_t kInt64Max = std::numeric_limits<int64_t>::max();
     constexpr int64_t kInt64Min = std::numeric_limits<int64_t>::min();
@@ -52,6 +52,6 @@ namespace Pulse::Parser
         return result;
     }
 
-} // namespace Pulse::Parser
+} // namespace Pulse
 
-#endif // PULSE_COMPILER_CHECKED_MATH_H
+#endif // PULSE_SHARED_CHECKED_MATH_H

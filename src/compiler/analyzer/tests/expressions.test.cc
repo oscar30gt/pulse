@@ -375,8 +375,8 @@ TEST(Semantic_Conversions, LiteralsNeedATypeOfTheirOwn)
 
 TEST(Semantic_Conversions, UnknownFunctionsAreReported)
 {
-    const std::string message = check("n <= to_integer(u4);");
-    EXPECT_TRUE(mentions(message, "'to_integer' is not declared")) << message;
+    const std::string message = check("n <= conv_integer(u4);");
+    EXPECT_TRUE(mentions(message, "'conv_integer' is not declared")) << message;
 }
 
 // ---- Attributes -----------------------------------------------------------------------------------

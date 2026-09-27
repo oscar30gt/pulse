@@ -49,6 +49,7 @@ namespace Pulse::Parser
         SemanticType type;
         bool hasDefault = false;
         SourceLocation location;
+        const Declaration* declaration = nullptr;   ///< The generic, port or parameter declaration it comes from
     };
 
     struct SubprogramInfo;
@@ -81,6 +82,9 @@ namespace Pulse::Parser
         std::vector<const SubprogramInfo*> overloads;   ///< Subprograms: every overload declared under this name in this region
         std::unordered_map<std::string, AttributeValue> attributes; ///< Attributes specified for this item, by attribute name
         SourceLocation location;
+        /// The node that declares the object (a signal, port, generic, constant, variable, parameter or alias declaration,
+        /// or the for-loop of a loop parameter); null for the other kinds of symbols.
+        const ASTNode* declaration = nullptr;
     };
 
     /// A declarative region. Names must be unique inside one scope (subprograms may share a name); inner scopes may

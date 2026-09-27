@@ -498,8 +498,8 @@ TEST(Analyzer_Operators, ConcatenationPasses)
 // ===========================================================================
 // unsigned(x)/signed(x)/std_logic_vector(x) are no longer hardcoded functions -- they're the
 // generic TargetType(expr) conversion applied to prelude-declared types. rising_edge/falling_edge/
-// to_unsigned/to_signed/to_integer have no generic equivalent (a predicate and two value-computing
-// conversions, not type relabeling) and are simply gone: calling them is now "unknown function".
+// to_unsigned/to_signed/to_integer are IEEE builtins of the prelude (std_logic_1164 and numeric_std
+// signatures without a body), so they only accept the types those packages declare them for.
 
 TEST(Analyzer_Functions, UnsignedAndSignedPass)
 {
@@ -518,7 +518,7 @@ TEST(Analyzer_Functions, UnsignedAndSignedPass)
     expectSemanticSuccess(source);
 }
 
-TEST(Analyzer_Functions, RisingEdgeNoLongerExistsThrows)
+TEST(Analyzer_Functions, RisingEdgeIsAnIeeeBuiltin)
 {
     const std::string source = R"(
         entity test is
@@ -534,10 +534,10 @@ TEST(Analyzer_Functions, RisingEdgeNoLongerExistsThrows)
             end process;
         end behavioral;
     )";
-    expectSemanticError(source);
+    expectSemanticSuccess(source);
 }
 
-TEST(Analyzer_Functions, ToIntegerNoLongerExistsThrows)
+TEST(Analyzer_Functions, ToIntegerOfAStdLogicVectorThrows)
 {
     const std::string source = R"(
         entity test is
@@ -552,7 +552,7 @@ TEST(Analyzer_Functions, ToIntegerNoLongerExistsThrows)
     expectSemanticError(source);
 }
 
-TEST(Analyzer_Functions, ToUnsignedNoLongerExistsThrows)
+TEST(Analyzer_Functions, ToUnsignedIsAnIeeeBuiltin)
 {
     const std::string source = R"(
         entity test is
@@ -563,7 +563,7 @@ TEST(Analyzer_Functions, ToUnsignedNoLongerExistsThrows)
             a <= to_unsigned(5, 8);
         end behavioral;
     )";
-    expectSemanticError(source);
+    expectSemanticSuccess(source);
 }
 
 TEST(Analyzer_Functions, RisingEdgeReplacedByEventIdiomPasses)
@@ -951,11 +951,13 @@ TEST(Analyzer_SignedUnsigned, ArithmeticAndMixedIntegerPass)
         entity test is
         end test;
         architecture behavioral of test is
-            signal s1, s2, s3 : signed(7 downto 0);
+            signal s1, s2 : signed(7 downto 0);
+            signal s16 : signed(15 downto 0);
             signal u1, u2, u3 : unsigned(7 downto 0);
             signal i : integer;
         begin
-            s3 <= s1 + s2 * 2 - 1;
+            -- numeric_std: signed * integer is twice as long as the vector, and + gives the longer operand.
+            s16 <= s1 + s2 * 2 - 1;
             u3 <= u1 + u2 + 5;
         end behavioral;
     )";

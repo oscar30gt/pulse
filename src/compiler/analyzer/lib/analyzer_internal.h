@@ -112,6 +112,13 @@ namespace Pulse::Parser
     public:
         /// Builds the dispatch tables and loads the prelude, which every file analyzed afterwards shares.
         AnalyzerContext();
+
+    private:
+        /// Selects the constructor that analyzes the prelude itself (used once, by loadPrelude()).
+        struct PreludeTag { };
+        explicit AnalyzerContext(PreludeTag);
+
+    public:
         AnalyzerContext(const AnalyzerContext&) = delete;
         AnalyzerContext& operator=(const AnalyzerContext&) = delete;
 
@@ -125,6 +132,16 @@ namespace Pulse::Parser
         /// The type resolved for a generic or a port of an analyzed entity or component, or nullptr.
         const SemanticType* interfaceType(const Declaration& genericOrPort) const;
 
+        // ---- What the elaborator reads (see DesignLibrary) ----
+        const SemanticType* recordedType(const Expression& expr) const;
+        const ASTNode* declarationOf(const SymbolExpr& name) const;
+        std::optional<CallTarget> calleeOf(const ASTNode& callOrOperator) const;
+        const SemanticType* objectType(const Declaration& decl) const;
+        const EntityDeclaration* entity(const std::string& name) const;
+        const ArchitectureDeclaration* architecture(const std::string& entityName, const std::string& name) const;
+        const ArchitectureDeclaration* latestArchitecture(const std::string& entityName) const;
+        const TypeInfo* predefinedType(const std::string& name) const;
+
     private:
         /// An entity of the library: its generics and ports, resolved once in a scope that only sees the predefined types,
         /// and the names of the architectures analyzed for it so far.
@@ -134,6 +151,8 @@ namespace Pulse::Parser
             std::vector<FormalInfo> generics;
             std::vector<FormalInfo> ports;
             std::unordered_set<std::string> architectures;
+            /// The architectures analyzed for it, in analysis order (the last one is the default binding, LRM 7.3.3).
+            std::vector<const ArchitectureDeclaration*> architectureOrder;
         };
 
         /// Stack of declarative regions, innermost last. Index 0 is the prelude scope; each entity, architecture, process,
@@ -161,8 +180,16 @@ namespace Pulse::Parser
         bool m_loadingPrelude = false;
         /// Identity given to the next object (signal, variable, constant, port ...) declared.
         size_t m_nextObjectId = 0;
-        /// Subprogram chosen for every call expression and every operator that resolved to a user-declared function.
+        /// Subprogram chosen for every call expression and every operator that resolved to a declared function (a design's own
+        /// or an IEEE builtin of the prelude).
         std::unordered_map<const ASTNode*, const SubprogramInfo*> m_resolvedCalls;
+        /// The type of every expression typed so far. An expression typed several times (overload trials) keeps the last
+        /// type, which is the one of the committed interpretation.
+        std::unordered_map<const Expression*, SemanticType> m_expressionTypes;
+        /// The declaration every name of an object refers to. Filled wherever a name is resolved to its object.
+        mutable std::unordered_map<const SymbolExpr*, const ASTNode*> m_denotations;
+        /// The resolved type of every signal, variable and constant declaration.
+        std::unordered_map<const Declaration*, SemanticType> m_objectTypes;
 
         /// Design unit node kind -> analyze* handler.
         NodeDispatch<DesignUnit, void> m_units;
@@ -290,7 +317,8 @@ namespace Pulse::Parser
 
         // ---- Prelude (prelude.cc) --------------------------------------------------------------------
 
-        /// Parses the embedded VHDL prelude and declares its types in the base scope (scope 0), then binds m_std.
+        /// Gives the context the base scope (scope 0) of the predefined environment, then binds m_std. The embedded VHDL
+        /// prelude is parsed and analyzed only once, by the first context, and shared by every context after it.
         void loadPrelude();
         /// Looks up boolean, std_logic, time, integer and severity_level in the base scope and builds m_rules.
         void bindPreludeTypes();
@@ -589,9 +617,21 @@ namespace Pulse::Parser
         SemanticType operandContext(const Expression& operand, const SemanticType& other, BinaryOperator op,
                                     const SemanticType* expected) const;
         /// A design-declared function named after the operator (`"+"`) applied to the operands, or nullopt when none is visible
-        /// or none accepts them.
+        /// or none accepts them. The IEEE builtins of the prelude are left to typeOfBuiltinOperator().
         std::optional<SemanticType> typeOfUserOperator(const Expression& node, const std::string& symbol,
                                                        const std::vector<const Expression*>& operands, const SemanticType* expected);
+
+        // ---- IEEE builtins (builtins.cc) -------------------------------------------------------------
+
+        /// The IEEE builtin overload of an operator (`"+"`) whose parameters take operands of the given, already known types;
+        /// nullopt when none does. On success the call is recorded and the result type follows the builtin's length rule.
+        /// The operands are matched by type only, so an operator chain is typed once however many overloads it has.
+        std::optional<SemanticType> typeOfBuiltinOperator(const Expression& node, const std::string& symbol,
+                                                          const std::vector<SemanticType>& operands, const SemanticType* expected);
+        /// The result type of a call of a builtin function, with the length its arguments give it (resize, to_unsigned ...).
+        SemanticType builtinCallResult(const SubprogramInfo& callee, const ASTNode& node, const std::vector<const Expression*>& arguments);
+        /// The result of a builtin operator applied to operands of the given types: its length rule, or its length error.
+        RuleResult builtinOperatorResult(const SubprogramInfo& op, const std::vector<SemanticType>& operands) const;
 
         // ---- Compatibility (compat.cc) ---------------------------------------------------------------
 

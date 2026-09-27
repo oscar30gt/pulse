@@ -20,6 +20,7 @@ namespace Pulse::Parser
             formal.type = resolveTypeSpec(*generic->typeSpec);
             formal.hasDefault = generic->defaultValue != nullptr;
             formal.location = generic->source;
+            formal.declaration = generic.get();
 
             if (generic->defaultValue)
                 checkInitialValue(*generic->defaultValue, formal.type, "generic '" + generic->name + "'");
@@ -41,6 +42,7 @@ namespace Pulse::Parser
             symbol.mode = PortMode::In;
             symbol.isGeneric = true;
             symbol.objectId = newObjectId();
+            symbol.declaration = generic.declaration;
             declare(generic.name, std::move(symbol), generic.location);
         }
     }
@@ -65,6 +67,7 @@ namespace Pulse::Parser
             formal.type = resolveObjectType(*port->typeSpec, "Port", port->name);
             formal.hasDefault = port->defaultValue != nullptr;
             formal.location = port->source;
+            formal.declaration = port.get();
 
             if (port->defaultValue)
                 checkInitialValue(*port->defaultValue, formal.type, "port '" + port->name + "'");
@@ -85,6 +88,7 @@ namespace Pulse::Parser
             symbol.mode = port.mode;
             symbol.isPort = true;
             symbol.objectId = newObjectId();
+            symbol.declaration = port.declaration;
             declare(port.name, std::move(symbol), port.location);
         }
     }

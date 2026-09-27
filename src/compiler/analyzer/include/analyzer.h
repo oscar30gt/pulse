@@ -6,6 +6,8 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace Pulse::Parser
@@ -21,6 +23,15 @@ namespace Pulse::Parser
     // --------------------------------------------------------------------------------------------
 
     class AnalyzerContext;
+
+    /// The subprogram a call or an operator resolved to.
+    struct CallTarget
+    {
+        std::string name;                       ///< Identifier, or an operator symbol with its quotes ("\"+\"")
+        bool builtin = false;                   ///< An IEEE subprogram of the prelude (std_logic_1164, numeric_std)
+        const Declaration* declaration = nullptr;   ///< Its declaration or body
+        std::vector<std::string> parameters;    ///< Names of its parameters, in order
+    };
 
     /// The working library (`work`) of a design: the design units analyzed so far, and what analysis resolved in them
     /// that the linker needs to bind component instances to entities.
@@ -56,6 +67,40 @@ namespace Pulse::Parser
         /// The type analysis resolved for a generic or a port of an analyzed entity or component.
         /// @returns The type, or nullptr when the declaration was not analyzed into this library.
         const SemanticType* interfaceType(const Declaration& genericOrPort) const;
+
+        // ---- What the elaborator reads --------------------------------------------------------------
+
+        /// The type analysis gave an expression of an analyzed unit.
+        /// @returns The type, or nullptr when the expression was never typed (it is not a value, or was not analyzed).
+        const SemanticType* typeOf(const Expression& expr) const;
+
+        /// The declaration of the object a name refers to: a signal, port, generic, constant, variable, subprogram parameter
+        /// or alias declaration, or the for-loop statement of a loop parameter.
+        /// @returns The declaration, or nullptr when the name is not the name of an object (an enumeration literal, a unit,
+        /// a function call ...).
+        const ASTNode* declarationOf(const SymbolExpr& name) const;
+
+        /// The subprogram a call (a FunctionCallExpr or a SymbolExpr calling a function without arguments) or an operator
+        /// (BinaryOpExpr, UnaryOpExpr) resolved to.
+        /// @returns The subprogram, or nullopt when the node is not a call and the operator is a predefined one.
+        std::optional<CallTarget> calleeOf(const ASTNode& callOrOperator) const;
+
+        /// The resolved type of a signal, variable or constant declaration.
+        /// @returns The type, or nullptr when the declaration was not analyzed into this library.
+        const SemanticType* objectType(const Declaration& decl) const;
+
+        /// The entity of that name in the library, or nullptr.
+        const EntityDeclaration* entity(const std::string& name) const;
+
+        /// The architecture `name` of entity `entityName`, or nullptr.
+        const ArchitectureDeclaration* architecture(const std::string& entityName, const std::string& name) const;
+
+        /// The most recently analyzed architecture of an entity: the one the default binding picks (LRM 7.3.3), or nullptr.
+        const ArchitectureDeclaration* latestArchitecture(const std::string& entityName) const;
+
+        /// A type of the predefined environment ("std_logic", "boolean", "integer" ...), or nullptr. A design may declare
+        /// a type of the same name; that is a different type.
+        const TypeInfo* predefinedType(const std::string& name) const;
     };
 
     /// The order in which a set of design files is analyzed, as a make-like driver picks it: every file comes after the

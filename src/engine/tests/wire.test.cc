@@ -28,7 +28,7 @@ TEST(WireTest, LoseStateOnDisconnect) {
     src.drive(state);
 
     Wire wire8(8);
-    EXPECT_EQ(wire8.peek(), LogicVector::HighZ());
+    EXPECT_EQ(wire8.peek(), LogicVector::HighZ().range(8));
 
     src.addTarget(&wire8);
     EXPECT_EQ(wire8.peek(), state);
@@ -63,4 +63,95 @@ TEST(WireTest, DrainPullReflectsWireState) {
     drain.addSource(&src);
     // After propagation, drain should see the same state.
     EXPECT_EQ(drain.pull(), state);
+}
+// ---- Default value --------------------------------------------------------------------------------
+
+TEST(WireTest, DefaultValueIsTheInitialState) {
+    Wire wire(4, LogicVector(0b1010));
+    EXPECT_EQ(wire.peek(), LogicVector(0b1010));
+}
+
+TEST(WireTest, DefaultValueIsMaskedToTheWidth) {
+    Wire wire(4, LogicVector(0xFF));
+    EXPECT_EQ(wire.peek(), LogicVector(0xF));
+}
+
+TEST(WireTest, FirstSourceOverwritesTheDefaultValue) {
+    SignalSource src(4);
+    src.drive(LogicVector(0b0011));
+
+    Wire wire(4, LogicVector(0b1100));
+    wire.addSource(&src);
+    EXPECT_EQ(wire.peek(), LogicVector(0b0011));
+}
+
+// ---- Drive ----------------------------------------------------------------------------------------
+
+TEST(WireTest, DriveWithoutSourcesSetsAndPropagatesTheState) {
+    Wire wire(8);
+    SignalDrain drain(8);
+    drain.addSource(&wire);
+
+    EXPECT_TRUE(wire.drive(LogicVector(0x5A)));
+    EXPECT_EQ(wire.peek(), LogicVector(0x5A));
+    EXPECT_EQ(drain.pull(), LogicVector(0x5A));
+}
+
+TEST(WireTest, DriveIsMaskedToTheWidth) {
+    Wire wire(4);
+    wire.drive(LogicVector(0x1F));
+    EXPECT_EQ(wire.peek(), LogicVector(0xF));
+}
+
+TEST(WireTest, DriveIsIgnoredWhenTheWireHasSources) {
+    SignalSource src(4);
+    src.drive(LogicVector(0b0001));
+    Wire wire(4);
+    wire.addSource(&src);
+
+    EXPECT_TRUE(wire.drive(LogicVector(0b1111)));
+    EXPECT_EQ(wire.peek(), LogicVector(0b0001));
+}
+
+TEST(WireTest, DrivenValueStaysUntilDrivenAgain) {
+    Wire wire(1, LogicVector::FromBool(false));
+    wire.drive(LogicVector::FromBool(true));
+    wire.update();
+    wire.update();
+    EXPECT_EQ(wire.peek(), LogicVector::FromBool(true));
+}
+
+// ---- Event flag -----------------------------------------------------------------------------------
+
+TEST(WireTest, EventIsPublishedByTheNextUpdate) {
+    Wire wire(1, LogicVector::FromBool(false));
+    EXPECT_FALSE(wire.event());
+
+    wire.drive(LogicVector::FromBool(true));
+    EXPECT_FALSE(wire.event()); // the change belongs to the current tick
+
+    wire.update();
+    EXPECT_TRUE(wire.event()); // the next tick sees it as an event
+
+    wire.update();
+    EXPECT_FALSE(wire.event()); // no change during the previous tick
+}
+
+TEST(WireTest, DrivingTheSameValueIsNoEvent) {
+    Wire wire(1, LogicVector::FromBool(true));
+    wire.drive(LogicVector::FromBool(true));
+    wire.update();
+    EXPECT_FALSE(wire.event());
+}
+
+TEST(WireTest, ChangesFromSourcesAreEventsToo) {
+    SignalSource src(1);
+    src.drive(LogicVector::FromBool(false));
+    Wire wire(1);
+    wire.addSource(&src);
+    wire.update();
+
+    src.drive(LogicVector::FromBool(true));
+    wire.update();
+    EXPECT_TRUE(wire.event());
 }

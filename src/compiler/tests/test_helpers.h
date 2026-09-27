@@ -6,11 +6,15 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "analyzer.h"
+#include "elaborator.h"
 #include "linker.h"
+#include "subgraph.h"
 #include "parser.h"
 #include "tokenizer.h"
 
@@ -119,6 +123,90 @@ namespace TestUtil
         try
         {
             compileFiles(sources);
+        }
+        catch (const compiler_error& e)
+        {
+            return e.what();
+        }
+        return "<no error>";
+    }
+
+    /// A design compiled like the compiler does it (parse, analyze, link), elaborated from its top entity and built into a
+    /// root subgraph ready to simulate. Every stage keeps what the next one refers to, so the object is not copied or moved.
+    struct Simulation
+    {
+        DesignLibrary library;
+        ASTRoot design;
+        ElaboratedDesign elaborated;
+        std::unique_ptr<Pulse::Engine::Subgraph> graph;
+        uint64_t ticks = 0;
+
+        Simulation(const std::vector<std::string>& sources, const std::string& top = "top", const std::string& architecture = "")
+        {
+            std::vector<ASTRoot> files = analyzeFiles(sources, library);
+            Linker linker(library);
+            for (ASTRoot& file : files)
+                linker.addAST(std::move(file));
+            design = linker.link();
+
+            ElaborationOptions options;
+            options.topEntity = top;
+            options.topArchitecture = architecture;
+            elaborated = elaborate(library, design, options);
+            graph = std::make_unique<Pulse::Engine::Subgraph>(*elaborated.top);
+        }
+
+        Simulation(const Simulation&) = delete;
+        Simulation& operator=(const Simulation&) = delete;
+
+        /// Runs the design for `count` ticks (femtoseconds).
+        void run(uint64_t count)
+        {
+            for (uint64_t i = 0; i < count; ++i, ++ticks)
+                graph->tick();
+        }
+
+        /// The value of a signal or port, by path: "s" in the top, "u1.s" in instance u1 of the top, and so on.
+        Pulse::Engine::LogicVector value(const std::string& path) const
+        {
+            Pulse::Engine::SubgraphSnapshot snapshot = graph->takeSnapshot();
+            const Pulse::Engine::SubgraphSnapshot* level = &snapshot;
+
+            std::string rest = path;
+            for (size_t dot = rest.find('.'); dot != std::string::npos; dot = rest.find('.'))
+            {
+                auto child = level->subgraphs.find(rest.substr(0, dot));
+                if (child == level->subgraphs.end())
+                    throw std::runtime_error("no instance '" + rest.substr(0, dot) + "' on the path " + path);
+                level = &child->second;
+                rest = rest.substr(dot + 1);
+            }
+
+            for (const auto* signals : { &level->inputs, &level->outputs, &level->wires })
+                if (auto found = signals->find(rest); found != signals->end())
+                    return found->second.second;
+            throw std::runtime_error("no signal '" + rest + "' on the path " + path);
+        }
+
+        /// The value of a signal as an unsigned number (it must hold no X or Z).
+        uint64_t number(const std::string& path) const
+        {
+            return static_cast<uint64_t>(value(path));
+        }
+
+        /// The value of a signal as a string of 0, 1, X and Z, `width` characters long.
+        std::string bits(const std::string& path, uint8_t width) const
+        {
+            return value(path).str(width);
+        }
+    };
+
+    /// Message of the diagnostic raised while compiling and elaborating `sources` from `top`, or "<no error>".
+    inline std::string elaborationError(const std::vector<std::string>& sources, const std::string& top = "top")
+    {
+        try
+        {
+            Simulation simulation(sources, top);
         }
         catch (const compiler_error& e)
         {

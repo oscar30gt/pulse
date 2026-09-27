@@ -272,7 +272,8 @@ TEST(Subprograms_Calls, OperatorSymbolNamesAreCalledLikeFunctions)
 {
     const std::string f = "function \"+\"(l, r : color) return color is begin return l; end; ";
     EXPECT_EQ(proc(f, "col <= \"+\"(red, green);"), kOk);
-    EXPECT_TRUE(mentions(proc("", "col <= \"and\"(red, green);"), "'\"and\"' is not declared"));
+    // "and" exists (std_logic_1164 declares it for std_logic and its vectors), but not for an enumeration of the design.
+    EXPECT_TRUE(mentions(proc("", "col <= \"and\"(red, green);"), "No overload of '\"and\"' accepts these arguments"));
 }
 
 // ===========================================================================

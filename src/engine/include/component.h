@@ -65,6 +65,10 @@ namespace Pulse::Engine
         /// as asynchronous circuits or sequential elements
         /// with an specific delay.
         virtual void update() { /* Optional override */ };
+
+        /// Applies the effects a component postponed to the end of the tick, once every component has been updated.
+        /// Processes use it for their signal assignments, which VHDL applies after every process has run.
+        virtual void commit() { /* Optional override */ };
     };
 
 } // namespace Pulse::Engine

@@ -48,7 +48,9 @@ namespace Pulse::Parser
         if (!handler)
             fail("The analyzer has no handler for this kind of expression", expr);
 
-        return (*handler)(expr, expected);
+        SemanticType type = (*handler)(expr, expected);
+        m_expressionTypes[&expr] = type;
+        return type;
     }
 
     void AnalyzerContext::rejectNonValue(const Expression& expr) const
@@ -99,7 +101,8 @@ namespace Pulse::Parser
                     break;
             }
 
-            checkObjectAccess(rootObject(expr), expr, false);
+            const RootObject root = rootObject(expr);
+            checkObjectAccess(root, expr, false);
             return symbol->type;
         }
 
@@ -141,6 +144,9 @@ namespace Pulse::Parser
                 const Symbol* symbol = find(identifier->name);
                 if (!symbol)
                     return {};
+
+                if (symbol->declaration)
+                    m_denotations[identifier] = symbol->declaration;
 
                 RootObject root;
                 root.node = identifier;
