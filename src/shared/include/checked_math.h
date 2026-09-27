@@ -27,11 +27,12 @@ namespace Pulse
 
     inline std::optional<int64_t> checkedMul(int64_t a, int64_t b)
     {
+        // Checked before multiplying: signed overflow is undefined, so an optimizer may drop a test made on the product.
         if (a == 0 || b == 0) return 0;
-        if ((a == -1 && b == kInt64Min) || (b == -1 && a == kInt64Min)) return std::nullopt;
-        const int64_t product = a * b;
-        if (product / b != a) return std::nullopt;
-        return product;
+        const bool overflows = a > 0 ? (b > 0 ? a > kInt64Max / b : b < kInt64Min / a)
+                                     : (b > 0 ? a < kInt64Min / b : b < kInt64Max / a);
+        if (overflows) return std::nullopt;
+        return a * b;
     }
 
     /// base ** exponent for a non-negative exponent; trivial bases never loop.

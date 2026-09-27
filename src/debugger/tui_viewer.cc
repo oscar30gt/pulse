@@ -14,6 +14,7 @@
 #include <windows.h>
 
 #else
+#include <cerrno>
 #include <csignal>
 #include <sys/ioctl.h>
 #include <sys/select.h>
@@ -257,7 +258,13 @@ namespace Pulse::Debugger
         }
 
         char key{};
-        if (::read(STDIN_FILENO, &key, 1) != 1)
+        const ssize_t count = ::read(STDIN_FILENO, &key, 1);
+        if (count == 0 || (count < 0 && errno != EINTR && errno != EAGAIN))
+        {
+            // End of input or a broken terminal: nothing more can be read, so leave instead of spinning.
+            return Key::quit;
+        }
+        if (count != 1)
         {
             return Key::none;
         }
@@ -272,6 +279,16 @@ namespace Pulse::Debugger
         if (key != '\x1b')
         {
             return Key::none;
+        }
+
+        // An arrow key sends ESC [ X at once; a lone ESC is the Esc key, so it quits without waiting for another key.
+        fd_set pending;
+        FD_ZERO(&pending);
+        FD_SET(STDIN_FILENO, &pending);
+        timeval wait{ 0, 50000 };
+        if (select(STDIN_FILENO + 1, &pending, nullptr, nullptr, &wait) <= 0)
+        {
+            return Key::quit;
         }
 
         char sequence[2]{};

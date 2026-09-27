@@ -1,5 +1,5 @@
 // splitter.test.cc
-// Comprehensive unit tests for Pulse::Splitter component.
+// Comprehensive unit tests for Pulse::Engine::Splitter component.
 
 #include <gtest/gtest.h>
 #include "splitter.h"

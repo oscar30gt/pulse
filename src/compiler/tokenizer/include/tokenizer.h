@@ -38,12 +38,14 @@ namespace Pulse::Parser
         std::string original;   ///< The token exactly as written in the source (case preserved)
         size_t line;            ///< Line where the token starts (1-based)
         size_t column;          ///< Column where the token starts (1-based, counted in bytes)
+        size_t file = noFile;   ///< Index of the source file, as given to the Tokenizer
     };
     
     /// Splits a single VHDL file into tokens and lets the caller walk through them with a cursor.
     ///
     /// The tokenizer follows the lexical rules of VHDL-2008 (IEEE 1076-2008, clause 15): every valid lexical element
-    /// is accepted whether or not the rest of the pipeline supports it, and comments and whitespace are dropped.
+    /// except extended identifiers (`\name\`, rejected) is accepted whether or not the rest of the pipeline supports it,
+    /// and comments and whitespace are dropped.
     /// It has no notion of syntax or meaning; the constructor throws `ast_lexical_error` only for text that is not a
     /// valid token (malformed numbers, unterminated strings, stray characters, ...).
     class Tokenizer
@@ -53,8 +55,11 @@ namespace Pulse::Parser
         Token m_endOfFile;
 
     public:
-        Tokenizer(std::istream& input);
-        Tokenizer(const std::string& input);
+        /// Tokenizes a whole source.
+        /// @param input The VHDL text.
+        /// @param file Index of the source file, stamped on every token and lexical error so diagnostics can name the file.
+        Tokenizer(std::istream& input, size_t file = noFile);
+        Tokenizer(const std::string& input, size_t file = noFile);
         ~Tokenizer();
 
         /// Get the current cursor position.

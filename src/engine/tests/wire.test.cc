@@ -1,5 +1,5 @@
-// wire_test.cpp
-// Exhaustive tests for Pulse::Wire using GoogleTest.
+// wire.test.cc
+// Exhaustive tests for Pulse::Engine::Wire using GoogleTest.
 
 #include <gtest/gtest.h>
 #include "wire.h"

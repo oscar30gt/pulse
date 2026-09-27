@@ -535,8 +535,21 @@ TEST(Subprograms_Purity, ProceduresThatWaitNeedAProcessWithoutASensitivityList)
     EXPECT_EQ(arch(waits, "process begin pause; end process;"), kOk);
     EXPECT_TRUE(mentions(arch(waits, "process (a) begin pause; end process;"), "has a sensitivity list"));
     EXPECT_TRUE(mentions(arch(waits, "process (all) begin pause; end process;"), "has a sensitivity list"));
-    EXPECT_TRUE(mentions(arch(waits, "pause;"), "concurrent procedure call cannot call"));
     EXPECT_EQ(arch("procedure tick is begin null; end; ", "process (a) begin tick; end process; tick;"), kOk);
+}
+
+TEST(Subprograms_Purity, AConcurrentCallMayCallAProcedureThatWaits)
+{
+    // LRM 11.4: the equivalent process of a concurrent procedure call has no sensitivity list, only a final wait statement.
+    const std::string waits = "procedure pause is begin wait for 1 ns; end; ";
+    EXPECT_EQ(arch(waits, "pause;"), kOk);
+
+    // The clock generator of many testbenches.
+    const std::string clockGenerator =
+        "procedure clk_gen(signal clk : out std_logic; constant half : time) is begin "
+        "loop clk <= '0'; wait for half; clk <= '1'; wait for half; end loop; end procedure; ";
+    EXPECT_EQ(arch(clockGenerator, "clk_gen(a, 5 ns);"), kOk);
+    EXPECT_EQ(arch(clockGenerator, "gen : clk_gen(clk => a, half => 5 ns);"), kOk);
 }
 
 TEST(Subprograms_Purity, WaitInsideAProcedureIsFine)

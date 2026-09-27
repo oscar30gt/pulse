@@ -22,10 +22,10 @@ namespace TestUtil
 {
     using namespace Pulse::Parser;
 
-    /// Tokenizes and parses a VHDL source string.
-    inline ASTRoot parseSource(const std::string& source)
+    /// Tokenizes and parses a VHDL source string, as the source file `file` of a design.
+    inline ASTRoot parseSource(const std::string& source, size_t file = noFile)
     {
-        Tokenizer tokenizer(source);
+        Tokenizer tokenizer(source, file);
         return VHDLtoAST(tokenizer);
     }
 
@@ -57,7 +57,7 @@ namespace TestUtil
         return dynamic_cast<const T*>(node);
     }
 
-    /// Message of the ast_error thrown while parsing `source`, or "<no error>".
+    /// Message of the compiler_error thrown while parsing `source`, or "<no error>".
     inline std::string parseErrorMessage(const std::string& source)
     {
         try
@@ -92,13 +92,14 @@ namespace TestUtil
         return "<no error>";
     }
 
-    /// Parses every source as a design file of its own and analyzes the files into `library`, in the order analysisOrder()
-    /// gives. Returns the parsed files: the library refers to them, so they must outlive it.
+    /// Parses every source as a design file of its own (its index in `sources` is its file index) and analyzes the files
+    /// into `library`, in the order analysisOrder() gives. Returns the parsed files: the library refers to them, so they must
+    /// outlive it.
     inline std::vector<ASTRoot> analyzeFiles(const std::vector<std::string>& sources, DesignLibrary& library)
     {
         std::vector<ASTRoot> files;
-        for (const std::string& source : sources)
-            files.push_back(parseSource(source));
+        for (size_t index = 0; index < sources.size(); ++index)
+            files.push_back(parseSource(sources[index], index));
 
         for (size_t index : analysisOrder(files))
             library.analyze(files[index]);

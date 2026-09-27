@@ -253,11 +253,10 @@ namespace Pulse::Parser
             return std::nullopt;
 
         const ScalarRange& r = prefix.range;
-        const bool isLow = name == "low" || name == "left";
         if (prefix.info->cls == TypeClass::Real)
-            return makeReal(prefix.info, isLow ? r.realLow : r.realHigh);
+            return makeReal(prefix.info, name == "left" ? r.realLeft() : name == "right" ? r.realRight() : name == "low" ? r.realLow : r.realHigh);
 
-        return makeInteger(prefix.info, isLow ? r.low : r.high);
+        return makeInteger(prefix.info, name == "left" ? r.left() : name == "right" ? r.right() : name == "low" ? r.low : r.high);
     }
 
     // ---- Entry points ---------------------------------------------------------------------------

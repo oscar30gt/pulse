@@ -10,8 +10,9 @@
 // simply runs a SourceReader over the source once, at construction.
 //
 // The tokenizer is context-free: it follows the lexical rules of IEEE 1076-2008 (clause 15) and nothing else. It
-// accepts every lexical element the standard allows, whether or not the rest of the pipeline can use it, and raises
-// ast_lexical_error (with the position of the offending character) only for text that is not a valid token.
+// accepts every lexical element the standard allows except extended identifiers, whether or not the rest of the
+// pipeline can use it, and raises ast_lexical_error (with the position of the offending character) only for text that
+// is not a valid token.
 // The single piece of context it uses is the LRM's own rule for telling an attribute tick from a character literal
 // (see tokenizeCharacterOrTick).
 
@@ -36,6 +37,8 @@ namespace Pulse::Parser
         const std::string& source;
         /// Destination of the emitted tokens.
         std::vector<Token>& out;
+        /// Index of the source file, stamped on every token and error.
+        size_t file;
         /// Byte offset of the cursor.
         size_t index = 0;
         /// 1-based line of the cursor.
@@ -135,8 +138,8 @@ namespace Pulse::Parser
         [[noreturn]] void failUnexpectedCharacter() const;
 
     public:
-        /// Creates a reader over `source` that will append tokens to `out`.
-        explicit SourceReader(const std::string& source, std::vector<Token>& out);
+        /// Creates a reader over `source` (the source file `file`) that will append tokens to `out`.
+        SourceReader(const std::string& source, std::vector<Token>& out, size_t file);
 
         /// Run the full tokenization loop. Returns the position just past the last character of the source.
         SourceMark tokenize();

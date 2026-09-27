@@ -6,16 +6,16 @@ namespace Pulse::Parser
 {
     // -------- Tokenizer Implementation ----------------------------------------------------------
 
-    Tokenizer::Tokenizer(std::istream& input)
-        : Tokenizer(std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>()))
+    Tokenizer::Tokenizer(std::istream& input, size_t file)
+        : Tokenizer(std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>()), file)
     { }
 
-    Tokenizer::Tokenizer(const std::string& input)
+    Tokenizer::Tokenizer(const std::string& input, size_t file)
     {
-        SourceReader reader(input, m_tokens);
+        SourceReader reader(input, m_tokens, file);
         SourceMark end = reader.tokenize();
         
-        m_endOfFile = { TokenType::EndOfFile, "", "", end.line, end.column };
+        m_endOfFile = { TokenType::EndOfFile, "", "", end.line, end.column, file };
     }
 
     Tokenizer::~Tokenizer() = default;

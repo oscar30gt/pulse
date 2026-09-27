@@ -1,4 +1,4 @@
-// processBox_test.cc
+// processBox.test.cc
 // Tests for Pulse::Engine::SequentialProcessBox and CombinationalProcessBox using GoogleTest.
 
 #include <gtest/gtest.h>

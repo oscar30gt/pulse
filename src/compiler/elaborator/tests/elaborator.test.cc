@@ -194,6 +194,34 @@ TEST(Elaborator_Blueprint, InstancesWithTheSameGenericValuesShareABlueprint)
     EXPECT_EQ(u1.bp, u2.bp);
 }
 
+TEST(Elaborator_Blueprint, RealGenericsShareABlueprintOnlyWhenTheyAreEqual)
+{
+    // Values that print alike with six decimals are still different generics.
+    const std::string leaf = kContext +
+        "entity leaf is generic (r : real := 1.0); port (y : out std_logic); end leaf;"
+        "architecture rtl of leaf is begin y <= '1'; end rtl;";
+    const std::string design = top(
+        "component leaf generic (r : real := 1.0); port (y : out std_logic); end component; signal y1, y2, y3 : std_logic;",
+        "u1 : leaf generic map (r => 1.0) port map (y1); u2 : leaf generic map (r => 1.0000001) port map (y2);"
+        "u3 : leaf generic map (r => 1.0) port map (y3);");
+
+    Simulation sim({ leaf, design });
+    EXPECT_EQ(sim.elaborated.blueprints.size(), 3u);
+    const auto& u1 = static_cast<const Pulse::Engine::SubgraphInstance&>(*topBlueprint(sim).components.at("u1"));
+    const auto& u2 = static_cast<const Pulse::Engine::SubgraphInstance&>(*topBlueprint(sim).components.at("u2"));
+    const auto& u3 = static_cast<const Pulse::Engine::SubgraphInstance&>(*topBlueprint(sim).components.at("u3"));
+    EXPECT_NE(u1.bp, u2.bp);
+    EXPECT_EQ(u1.bp, u3.bp);
+}
+
+TEST(Elaborator_Blueprint, ADescendingScalarSubtypeStartsAtItsLeftBound)
+{
+    Simulation sim({ top("subtype down is integer range 9 downto 3; signal d : down; type level is range 5 downto 1; signal l : level;", "") });
+    const auto& bp = topBlueprint(sim);
+    EXPECT_EQ(bp.wires.at("d").defaultValue, Pulse::Engine::LogicVector(9));     // down'left
+    EXPECT_EQ(bp.wires.at("l").defaultValue, Pulse::Engine::LogicVector(5));     // level'left
+}
+
 // ===========================================================================
 // 3. RULES ONLY AN INSTANCE CAN CHECK
 // ===========================================================================
@@ -273,9 +301,106 @@ TEST(Elaborator_Unsupported, ExpressionsThatAreNotLoweredYet)
                                  "y <= f(a);"), "Calling a function declared in the design ('f')"));
     EXPECT_TRUE(mentions(errorOf("signal v : std_logic_vector(3 downto 0); signal i : integer; signal y : std_logic;", "y <= v(i);"),
                          "Indexing a vector with a value that is not known at elaboration time"));
-    EXPECT_TRUE(mentions(errorOf("signal a, b, y : unsigned(3 downto 0);", "y <= a / b;"), "'/' on values that are not known"));
+    EXPECT_TRUE(mentions(errorOf("signal a, b, y : unsigned(3 downto 0);", "y <= a / b;"), "'/' on unsigned and signed vectors"));
     EXPECT_TRUE(mentions(errorOf("signal a, y : unsigned(3 downto 0); signal n : integer;", "y <= a sla n;"), "'sla'"));
     EXPECT_TRUE(mentions(errorOf("signal a : std_logic; alias b : std_logic is a;", ""), "Aliases"));
+}
+
+TEST(Elaborator_Unsupported, ArithmeticThatIsNotLoweredYet)
+{
+    const std::string numbers = "signal a, b, y : unsigned(3 downto 0); signal n, m : integer;";
+    EXPECT_TRUE(mentions(errorOf(numbers, "y <= a / b;"), "'/' on unsigned and signed vectors is not supported yet"));
+    EXPECT_TRUE(mentions(errorOf(numbers, "y <= a mod 3;"), "'mod' on unsigned and signed vectors"));
+    EXPECT_TRUE(mentions(errorOf(numbers, "y <= a rem b;"), "'rem' on unsigned and signed vectors"));
+    EXPECT_TRUE(mentions(errorOf("constant c : unsigned(3 downto 0) := \"0110\"; signal y : unsigned(3 downto 0);", "y <= c / 2;"),
+                         "'/' on unsigned and signed vectors")) << "even when both operands are known";
+
+    // Integer division is folded when it is static, and only then.
+    EXPECT_TRUE(mentions(errorOf(numbers, "m <= n / 2;"), "'/' on values that are not known at elaboration time"));
+    EXPECT_TRUE(mentions(errorOf(numbers, "m <= n mod 2;"), "'mod' on values that are not known at elaboration time"));
+    EXPECT_TRUE(mentions(errorOf(numbers, "m <= n rem 2;"), "'rem' on values that are not known at elaboration time"));
+    EXPECT_TRUE(mentions(errorOf(numbers, "m <= n ** 2;"), "'**' on values that are not known at elaboration time"));
+}
+
+TEST(Elaborator_Unsupported, OperationsWiderThanTheEngine)
+{
+    EXPECT_TRUE(mentions(errorOf("signal a, b : unsigned(39 downto 0); signal y : unsigned(63 downto 0);", "y <= resize(a * b, 64);"),
+                         "A product wider than 64 bits"));
+    EXPECT_TRUE(mentions(errorOf("signal a, b : signed(31 downto 0); signal y : signed(63 downto 0);", "y <= a * b;"),
+                         "A signed product wider than 32 bits"));
+    EXPECT_TRUE(mentions(errorOf("type big is range 0 to 1099511627776; signal x, y : big;", "y <= x * x;"),
+                         "Multiplying integers wider than 32 bits"));
+    EXPECT_TRUE(mentions(errorOf("signal a, b : unsigned(39 downto 0); signal y : unsigned(63 downto 0);", "y <= resize(a & b, 64);"),
+                         "Vectors wider than 64 elements"));
+    EXPECT_TRUE(mentions(errorOf("signal n : natural; signal y : unsigned(7 downto 0);", "y <= resize(to_unsigned(n, 65), 8);"),
+                         "Vectors of 65 elements"));
+    EXPECT_TRUE(mentions(errorOf("signal u : unsigned(63 downto 0); signal f : boolean;", "f <= u = 5;"),
+                         "Comparing a 64-bit vector with an integer"));
+    EXPECT_TRUE(mentions(errorOf("signal a : std_logic_vector(3 downto 0); signal b : std_logic_vector(7 downto 0); signal f : boolean;", "f <= a < b;"),
+                         "Ordering vectors of different lengths"));
+    EXPECT_TRUE(mentions(errorOf("signal y : std_logic;",
+                                 "process variable v : std_logic := '0'; begin for i in 0 to 5000 loop v := not v; end loop; y <= v; wait; end process;"),
+                         "A 'for' loop of more than 4096 iterations"));
+}
+
+TEST(Elaborator_Unsupported, ValuesTheEngineCannotHold)
+{
+    // The analysis refuses a written null range; one that depends on a generic is only known at elaboration.
+    const std::string nullArray = kContext + "entity top is generic (w : natural := 0); end top;"
+                                             "architecture sim of top is signal v : std_logic_vector(w - 1 downto 0); begin end sim;";
+    EXPECT_TRUE(mentions(elaborationError({ nullArray }), "Null arrays"));
+    EXPECT_TRUE(mentions(errorOf("signal v, y : std_logic_vector(3 downto 0);", "y <= v(3 downto 0) & v(0 downto 1);"), "Null slices"));
+    EXPECT_TRUE(mentions(errorOf("signal v : std_logic_vector(3 downto 0); signal f : boolean;", "f <= v = \"" + std::string(65, '0') + "\";"),
+                         "String literals that are not vectors of std_logic of at most 64 elements"));
+    EXPECT_TRUE(mentions(errorOf("signal n : integer; signal f : boolean;", "f <= real(n) > 1.5;"), "The conversion to 'real'"));
+    EXPECT_TRUE(mentions(errorOf("signal s : std_logic; signal n : integer; attribute weight : integer; attribute weight of s : signal is 3;",
+                                 "n <= s'weight;"), "The attribute 'weight' here"));
+    EXPECT_TRUE(mentions(errorOf("signal y : std_logic;", "y <= <<signal .top.x : std_logic>>;"), "External names"));
+}
+
+TEST(Elaborator_Unsupported, EventsOfPartsOfASignal)
+{
+    const std::string declarations = "signal v : std_logic_vector(1 downto 0); signal f : boolean;";
+    EXPECT_TRUE(mentions(errorOf(declarations, "f <= v(0)'event;"), "'event of something other than a whole signal or port"));
+    EXPECT_TRUE(mentions(errorOf(declarations, "f <= rising_edge(v(0));"), "An edge of something other than a whole signal or port"));
+    EXPECT_TRUE(mentions(errorOf(declarations, "f <= falling_edge(v(1));"), "An edge of something other than a whole signal or port"));
+    EXPECT_TRUE(mentions(errorOf("signal y : std_logic;", "process (<<signal .top.x : std_logic>>) begin y <= '1'; end process;"),
+                         "This name in a sensitivity list"));
+}
+
+TEST(Elaborator_Unsupported, OperatorsDeclaredInTheDesignOrCalledByName)
+{
+    EXPECT_TRUE(mentions(errorOf("function \"+\"(l, r : std_logic) return std_logic is begin return l xor r; end function; signal a, b, y : std_logic;",
+                                 "y <= a + b;"), "Operators declared in the design"));
+    EXPECT_TRUE(mentions(errorOf("function \"-\"(l : std_logic) return std_logic is begin return not l; end function; signal a, y : std_logic;",
+                                 "y <= -a;"), "Operators declared in the design"));
+
+    // An IEEE operator of one operand, called by its name.
+    EXPECT_TRUE(mentions(errorOf("signal a, y : std_logic;", "y <= \"not\"(a);"), "The function 'not' on values that are not known"));
+    EXPECT_TRUE(mentions(errorOf("signal v : std_logic_vector(3 downto 0); signal y : std_logic;", "y <= \"and\"(v);"),
+                         "The function 'and' on values that are not known"));
+}
+
+TEST(Elaborator_Unsupported, AssignmentsTheEngineCannotLower)
+{
+    EXPECT_TRUE(mentions(errorOf("signal v : std_logic_vector(3 downto 0); signal i : integer range 0 to 3;", "v(i) <= '1';"),
+                         "Assigning an element chosen by a value that is not known at elaboration time"));
+    EXPECT_TRUE(mentions(errorOf("signal s, y : std_logic;", "with s select y <= '1' when '1', unaffected when others;"),
+                         "'unaffected' in a selected signal assignment"));
+}
+
+TEST(Elaborator_Unsupported, AssociationsTheEngineCannotConnect)
+{
+    const std::string inout = kContext + "entity leaf is port (b : inout std_logic); end leaf; architecture rtl of leaf is begin end rtl;";
+    const std::string partOfSignal = top("component leaf port (b : inout std_logic); end component; signal v : std_logic_vector(1 downto 0);",
+                                         "u : leaf port map (b => v(0));");
+    EXPECT_TRUE(mentions(elaborationError({ inout, partOfSignal }), "Connecting an inout port to a part of a signal"));
+
+    const std::string generic = kContext + "entity leaf is generic (g : std_logic_vector(1 downto 0) := \"00\"); end leaf;"
+                                           "architecture rtl of leaf is begin end rtl;";
+    const std::string partOfGeneric = top("component leaf generic (g : std_logic_vector(1 downto 0) := \"00\"); end component;",
+                                          "u : leaf generic map (g(0) => '1', g(1) => '0');");
+    EXPECT_TRUE(mentions(elaborationError({ generic, partOfGeneric }), "A generic association to something other than a whole generic"));
 }
 
 TEST(Elaborator_Unsupported, ConstructsOfPortMaps)

@@ -8,18 +8,34 @@
 /// Usage: ./pulse <project_path> [options]
 ///
 
+// Platform headers first: the project headers define helpers (ssize_t on MSVC) that must not leak into them.
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <io.h>
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "analyzer.h"
 #include "ast.h"
 #include "blueprint.h"
+#include "checked_math.h"
+#include "diagnostics.h"
 #include "elaborator.h"
 #include "linker.h"
 #include "parser.h"
@@ -28,7 +44,7 @@
 #include "tui.h"
 #include "waveform.h"
 
-#define PULSE_VERSION "1.0.0"
+#define PULSE_VERSION "2.0.0"
 
 using namespace Pulse;
 using namespace Pulse::Parser;
@@ -41,7 +57,7 @@ using namespace Pulse::Debugger;
 /// Command-line options of a simulation.
 struct Options
 {
-    std::string projectPath;            ///< The path to the project directory (first positional argument)
+    std::string projectPath;            ///< The path to the project directory (the positional argument)
     bool recursive = false;             ///< Search for VHDL files in subdirectories too (-R, --recursive)
     std::string topEntity = "top";      ///< The top-level entity to simulate (--top) [lowercased]
     std::string architecture;           ///< The architecture of the top entity (--arch) [lowercased]; empty: its latest one
@@ -49,10 +65,11 @@ struct Options
     LogicMode logic = LogicMode::Logic; ///< -Ologic: std_logic as 01XZ logic. The only mode for now, so it is always on.
 };
 
-/// Parses a VHDL file and returns its abstract syntax tree.
+/// Tokenizes and parses one VHDL file.
 /// @param filename The path to the VHDL file to parse.
+/// @param file The index of the file, which every location of its tree refers to.
 /// @returns AST representing the parsed file.
-ASTRoot fileParsingPipeline(const std::string& filename);
+ASTRoot fileParsingPipeline(const std::filesystem::path& filename, size_t file);
 
 /// Prints the help message to the console.
 void printHelp();
@@ -60,10 +77,13 @@ void printHelp();
 /// Prints the version information to the console.
 void printVersion();
 
-/// Parses command-line arguments into the options of the simulation. Exits with an error for an unknown option.
-/// @param argc The number of command-line arguments.
-/// @param argv The array of command-line arguments; argv[1] is the project path.
+/// Parses command-line arguments into the options of the simulation. Prints the help or the version and exits when they
+/// are asked for, and exits with an error for an unknown option, a missing value or a missing project path.
 Options parseArgs(int argc, char* argv[]);
+
+/// Parses the value of --end: an integer followed by fs, ps, ns, us, ms or s (fs when there is no unit).
+/// Exits with an error for a malformed value or one that does not fit in the simulation time.
+simTime_t parseEndTime(const std::string& text);
 
 /// Fills the sources vector with the paths of all VHDL files found in the specified project path.
 /// @param projectPath The path to the project directory to search for VHDL files.
@@ -71,36 +91,22 @@ Options parseArgs(int argc, char* argv[]);
 /// @param[out] sources Output vector that will be filled with the paths of found VHDL files, in a stable order.
 void getFilenamesFromProjectPath(const std::string& projectPath, bool recursive, std::vector<std::filesystem::path>& sources);
 
-/// Prints a compiler diagnostic with its location, and the file it comes from when it is known.
-void printDiagnostic(const compiler_error& error, const std::string& file = "");
+/// Whether diagnostics written to the standard error can be colored: it is a terminal and NO_COLOR is not set.
+/// On Windows it also turns on the escape sequences of the console.
+bool colorsOnStandardError();
+
+/// Prints a compiler diagnostic in the GCC style, with the file, the line and a caret when its location is known.
+/// @param sources The source files of the design; the location of the error refers to one of them by index.
+void printDiagnostic(const compiler_error& error, const std::vector<std::filesystem::path>& sources);
+
+/// Prints `pulse: error: <message>`, the way command-line errors are reported, and exits with status 1.
+[[noreturn]] void failWith(const std::string& message);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char* argv[])
 {
-    const std::string first = argc > 1 ? argv[1] : "";
-
-    // $ pulse --help ...
-    if (first == "-h" || first == "--help")
-    {
-        printHelp();
-        return 0;
-    }
-
-    // $ pulse --version ...
-    if (first == "-v" || first == "--version")
-    {
-        printVersion();
-        return 0;
-    }
-
-    if (argc < 2)
-    {
-        std::cerr << "Usage: " << argv[0] << " <project_path> [options]\n";
-        return 1;
-    }
-
     const Options options = parseArgs(argc, argv);
 
     std::vector<std::filesystem::path> sources;
@@ -110,49 +116,25 @@ int main(int argc, char* argv[])
     }
     catch (const std::filesystem::filesystem_error& e)
     {
-        std::cerr << "Error: cannot read the project directory '" << options.projectPath << "': " << e.what() << '\n';
-        return 1;
+        failWith("cannot read the project directory '" + options.projectPath + "': " + e.code().message());
     }
 
     if (sources.empty())
-    {
-        std::cerr << "Error: no VHDL files (.vhd, .vhdl) found in '" << options.projectPath << "'.\n";
-        return 1;
-    }
+        failWith("no VHDL files (.vhd, .vhdl) found in '" + options.projectPath + "'");
 
     // --------------------------------------------------------------------------------------------
 
     try
     {
-        // Every file is parsed on its own.
+        // Every file is parsed on its own; its index in `sources` travels with every location of its tree.
         std::vector<ASTRoot> files;
-        for (const auto& source : sources)
-        {
-            try
-            {
-                files.push_back(fileParsingPipeline(source.string()));
-            }
-            catch (const compiler_error& e)
-            {
-                printDiagnostic(e, source.string());
-                return 1;
-            }
-        }
+        for (size_t index = 0; index < sources.size(); ++index)
+            files.push_back(fileParsingPipeline(sources[index], index));
 
         // Every file is analyzed into the work library after the files that declare the entities it needs.
         DesignLibrary work;
         for (size_t index : analysisOrder(files))
-        {
-            try
-            {
-                work.analyze(files[index]);
-            }
-            catch (const compiler_error& e)
-            {
-                printDiagnostic(e, sources[index].string());
-                return 1;
-            }
-        }
+            work.analyze(files[index]);
 
         // Linking binds every component instance to its entity and merges the files into one design.
         Linker linker(work);
@@ -185,18 +167,16 @@ int main(int argc, char* argv[])
 
     catch (const compiler_error& e)
     {
-        printDiagnostic(e);
+        printDiagnostic(e, sources);
         return 1;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error: " << e.what() << '\n';
-        return 1;
+        failWith(e.what());
     }
     catch (...)
     {
-        std::cerr << "Error: Unknown error occurred.\n";
-        return 1;
+        failWith("unknown error");
     }
     return 0;
 }
@@ -204,37 +184,76 @@ int main(int argc, char* argv[])
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-ASTRoot fileParsingPipeline(const std::string& filename)
+ASTRoot fileParsingPipeline(const std::filesystem::path& filename, size_t file)
 {
     std::ifstream inputFile(filename);
     if (!inputFile.is_open())
-    {
-        std::cerr << "Could not open file " << filename << ".\n";
-        std::exit(1);
-    }
+        failWith("cannot open the file '" + filename.string() + "'");
 
-    Tokenizer tokenizer(inputFile);
+    Tokenizer tokenizer(inputFile, file);
     return VHDLtoAST(tokenizer);
 }
 
-void printDiagnostic(const compiler_error& error, const std::string& file)
+bool colorsOnStandardError()
 {
-    std::cerr << "Error";
-    if (!file.empty())
-        std::cerr << " in " << file;
-    std::cerr << " (line " << error.location().line << ", column " << error.location().column << "): " << error.what() << '\n';
+    // NO_COLOR (https://no-color.org): any non-empty value turns colors off.
+    #ifdef _MSC_VER
+    char* noColor = nullptr;
+    size_t length = 0;
+    const bool colorsOff = _dupenv_s(&noColor, &length, "NO_COLOR") == 0 && noColor && *noColor;
+    std::free(noColor);
+    #else
+    const char* noColor = std::getenv("NO_COLOR");
+    const bool colorsOff = noColor && *noColor;
+    #endif
+    if (colorsOff)
+        return false;
+
+    #ifdef _WIN32
+    if (!_isatty(_fileno(stderr)))
+        return false;
+    const HANDLE error = GetStdHandle(STD_ERROR_HANDLE);
+    DWORD mode{};
+    return GetConsoleMode(error, &mode) && SetConsoleMode(error, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    #else
+    return isatty(STDERR_FILENO);
+    #endif
+}
+
+void printDiagnostic(const compiler_error& error, const std::vector<std::filesystem::path>& sources)
+{
+    const SourceLocation& at = error.location();
+
+    std::string path;
+    std::optional<std::string> line;
+    if (at.known() && at.file < sources.size())
+    {
+        path = std::filesystem::path(sources[at.file]).make_preferred().string();
+        std::ifstream source(sources[at.file], std::ios::binary);
+        line = sourceLineOf(source, at.line);
+    }
+
+    std::cerr << formatDiagnostic(error, path, line, colorsOnStandardError());
+}
+
+void failWith(const std::string& message)
+{
+    const bool color = colorsOnStandardError();
+    std::cerr << (color ? "\033[1mpulse:\033[0m \033[1;31merror:\033[0m " : "pulse: error: ") << message << '\n';
+    std::exit(1);
 }
 
 void printHelp()
 {
-    std::cout << "Usage: <project_path> [options]\n";
+    std::cout << "Usage: pulse <project_path> [options]\n";
     std::cout << "Options:\n";
     std::cout << "  -h, --help          Show this help message and exit.\n";
     std::cout << "  -v, --version       Show the program version and exit.\n\n";
 
     std::cout << "  -R, --recursive     Recursively search for VHDL files in subdirectories of the specified project path.\n";
     std::cout << "  --top <name>        Specify the top-level entity to simulate. (defaults to \"top\")\n";
-    std::cout << "  --end <time>        Specify the end time for the simulation. (defaults to 1000fs)\n";
+    std::cout << "  --end <time>        Specify the end time for the simulation: an integer followed by fs, ps, ns, us, ms or s.\n";
+    std::cout << "                      (defaults to 1000fs; a number without a unit is in fs)\n";
     std::cout << "  --arch <name>       Specify the architecture of the top-level entity. (defaults to its most recently analyzed one)\n";
     std::cout << "  -Ologic             Simulate std_logic as 01XZ logic: '0'/'L' -> 0, '1'/'H' -> 1, 'Z' -> Z, 'U'/'X'/'W'/'-' -> X.\n";
     std::cout << "                      (the only mode supported for now, so it is always on)\n";
@@ -247,8 +266,21 @@ void printVersion()
 
 Options parseArgs(int argc, char* argv[])
 {
-    Options options;
-    options.projectPath = argv[1];
+    // --help and --version win wherever they are.
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help")
+        {
+            printHelp();
+            std::exit(0);
+        }
+        if (arg == "-v" || arg == "--version")
+        {
+            printVersion();
+            std::exit(0);
+        }
+    }
 
     const auto lowercase = [](std::string text)
     {
@@ -257,71 +289,77 @@ Options parseArgs(int argc, char* argv[])
         return text;
     };
 
-    for (int i = 2; i < argc; ++i)
+    Options options;
+    bool hasProjectPath = false;
+
+    for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
+
+        // The value of an option that takes one.
+        const auto value = [&]() -> std::string
+        {
+            if (i + 1 >= argc)
+                failWith("option '" + arg + "' needs a value; use '--help' for more information");
+            return argv[++i];
+        };
+
         if (arg == "-R" || arg == "--recursive")
-        {
             options.recursive = true;
-        }
         else if (arg == "-Ologic")
-        {
             options.logic = LogicMode::Logic;
-        }
-        else if (arg == "--top" && i + 1 < argc)
-        {
-            options.topEntity = lowercase(argv[++i]);
-        }
-        else if (arg == "--arch" && i + 1 < argc)
-        {
-            options.architecture = lowercase(argv[++i]);
-        }
-        else if (arg == "--end" && i + 1 < argc)
-        {
-            // arg is XXXfs, ps, ns, us, ms, s
-            // No unit means femtoseconds.
-            const std::string timeStr = argv[++i];
-
-            const size_t pos = timeStr.find_first_not_of("0123456789");
-            const std::string numberPart = timeStr.substr(0, pos);
-            const std::string unitPart = (pos != std::string::npos) ? timeStr.substr(pos) : "fs";
-
-            simTime_t timeValue = 0;
-            try
-            {
-                timeValue = std::stoull(numberPart);
-            }
-            catch (const std::exception&)
-            {
-                std::cerr << "Invalid time value: " << timeStr << "\n";
-                std::exit(1);
-            }
-
-            if (unitPart == "fs")
-                options.endTime = timeValue;
-            else if (unitPart == "ps")
-                options.endTime = timeValue * 1000;
-            else if (unitPart == "ns")
-                options.endTime = timeValue * 1000000;
-            else if (unitPart == "us")
-                options.endTime = timeValue * 1000000000;
-            else if (unitPart == "ms")
-                options.endTime = timeValue * 1000000000000;
-            else if (unitPart == "s")
-                options.endTime = timeValue * 1000000000000000;
-            else
-            {
-                std::cerr << "Unknown time unit: " << unitPart << ". Allowed units are fs, ps, ns, us, ms, s.\n";
-                std::exit(1);
-            }
-        }
+        else if (arg == "--top")
+            options.topEntity = lowercase(value());
+        else if (arg == "--arch")
+            options.architecture = lowercase(value());
+        else if (arg == "--end")
+            options.endTime = parseEndTime(value());
+        else if (!arg.empty() && arg.front() == '-')
+            failWith("unknown option '" + arg + "'; use '--help' for more information");
+        else if (hasProjectPath)
+            failWith("unexpected argument '" + arg + "': only one project path can be given");
         else
         {
-            std::cerr << "Unknown option: " << arg << ". Use '--help' for more information.\n";
-            std::exit(1);
+            options.projectPath = arg;
+            hasProjectPath = true;
         }
     }
+
+    if (!hasProjectPath)
+    {
+        std::cerr << "Usage: pulse <project_path> [options]\n";
+        failWith("no project path given; use '--help' for more information");
+    }
     return options;
+}
+
+simTime_t parseEndTime(const std::string& text)
+{
+    // An integer followed by a unit; no unit means femtoseconds.
+    const size_t pos = text.find_first_not_of("0123456789");
+    const std::string numberPart = text.substr(0, pos);
+    const std::string unitPart = pos != std::string::npos ? text.substr(pos) : "fs";
+
+    if (numberPart.empty() || unitPart.find_first_not_of("abcdefghijklmnopqrstuvwxyz") != std::string::npos)
+        failWith("invalid end time '" + text + "': expected an integer followed by fs, ps, ns, us, ms or s");
+
+    static const std::pair<const char*, int64_t> units[] = {
+        { "fs", 1 }, { "ps", 1'000 }, { "ns", 1'000'000 }, { "us", 1'000'000'000 }, { "ms", 1'000'000'000'000 },
+        { "s", 1'000'000'000'000'000 },
+    };
+
+    const auto unit = std::find_if(std::begin(units), std::end(units), [&](const auto& u) { return unitPart == u.first; });
+    if (unit == std::end(units))
+        failWith("unknown time unit '" + unitPart + "' in '" + text + "'; allowed units are fs, ps, ns, us, ms and s");
+
+    // The number is at most int64 before it is scaled to femtoseconds, and so is the result.
+    std::optional<int64_t> femtoseconds;
+    if (numberPart.size() <= 18 || (numberPart.size() == 19 && numberPart <= "9223372036854775807"))
+        femtoseconds = checkedMul(std::stoll(numberPart), unit->second);
+    if (!femtoseconds)
+        failWith("end time '" + text + "' is too large (the simulation time is limited to about 2.5 hours)");
+
+    return static_cast<simTime_t>(*femtoseconds);
 }
 
 void getFilenamesFromProjectPath(const std::string& projectPath, bool recursive, std::vector<std::filesystem::path>& sources)

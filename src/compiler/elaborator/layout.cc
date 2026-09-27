@@ -206,9 +206,9 @@ namespace Pulse::Parser
             case Layout::Kind::Enumeration:
             case Layout::Kind::Integer:
             {
-                // The leftmost value of the subtype (LRM 6.4.2.3); ranges of the analysis are kept low to high.
+                // The leftmost value of the subtype (LRM 6.4.2.3).
                 const ScalarRange& range = type.range.present ? type.range : type.info->range;
-                const int64_t left = range.present || layout.kind == Layout::Kind::Integer ? range.low : 0;
+                const int64_t left = range.present || layout.kind == Layout::Kind::Integer ? range.left() : 0;
                 return LogicVector(static_cast<uint64_t>(left)).range(layout.width);
             }
         }

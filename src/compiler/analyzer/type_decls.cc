@@ -60,6 +60,7 @@ namespace Pulse::Parser
         result.high = ascending ? rightValue->integer : leftValue->integer;
         result.realLow = ascending ? leftValue->asReal() : rightValue->asReal();
         result.realHigh = ascending ? rightValue->asReal() : leftValue->asReal();
+        result.ascending = ascending;
 
         const bool empty = reals ? result.realLow > result.realHigh : result.low > result.high;
         if (empty)

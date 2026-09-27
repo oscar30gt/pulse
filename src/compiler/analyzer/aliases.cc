@@ -24,6 +24,13 @@ namespace Pulse::Parser
             return;
         }
 
+        // An enumeration literal is a function without parameters for its alias (LRM 6.6.3): `alias yes is true [return boolean];`
+        if (decl.signature && name && !target && !enumerationOwners(name->name).empty())
+        {
+            declareLiteralAlias(decl, name->name);
+            return;
+        }
+
         if ((target && target->kind == SymbolKind::Subprogram) || decl.signature)
         {
             declareSubprogramAlias(decl);
@@ -31,6 +38,33 @@ namespace Pulse::Parser
         }
 
         declareObjectAlias(decl);
+    }
+
+    // ---- Enumeration literals -------------------------------------------------------------------
+
+    /// `alias yes is true [return boolean];`: the signature says which type's literal is meant, and the alias is a constant of it.
+    void AnalyzerContext::declareLiteralAlias(const AliasDeclaration& decl, const std::string& literal)
+    {
+        if (decl.subtype)
+            fail("An alias of an enumeration literal cannot have a subtype indication", *decl.subtype);
+
+        const SignatureExpr& signature = *decl.signature;
+        auto* returnMark = dynamic_cast<const TypeSpec*>(signature.returnType.get());
+        if (!signature.parameters.empty() || !returnMark)
+            fail("The signature of an alias of the enumeration literal '" + literal + "' must be '[return <type>]': a literal has no "
+                 "parameters", signature);
+
+        const SemanticType literalType = resolveTypeName(returnMark->typeName, *returnMark);
+        const auto owners = enumerationOwners(literal);
+        if (std::find(owners.begin(), owners.end(), literalType.info) == owners.end())
+            fail("'" + literal + "' is not a literal of the type '" + describe(literalType) + "' named by the signature", signature);
+
+        Symbol alias;
+        alias.kind = SymbolKind::Constant;
+        alias.objectId = newObjectId();
+        alias.type = exprType(*decl.target, &literalType);
+        alias.value = fold(*decl.target, &literalType);
+        declare(decl.name, std::move(alias), decl);
     }
 
     // ---- Subprograms ----------------------------------------------------------------------------

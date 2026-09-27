@@ -308,6 +308,32 @@ TEST(Folding_Attributes, ScalarTypeBounds)
     EXPECT_TRUE(mentions(decl("subtype small is integer range 3 to 9; constant a : integer range 3 to 3 := small'high;"), "outside the range"));
 }
 
+TEST(Folding_Attributes, DescendingScalarTypesKeepTheirDirection)
+{
+    // 'left and 'right follow the direction of the range; 'low and 'high do not.
+    const std::string down = "subtype down is integer range 9 downto 3; ";
+    EXPECT_EQ(decl(down + "constant a : integer range 9 to 9 := down'left; constant b : integer range 3 to 3 := down'right; "
+                          "constant c : integer range 3 to 3 := down'low; constant d : integer range 9 to 9 := down'high;"), kOk);
+    EXPECT_TRUE(mentions(decl(down + "constant a : integer range 3 to 3 := down'left;"), "outside the range"));
+
+    // A declared type, and an enumeration subtype, too.
+    EXPECT_EQ(decl("type level is range 5 downto 1; constant a : level range 5 to 5 := level'left;"), kOk);
+    EXPECT_EQ(decl("subtype back is color range blue downto red; constant a : color range blue to blue := back'left;"), kOk);
+
+    // A vector indexed by the subtype runs in its direction.
+    EXPECT_EQ(decl(down + "signal w : std_logic_vector(down); constant a : integer range 9 to 9 := w'left; "
+                          "constant b : integer range 7 to 7 := w'length;"), kOk);
+    EXPECT_EQ(decl(down + "signal w : std_logic_vector(down'left downto 0); constant b : integer range 10 to 10 := w'length;"), kOk);
+    EXPECT_EQ(decl(down + "signal w : std_logic_vector(down'range); constant a : integer range 9 to 9 := w'left;"), kOk);
+}
+
+TEST(Folding_Attributes, DescendingRealTypesKeepTheirDirection)
+{
+    EXPECT_EQ(decl("subtype fall is real range 0.75 downto 0.25; constant a : real range 0.75 to 0.75 := fall'left; "
+                   "constant b : quarter := fall'right; constant c : quarter := fall'low;"), kOk);
+    EXPECT_TRUE(mentions(decl("subtype fall is real range 0.75 downto 0.25; constant a : quarter := fall'left;"), "outside the range"));
+}
+
 TEST(Folding_Attributes, EnumerationBounds)
 {
     EXPECT_TRUE(mentions(decl("constant a : only_green := color'high;"), "outside the range"));

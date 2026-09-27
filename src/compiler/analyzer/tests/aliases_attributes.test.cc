@@ -129,6 +129,19 @@ TEST(Aliases_Objects, AnAliasOfAnEnumerationLiteralOrUnitIsAConstant)
     EXPECT_TRUE(mentions(arch("alias r : integer is red; "), "The subtype 'integer' of the alias does not match the type 'color'"));
 }
 
+TEST(Aliases_Objects, AnAliasOfAnEnumerationLiteralMayHaveASignature)
+{
+    // LRM 6.6.3: a literal is a function without parameters, so its alias may name it with `[return type]`.
+    EXPECT_EQ(proc("alias yes is true [return boolean]; ", "p <= yes;"), kOk);
+    EXPECT_EQ(proc("alias r is red [return color]; ", "col <= r;"), kOk);
+    EXPECT_TRUE(mentions(proc("alias r is red [return color]; ", "r <= green;"), "constant and cannot be assigned"));
+
+    EXPECT_TRUE(mentions(arch("alias r is red [return boolean]; "), "'red' is not a literal of the type 'boolean'"));
+    EXPECT_TRUE(mentions(arch("alias r is red [color return color]; "), "must be '[return <type>]'"));
+    EXPECT_TRUE(mentions(arch("alias r is red [color]; "), "must be '[return <type>]'"));
+    EXPECT_TRUE(mentions(arch("alias r : color is red [return color]; "), "cannot have a subtype indication"));
+}
+
 TEST(Aliases_Objects, WhatCannotBeAliasedAsAnObject)
 {
     EXPECT_TRUE(mentions(arch("alias x : std_logic is color; "), "An alias of a type cannot have a subtype indication"));

@@ -94,7 +94,7 @@ namespace Pulse::Parser
         else if (isDiscrete(prefix) && prefix.range.present && isTypeName(*attribute->prefix))
         {
             info.type = withoutConstraint(prefix);
-            info.bounds = Bounds{ prefix.range.low, prefix.range.high, true };
+            info.bounds = Bounds{ prefix.range.left(), prefix.range.right(), prefix.range.ascending };
         }
         else
         {
@@ -127,9 +127,9 @@ namespace Pulse::Parser
 
         RangeInfo info;
         info.type = withoutConstraint(type);
-        info.ascending = true;
+        info.ascending = !type.range.present || type.range.ascending;
 
-        // `natural range 7 downto 4` is a descending range; a bare type mark is ascending.
+        // `natural range 7 downto 4` is a descending range; a bare type mark has the direction of its subtype.
         if (auto* spec = dynamic_cast<const TypeSpec*>(&range))
             if (auto* written = spec->range ? dynamic_cast<const BinaryOpExpr*>(spec->range.get()) : nullptr)
                 info.ascending = written->op != BinaryOperator::Downto;

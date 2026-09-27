@@ -95,7 +95,7 @@ namespace Pulse::Engine
         { }
     };
 
-    /// Binary gate instance: NOT, AND, OR, XOR, NAND, NOR, XNOR
+    /// Binary gate instance: AND, OR, XOR, NAND, NOR, XNOR (NOT is NotGateInstance)
     struct BinaryGateInstance : ComponentInstance
     {
         std::string in0, in1, out;
@@ -212,11 +212,9 @@ namespace Pulse::Engine
     };
 
     /// VHDL process instance. A process is an abstraction of a sequential block of code that can be executed in a simulation.
-    /// @note No port mapping is required for a process. It must be instantiated inside a subgraph that contains signals
-    /// with the same names as the process's input and output ports.
-    /// This is because a process is just an abstraction that is single-instantiated in a subgraph. Multiple gates can be instantiated
-    /// inside a subgraph, but a process is a single block of code that just abstracts the logic of a sequential block of code.
-    /// This is a design choice and could be changed in the future.
+    /// @note No port mapping is required for a process: it reads and writes the wires of its subgraph by name, so it belongs to
+    /// the one subgraph that declares it, which must contain signals with the names the process uses. A blueprint may hold
+    /// any number of processes. This is a design choice and could be changed in the future.
     struct ProcessInstance : ComponentInstance
     {
         /// Sensitivity list of the process (signals that trigger the process)
@@ -270,7 +268,7 @@ namespace Pulse::Engine
         /// @param defaultValue State of the wire until a source is connected to it or it is driven.
         void addSignal(std::string name, bitWidth_t width, LogicVector defaultValue = LogicVector::HighZ());
 
-        /// Instantiates and registers a component of type T into the blueprint.
+        /// Registers a component instance (a gate, an adder, a process, a nested subgraph ...) into the blueprint.
         /// Blueprint will take ownership of the added instance.
         void addComponent(std::string name, std::unique_ptr<ComponentInstance> instance);
 

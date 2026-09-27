@@ -112,7 +112,7 @@ namespace Pulse::Parser
 
     SourceLocation locationOf(const Token* token)
     {
-        return { token->line, token->column };
+        return { token->line, token->column, token->file };
     }
 
 } // namespace Pulse::Parser

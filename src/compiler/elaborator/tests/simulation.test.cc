@@ -31,6 +31,7 @@ namespace
 TEST(Simulation_TestProject, TheCounterCountsRisingEdgesAfterTheReset)
 {
     const std::string clockEntity = R"(
+        LIBRARY ieee; USE ieee.std_logic_1164.ALL;
         ENTITY clock IS PORT (clk_out : OUT STD_LOGIC); END ENTITY clock;
         ARCHITECTURE behavioral OF clock IS
             SIGNAL clk_out_internal : STD_LOGIC := '0';
@@ -42,6 +43,7 @@ TEST(Simulation_TestProject, TheCounterCountsRisingEdgesAfterTheReset)
             END PROCESS;
         END ARCHITECTURE behavioral;)";
     const std::string counterEntity = R"(
+        LIBRARY ieee; USE ieee.std_logic_1164.ALL; USE ieee.numeric_std.ALL;
         ENTITY counter IS PORT (clk : IN STD_LOGIC; reset : IN STD_LOGIC; count : OUT UNSIGNED(31 DOWNTO 0)); END ENTITY counter;
         ARCHITECTURE behavioral OF counter IS
             SIGNAL count_internal : UNSIGNED(31 DOWNTO 0);
@@ -54,6 +56,7 @@ TEST(Simulation_TestProject, TheCounterCountsRisingEdgesAfterTheReset)
             count <= count_internal;
         END ARCHITECTURE behavioral;)";
     const std::string topEntity = R"(
+        LIBRARY ieee; USE ieee.std_logic_1164.ALL; USE ieee.numeric_std.ALL;
         ENTITY top IS END ENTITY top;
         ARCHITECTURE behavioral OF top IS
             COMPONENT clock PORT (clk_out : OUT STD_LOGIC); END COMPONENT;
@@ -219,6 +222,46 @@ TEST(Simulation_Processes, WaitUntilARisingEdge)
     EXPECT_EQ(sim.number("n"), 5u);
 }
 
+TEST(Simulation_Processes, ConditionalAssignmentsInAProcess)
+{
+    // VHDL-2008 `when ... else` in a process, for a variable and for a signal.
+    Simulation sim({ top(
+        "signal sel : integer := 2; signal y, z : integer;",
+        "process (sel) variable v : integer; begin "
+        "  v := 10 when sel = 1 else 20 when sel = 2 else 30;"
+        "  y <= v; z <= 1 when sel = 5 else 2;"
+        "end process;") });
+    sim.run(1);
+    EXPECT_EQ(sim.number("y"), 20u);
+    EXPECT_EQ(sim.number("z"), 2u);
+}
+
+TEST(Simulation_Processes, AggregateTargets)
+{
+    Simulation sim({ top(
+        "signal v : std_logic_vector(1 downto 0) := \"10\"; signal a, b, c, d : std_logic;",
+        "(a, b) <= v; process (v) begin (c, d) <= not v; end process;") });
+    sim.run(1);
+    EXPECT_EQ(sim.bits("a", 1), "1");
+    EXPECT_EQ(sim.bits("b", 1), "0");
+    EXPECT_EQ(sim.bits("c", 1), "0");
+    EXPECT_EQ(sim.bits("d", 1), "1");
+}
+
+TEST(Simulation_Processes, LoopsOverEnumerationsAndDescendingSubtypes)
+{
+    Simulation sim({ top(
+        "type color is (red, green, blue); subtype down is integer range 3 downto 1; signal count, digits : integer;",
+        "process variable n, d : integer; begin n := 0; d := 0;"
+        "  for c in color loop n := n + 1; end loop;"
+        "  for c in green to blue loop n := n + 10; end loop;"
+        "  for i in down loop d := d * 10 + i; end loop;"
+        "  count <= n; digits <= d; wait; end process;") });
+    sim.run(1);
+    EXPECT_EQ(sim.number("count"), 23u);
+    EXPECT_EQ(sim.number("digits"), 321u) << "a subtype that runs downwards is walked from its left bound";
+}
+
 TEST(Simulation_Processes, PartialAssignmentsInAProcess)
 {
     Simulation sim({ top(
@@ -307,6 +350,16 @@ TEST(Simulation_Scalars, ConversionsBetweenIntegersAndVectors)
     EXPECT_EQ(sim.number("raw"), 0xF3u);
 }
 
+TEST(Simulation_Scalars, ConversionsBetweenIntegerTypes)
+{
+    Simulation sim({ top(
+        "type small is range 0 to 15; signal n : integer := 9; signal s : small; signal back : integer;",
+        "s <= small(n); back <= integer(s) + 1;") });
+    sim.run(2);
+    EXPECT_EQ(sim.number("s"), 9u);
+    EXPECT_EQ(sim.number("back"), 10u);
+}
+
 TEST(Simulation_Scalars, VectorsComparedWithIntegers)
 {
     Simulation sim({ top(
@@ -338,6 +391,22 @@ TEST(Simulation_Scalars, ShiftsAndRotations)
     EXPECT_EQ(sim.bits("h", 8), "11110010");
 }
 
+TEST(Simulation_Scalars, NumericStdShiftsAndRotations)
+{
+    Simulation sim({ top(
+        "signal u : unsigned(7 downto 0) := \"10010110\"; signal s : signed(7 downto 0) := \"10010110\"; signal k : natural := 1; "
+        "signal a, b, c, d, e : unsigned(7 downto 0); signal f : signed(7 downto 0);",
+        "a <= shift_left(u, 3); b <= rotate_left(u, 2); c <= rotate_right(u, 3); d <= shift_left(u, k); e <= shift_right(u, k);"
+        "f <= shift_left(s, 1);") });
+    sim.run(1);
+    EXPECT_EQ(sim.bits("a", 8), "10110000");
+    EXPECT_EQ(sim.bits("b", 8), "01011010");
+    EXPECT_EQ(sim.bits("c", 8), "11010010");
+    EXPECT_EQ(sim.bits("d", 8), "00101100");
+    EXPECT_EQ(sim.bits("e", 8), "01001011");
+    EXPECT_EQ(sim.bits("f", 8), "00101100");
+}
+
 TEST(Simulation_Scalars, AggregatesWithSignalElements)
 {
     Simulation sim({ top(
@@ -361,6 +430,31 @@ TEST(Simulation_Matching, DontCareElementsMatchAnything)
     EXPECT_EQ(sim.bits("m1", 1), "1");
     EXPECT_EQ(sim.bits("m2", 1), "0");
     EXPECT_EQ(sim.number("code"), 2u);
+}
+
+TEST(Simulation_Matching, AMatchingCaseStatement)
+{
+    Simulation sim({ top(
+        "signal v : std_logic_vector(3 downto 0) := \"1011\"; signal code : integer;",
+        "process (v) begin case? v is when \"0---\" => code <= 1; when \"1-1-\" => code <= 2; when others => code <= 3; end case?; end process;") });
+    sim.run(1);
+    EXPECT_EQ(sim.number("code"), 2u);
+}
+
+TEST(Simulation_Matching, OrderingMatchesAndTheConditionOperator)
+{
+    Simulation sim({ top(
+        "signal a : std_logic := '0'; signal b : std_logic := '1'; signal lt, le, gt, ge, ne : std_logic; signal taken, implicit : boolean;",
+        "lt <= a ?< b; le <= b ?<= b; gt <= a ?> b; ge <= b ?>= a; ne <= a ?/= b; taken <= ?? b;"
+        "process (a) begin if a then implicit <= true; else implicit <= false; end if; end process;") });
+    sim.run(1);
+    EXPECT_EQ(sim.bits("lt", 1), "1");
+    EXPECT_EQ(sim.bits("le", 1), "1");
+    EXPECT_EQ(sim.bits("gt", 1), "0");
+    EXPECT_EQ(sim.bits("ge", 1), "1");
+    EXPECT_EQ(sim.bits("ne", 1), "1");
+    EXPECT_EQ(sim.bits("taken", 1), "1");
+    EXPECT_EQ(sim.bits("implicit", 1), "0");
 }
 
 // ---- Processes that keep a value ------------------------------------------------------------------
@@ -447,6 +541,25 @@ TEST(Simulation_Hierarchy, OutputsConnectedToPartsOfASignal)
     Simulation sim({ bit, design });
     sim.run(1);
     EXPECT_EQ(sim.bits("bus_v", 3), "101");
+}
+
+TEST(Simulation_Hierarchy, AnInoutPortDrivesItsActual)
+{
+    const std::string buffer = R"(
+        library ieee; use ieee.std_logic_1164.all;
+        entity tristate is port (en : in std_logic; b : inout std_logic); end tristate;
+        architecture rtl of tristate is begin b <= '1' when en = '1' else 'Z'; end rtl;)";
+    const std::string design = top(
+        "component tristate port (en : in std_logic; b : inout std_logic); end component;"
+        "signal en : std_logic := '1'; signal line : std_logic;",
+        "u : tristate port map (en => en, b => line); line <= 'Z';"
+        "process begin wait for 3 fs; en <= '0'; wait; end process;");
+
+    Simulation sim({ buffer, design });
+    sim.run(2);
+    EXPECT_EQ(sim.bits("line", 1), "1") << "'Z' from the top resolves with the '1' of the instance";
+    sim.run(3);
+    EXPECT_EQ(sim.bits("line", 1), "Z");
 }
 
 TEST(Simulation_Hierarchy, AProcessDrivesAnOutputPortThroughItsInstance)

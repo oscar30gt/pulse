@@ -9,8 +9,9 @@
 // base type and only carries its own constraint, so `natural` and `integer` are the same type
 // with different ranges, while two same-named types from different scopes stay different.
 //
-// The header is public because the linker reads the types a DesignLibrary resolved for the
-// generics and ports it binds; every file of one library shares the same TypeInfo objects.
+// The header is public because the linker and the elaborator read the types a DesignLibrary
+// resolved (the generics and ports the linker binds, every object the elaborator lays out);
+// every file of one library shares the same TypeInfo objects.
 
 #include "ast.h"
 
@@ -40,7 +41,8 @@ namespace Pulse::Parser
     };
 
     /// Range of a scalar subtype. Integers, enumeration positions and physical base units use
-    /// `low/high`; real types use `realLow/realHigh`.
+    /// `low/high`; real types use `realLow/realHigh`. The bounds are kept low to high, and `ascending`
+    /// says which one is the left bound (`'left` is `low` for `to`, `high` for `downto`).
     struct ScalarRange
     {
         bool present = false;
@@ -48,6 +50,12 @@ namespace Pulse::Parser
         int64_t high = 0;
         double realLow = 0.0;
         double realHigh = 0.0;
+        bool ascending = true;      ///< `to` (true) or `downto` (false)
+
+        int64_t left() const { return ascending ? low : high; }
+        int64_t right() const { return ascending ? high : low; }
+        double realLeft() const { return ascending ? realLow : realHigh; }
+        double realRight() const { return ascending ? realHigh : realLow; }
     };
 
     /// A type together with its constraint: what an expression, object or subtype indication *is*.

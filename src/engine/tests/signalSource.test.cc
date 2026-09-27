@@ -1,5 +1,5 @@
-// signalSource_test.cpp
-// Tests for Pulse::SignalSource using GoogleTest.
+// signalSource.test.cc
+// Tests for Pulse::Engine::SignalSource using GoogleTest.
 
 #include <gtest/gtest.h>
 #include "signalSource.h"

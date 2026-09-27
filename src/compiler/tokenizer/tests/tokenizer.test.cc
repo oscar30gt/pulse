@@ -245,7 +245,7 @@ TEST(Tokenizer_Identifiers, TrailingOrDoubleUnderscoreThrows)
 
 TEST(Tokenizer_Identifiers, ExtendedIdentifiersAreRejectedClearly)
 {
-    EXPECT_THROW(tokenize("\ext id\\"), ast_lexical_error);
+    EXPECT_THROW(tokenize("\\ext id\\"), ast_lexical_error);
 }
 
 // ===========================================================================

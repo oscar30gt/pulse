@@ -1,4 +1,4 @@
-// signalInterface_test.cpp
+// signalInterface.test.cc
 // Exhaustive GoogleTest unit tests for the signal interface classes.
 
 #include <gtest/gtest.h>

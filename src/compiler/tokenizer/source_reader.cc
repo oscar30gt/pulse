@@ -4,8 +4,8 @@
 
 namespace Pulse::Parser
 {
-    SourceReader::SourceReader(const std::string& source, std::vector<Token>& out)
-        : source(source), out(out)
+    SourceReader::SourceReader(const std::string& source, std::vector<Token>& out, size_t file)
+        : source(source), out(out), file(file)
     { }
 
     // ---- Low-level navigation -----------------------------------------------
@@ -89,13 +89,13 @@ namespace Pulse::Parser
             type,
             std::move(value),
             source.substr(start.index, index - start.index),
-            start.line, start.column
+            start.line, start.column, file
         });
     }
 
     void SourceReader::fail(const std::string& message, size_t atLine, size_t atColumn) const
     {
-        throw ast_lexical_error(message, { atLine, atColumn });
+        throw ast_lexical_error(message, { atLine, atColumn, file });
     }
 
     void SourceReader::fail(const std::string& message, const SourceMark& at) const

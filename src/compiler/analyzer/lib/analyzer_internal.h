@@ -828,6 +828,7 @@ namespace Pulse::Parser
         void declareAlias(const AliasDeclaration& decl);
         void declareObjectAlias(const AliasDeclaration& decl);
         void declareSubprogramAlias(const AliasDeclaration& decl);
+        void declareLiteralAlias(const AliasDeclaration& decl, const std::string& literal);
     };
 
     template <typename Node>

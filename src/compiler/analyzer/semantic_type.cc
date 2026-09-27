@@ -20,14 +20,15 @@ namespace Pulse::Parser
         {
             const TypeInfo& info = *type.info;
             const ScalarRange& r = type.range;
+            const std::string direction = r.ascending ? " to " : " downto ";
 
             if (info.cls == TypeClass::Real)
-                return std::to_string(r.realLow) + " to " + std::to_string(r.realHigh);
+                return std::to_string(r.realLeft()) + direction + std::to_string(r.realRight());
 
             if (info.cls == TypeClass::Enumeration && r.low >= 0 && r.high < static_cast<int64_t>(info.literals.size()))
-                return info.literals[r.low] + " to " + info.literals[r.high];
+                return info.literals[r.left()] + direction + info.literals[r.right()];
 
-            return std::to_string(r.low) + " to " + std::to_string(r.high);
+            return std::to_string(r.left()) + direction + std::to_string(r.right());
         }
 
         bool rangeDiffersFromDeclared(const SemanticType& type)
@@ -37,7 +38,7 @@ namespace Pulse::Parser
             if (!r.present || !declared.present)
                 return false;
 
-            return r.low != declared.low || r.high != declared.high
+            return r.low != declared.low || r.high != declared.high || r.ascending != declared.ascending
                 || r.realLow != declared.realLow || r.realHigh != declared.realHigh;
         }
     } // anonymous namespace

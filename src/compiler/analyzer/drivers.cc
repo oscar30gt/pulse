@@ -84,7 +84,8 @@ namespace Pulse::Parser
                 sources += (sources.empty() ? "" : ", ") + driver.description;
 
             fail("Signal '" + set->name + "' has the type '" + describe(set->type) + "', which cannot have several drivers, but it is driven by "
-                 + std::to_string(drivers.size()) + " sources (" + sources + "); only std_logic and arrays of it are resolved",
+                 + std::to_string(drivers.size()) + " sources (" + sources + "); only resolved types can (std_logic, resolved subtypes, "
+                 "and arrays and records of resolved elements)",
                  drivers[1].location);
         }
     }

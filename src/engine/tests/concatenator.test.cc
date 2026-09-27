@@ -1,5 +1,5 @@
 // concatenator.test.cc
-// Comprehensive tests for Pulse::Concatenator component.
+// Comprehensive tests for Pulse::Engine::Concatenator component.
 
 #include <gtest/gtest.h>
 #include "concatenator.h"

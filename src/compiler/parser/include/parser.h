@@ -12,6 +12,8 @@ namespace Pulse::Parser
     public:
         ast_syntax_error(const std::string& message, const SourceLocation& location)
             : compiler_error(message, location) { }
+
+        const char* stage() const override { return "syntax"; }
     };
 
     // --------------------------------------------------------------------------------------------

@@ -1,3 +1,6 @@
+LIBRARY ieee;
+USE ieee.std_logic_1164.ALL;
+
 ENTITY clock IS
     PORT (
         clk_out : OUT STD_LOGIC

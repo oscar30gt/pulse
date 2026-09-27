@@ -18,6 +18,8 @@ namespace Pulse::Parser
     public:
         elaboration_error(const std::string& message, const SourceLocation& location)
             : compiler_error(message, location) { }
+
+        const char* stage() const override { return "elaboration"; }
     };
 
     /// How std_logic values are represented in the simulated design.

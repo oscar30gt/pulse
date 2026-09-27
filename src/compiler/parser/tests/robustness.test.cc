@@ -16,6 +16,8 @@ namespace
     {
         static const std::vector<std::string> programs = {
             // test-project/clock.vhd
+            "LIBRARY ieee;\n"
+            "USE ieee.std_logic_1164.ALL;\n"
             "ENTITY clock IS\n"
             "    PORT (\n"
             "        clk_out : OUT STD_LOGIC\n"
@@ -37,6 +39,9 @@ namespace
             "END ARCHITECTURE behavioral;",
 
             // test-project/counter.vhd
+            "LIBRARY ieee;\n"
+            "USE ieee.std_logic_1164.ALL;\n"
+            "USE ieee.numeric_std.ALL;\n"
             "ENTITY counter IS\n"
             "    PORT (\n"
             "        clk : IN STD_LOGIC;\n"
@@ -59,6 +64,9 @@ namespace
             "END ARCHITECTURE behavioral;",
 
             // test-project/counter-circuit.vhd
+            "LIBRARY ieee;\n"
+            "USE ieee.std_logic_1164.ALL;\n"
+            "USE ieee.numeric_std.ALL;\n"
             "ENTITY top IS\n"
             "END ENTITY top;\n"
             "ARCHITECTURE behavioral OF top IS\n"

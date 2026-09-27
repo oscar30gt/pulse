@@ -215,10 +215,15 @@ namespace Pulse::Parser
 
     Operand UnitElaborator::lowerArithmetic(BinaryOperator op, const Operand& l, const Operand& r, const Expression& at)
     {
-        if (op != BinaryOperator::Add && op != BinaryOperator::Sub && op != BinaryOperator::Mul)
-            unsupported("'" + std::string(toString(op)) + "' on values that are not known at elaboration time", at);
-
         const bool leftVector = l.layout.isVector(), rightVector = r.layout.isVector();
+
+        // Integer `/ mod rem **` are folded when their operands are static; the numeric_std ones are never lowered.
+        if (op != BinaryOperator::Add && op != BinaryOperator::Sub && op != BinaryOperator::Mul)
+        {
+            if (leftVector || rightVector)
+                unsupported("'" + std::string(toString(op)) + "' on unsigned and signed vectors", at);
+            unsupported("'" + std::string(toString(op)) + "' on values that are not known at elaboration time", at);
+        }
 
         // ---- Integers: the width of their type; the product keeps its low bits.
         if (!leftVector && !rightVector)

@@ -1,5 +1,7 @@
 #include "elaborator_internal.h"
 
+#include <charconv>
+
 namespace Pulse::Parser
 {
     // ---- Entry point ----------------------------------------------------------------------------
@@ -17,7 +19,16 @@ namespace Pulse::Parser
             case StaticValue::Kind::Integer:
                 return std::to_string(value.integer);
             case StaticValue::Kind::Real:
-                return std::to_string(value.real);
+            {
+                // The shortest text that reads back as the same double, so two real generics get the same blueprint only
+                // when they are equal; written as a real literal (`1.0`, not `1`).
+                char text[32];
+                const auto end = std::to_chars(text, text + sizeof text, value.real).ptr;
+                std::string written(text, end);
+                if (written.find_first_of(".en") == std::string::npos)
+                    written += ".0";
+                return written;
+            }
             case StaticValue::Kind::Physical:
                 return std::to_string(value.integer) + " (base units)";
             case StaticValue::Kind::Enumeration:
@@ -38,11 +49,12 @@ namespace Pulse::Parser
 
     ElaboratedDesign DesignElaborator::run(const ASTRoot& linkedDesign)
     {
-        const SourceLocation start{ 1, 1 };
+        // Errors about the design as a whole point at no source.
+        const SourceLocation nowhere{};
 
         if (m_options.logic != LogicMode::Logic)
             throw elaboration_error("Nine-valued std_logic vectors are not supported yet: their operators need the bodies of the IEEE "
-                                    "functions, which are not implemented. Elaborate with -Ologic", start);
+                                    "functions, which are not implemented. Elaborate with -Ologic", nowhere);
 
         const EntityDeclaration* top = nullptr;
         for (const auto& unit : linkedDesign.children)
@@ -51,7 +63,7 @@ namespace Pulse::Parser
 
         if (!top || m_library.entity(top->name) != top)
             throw elaboration_error("Top-level entity '" + m_options.topEntity + "' not found in the design; give the name of the top "
-                                    "entity (--top)", start);
+                                    "entity (--top)", nowhere);
 
         const ArchitectureDeclaration* architecture = m_options.topArchitecture.empty()
             ? m_library.latestArchitecture(top->name)

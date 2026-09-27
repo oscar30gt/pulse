@@ -111,6 +111,7 @@ namespace Pulse::Parser
         constrained.range.present = true;
         constrained.range.low = bounds.low();
         constrained.range.high = bounds.high();
+        constrained.range.ascending = bounds.ascending;
         return constrained;
     }
 
@@ -152,6 +153,7 @@ namespace Pulse::Parser
         SemanticType constrained = base;
         constrained.range.realLow = low;
         constrained.range.realHigh = high;
+        constrained.range.ascending = ascending;
         return constrained;
     }
 
@@ -194,6 +196,7 @@ namespace Pulse::Parser
         constrained.range.present = true;
         constrained.range.low = low;
         constrained.range.high = high;
+        constrained.range.ascending = ascending;
         return constrained;
     }
 

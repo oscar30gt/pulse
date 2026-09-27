@@ -56,7 +56,7 @@ namespace Pulse::Parser
         }
 
         /// With no constraint to take from, an aggregate starts at the left bound of its index type and runs in the direction of
-        /// that type, which for the index types this analyzer models is upwards.
+        /// that type.
         AggregateShape shapeOfUnconstrained(Coverage& coverage, const SemanticType& indexType)
         {
             if (coverage.hasOthers)
@@ -64,8 +64,10 @@ namespace Pulse::Parser
 
             if (!coverage.hasNamed)
             {
-                const int64_t first = indexType.range.present ? indexType.range.low : 0;
-                return { { Bounds{ first, first + coverage.positional - 1, true } }, {} };
+                const bool ascending = !indexType.range.present || indexType.range.ascending;
+                const int64_t first = indexType.range.present ? indexType.range.left() : 0;
+                const int64_t last = ascending ? first + coverage.positional - 1 : first - coverage.positional + 1;
+                return { { Bounds{ first, last, ascending } }, {} };
             }
 
             if (coverage.positional > 0)

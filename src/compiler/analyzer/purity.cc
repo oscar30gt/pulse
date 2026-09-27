@@ -123,13 +123,12 @@ namespace Pulse::Parser
             }
         }
 
+        // A concurrent procedure call may wait: its equivalent process has no sensitivity list, only a final wait statement
+        // (LRM 11.4), as in the clock generator `clk_gen(clk, 10 ns);`.
         for (const StatementCall& call : m_statementCalls)
         {
-            if (!call.callee->containsWait)
+            if (!call.callee->containsWait || !call.process)
                 continue;
-
-            if (!call.process)
-                fail("A concurrent procedure call cannot call '" + call.callee->name + "', which contains a wait statement", call.location);
 
             if (!call.process->sensitivityList.empty() || call.process->sensitivityAll)
                 fail("The process has a sensitivity list, so it cannot call '" + call.callee->name + "', which contains a wait statement", call.location);

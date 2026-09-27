@@ -18,6 +18,8 @@ namespace Pulse::Parser
     public:
         ast_semantic_error(const std::string& message, const SourceLocation& location)
             : compiler_error(message, location) { }
+
+        const char* stage() const override { return "semantic"; }
     };
 
     // --------------------------------------------------------------------------------------------
@@ -34,7 +36,7 @@ namespace Pulse::Parser
     };
 
     /// The working library (`work`) of a design: the design units analyzed so far, and what analysis resolved in them
-    /// that the linker needs to bind component instances to entities.
+    /// that the linker needs to bind component instances to entities and the elaborator to lower the design.
     ///
     /// Design files are analyzed into it one at a time, the design units of each file in textual order (LRM 13.1). An
     /// architecture needs its entity to be in the library already (LRM 13.5), analyzed from the same file or from an

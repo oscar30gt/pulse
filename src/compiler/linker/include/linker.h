@@ -13,6 +13,8 @@ namespace Pulse::Parser
         ast_link_error(const std::string& message, const SourceLocation& location)
             : compiler_error(message, location)
         { }
+
+        const char* stage() const override { return "link"; }
     };
 
     // --------------------------------------------------------------------------------------------

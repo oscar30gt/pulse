@@ -1,7 +1,7 @@
 // vhdl2008.test.cc — lexical coverage of VHDL-2008 (IEEE 1076-2008, clause 15).
 //
-// The tokenizer accepts every valid lexical element even when nothing downstream can simulate it, and rejects
-// only text that is not a valid token. These tests cover the parts of the standard beyond the supported subset:
+// The tokenizer accepts every valid lexical element except extended identifiers even when nothing downstream can
+// simulate it, and rejects only text that is not a valid token. These tests cover the parts of the standard beyond the supported subset:
 // attribute tick vs character literal, the 2008 operators, the full reserved-word list,
 // bit-string rules, token positions and the navigation interface.
 
