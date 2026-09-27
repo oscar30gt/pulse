@@ -4,15 +4,16 @@
 
 namespace Pulse::Engine
 {
-    inline void Blueprint::addPort(std::string name, bool isInput)
+    inline void Blueprint::addPort(std::string name, bool isInput, WireInstance wire)
     {
+        portWires[name] = wire;
         if (isInput) inPorts.push_back(std::move(name));
         else outPorts.push_back(std::move(name));
     }
 
-    inline void Blueprint::addSignal(std::string name, bitWidth_t width)
+    inline void Blueprint::addSignal(std::string name, bitWidth_t width, LogicVector defaultValue)
     {
-        wires[std::move(name)] = WireInstance{ width };
+        wires[std::move(name)] = WireInstance{ width, defaultValue };
     }
 
     inline void Blueprint::addComponent(std::string name, std::unique_ptr<ComponentInstance> instance)
@@ -50,7 +51,7 @@ namespace Pulse::Engine
         for (const auto& [wireName, wireInst] : this->wires)
         {
             os << "  - " << std::left << std::setw(20) << wireName
-                << " (width: " << std::to_string(wireInst.width) << ")\n";
+                << " (width: " << std::to_string(wireInst.width) << ", default: " << wireInst.defaultValue.str(wireInst.width) << ")\n";
         }
         os << "\n";
 
@@ -247,33 +248,54 @@ namespace Pulse::Engine
                 os << "\n      Instructions (" << proc->instructions.size() << "):\n";
                 for (size_t i = 0; i < proc->instructions.size(); ++i)
                 {
-                    const auto* inst = proc->instructions[i].get();
+                    const ProcessInstruction& inst = proc->instructions[i];
                     os << "        [" << i << "] ";
-                    if (auto assign = dynamic_cast<const ProcessInstructionAssignment*>(inst))
+                    switch (inst.kind)
                     {
-                        os << "ASSIGN: " << assign->targetPort << " <= " << assign->sourcePort << "\n";
-                    }
-                    else if (auto branch = dynamic_cast<const ProcessInstructionBranch*>(inst))
-                    {
-                        os << "BRANCH: if " << branch->conditionPort << " == 0 (Else skip " << branch->branchLength << " instructions)\n";
-                    }
-                    else if (auto branchAlways = dynamic_cast<const ProcessInstructionBranchAlways*>(inst))
-                    {
-                        os << "BRANCH_ALWAYS: skip " << branchAlways->branchLength << " instructions\n";
-                    }
-                    else if (auto wait = dynamic_cast<const ProcessInstructionWait*>(inst))
-                    {
-                        os << "WAIT: " << wait->waitTime << " fs\n";
-                    }
-                    else if (auto waitForever = dynamic_cast<const ProcessInstructionWaitForever*>(inst))
-                    {
-                        os << "WAIT_FOREVER\n";
-                    }
-                    else
-                    {
-                        os << "UNKNOWN INSTRUCTION\n";
+                        case ProcessInstructionKind::Assignment:
+                        {
+                            const auto& assign = static_cast<const ProcessInstructionAssignment&>(inst);
+                            os << (assign.deferred ? "ASSIGN (deferred): " : "ASSIGN: ") << assign.targetPort << " <= " << assign.sourcePort << "\n";
+                            break;
+                        }
+                        case ProcessInstructionKind::Branch:
+                        {
+                            const auto& branch = static_cast<const ProcessInstructionBranch&>(inst);
+                            os << "BRANCH: unless " << branch.conditionPort << " == 1, skip " << branch.branchLength << " instructions\n";
+                            break;
+                        }
+                        case ProcessInstructionKind::BranchAlways:
+                            os << "BRANCH_ALWAYS: skip " << static_cast<const ProcessInstructionBranchAlways&>(inst).branchLength << " instructions\n";
+                            break;
+                        case ProcessInstructionKind::Wait:
+                            os << "WAIT: " << static_cast<const ProcessInstructionWait&>(inst).waitTime << " fs\n";
+                            break;
+                        case ProcessInstructionKind::WaitForever:
+                            os << "WAIT_FOREVER\n";
+                            break;
+                        case ProcessInstructionKind::WaitOn:
+                        {
+                            const auto& wait = static_cast<const ProcessInstructionWaitOn&>(inst);
+                            os << "WAIT_ON:";
+                            for (const auto& port : wait.sensitivity)
+                                os << " " << port;
+                            if (!wait.conditionPort.empty())
+                                os << " until " << wait.conditionPort;
+                            if (wait.hasTimeout)
+                                os << " for " << wait.timeout << " fs";
+                            os << "\n";
+                            break;
+                        }
                     }
                 }
+                break;
+            }
+
+            case InstanceType::EventProbe:
+            {
+                auto probe = static_cast<const EventProbeInstance*>(comp);
+                os << "[EventProbe]\n"
+                    << "      in: " << probe->in << " -> out: " << probe->out << "\n";
                 break;
             }
 

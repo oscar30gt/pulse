@@ -1,5 +1,5 @@
-// gates_test.cpp
-// Tests for Pulse::ANDGate using GoogleTest.
+// gates.test.cc
+// Tests for Pulse::Engine::BinaryGate and NOTGate using GoogleTest.
 
 #include <gtest/gtest.h>
 #include "gates.h"

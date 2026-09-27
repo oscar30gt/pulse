@@ -1,5 +1,5 @@
-// constant_test.cpp
-// Exhaustive tests for Pulse::Constant using GoogleTest.
+// constant.test.cc
+// Exhaustive tests for Pulse::Engine::Constant using GoogleTest.
 
 #include <gtest/gtest.h>
 #include "constant.h"

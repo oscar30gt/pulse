@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <map>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -13,6 +14,7 @@
 #include <windows.h>
 
 #else
+#include <cerrno>
 #include <csignal>
 #include <sys/ioctl.h>
 #include <sys/select.h>
@@ -47,7 +49,8 @@ namespace Pulse::Debugger
         const std::string& ancestor,
         const std::string& pathPrefix,
         const std::unordered_set<std::string>& expandedPaths,
-        std::vector<Row>& rows
+        std::vector<Row>& rows,
+        std::map<std::string, Wave>& bitWaves
     )
     {
         // 1. Collect and sort all signal names alphabetically at this hierarchy level
@@ -69,12 +72,30 @@ namespace Pulse::Debugger
         const size_t children = signals.size() + graphs.size();
         size_t index = 0;
 
-        // 3. Emit rows for signals
+        // 3. Emit rows for signals; an expanded logic vector is followed by one row per bit, leftmost first
         for (const auto& [name, wave] : signals)
         {
             const bool isLast = ++index == children;
             const std::string fullPath = pathPrefix.empty() ? name : pathPrefix + "/" + name;
-            rows.push_back({ ancestor + (isLast ? "└─ " : "├─ "), name, wave, fullPath, false });
+            if (!wave->isExpandable())
+            {
+                rows.push_back({ ancestor + (isLast ? "└─ " : "├─ "), name, wave, fullPath, false });
+                continue;
+            }
+
+            const bool isExpanded = expandedPaths.find(fullPath) != expandedPaths.end();
+            rows.push_back({ ancestor + (isLast ? "└─ " : "├─ "), (isExpanded ? "▼ " : "▶ ") + name, wave, fullPath, true });
+            if (!isExpanded)
+                continue;
+
+            const std::string bitAncestor = ancestor + (isLast ? "   " : "│  ");
+            for (uint8_t bit = wave->width; bit-- > 0;)
+            {
+                const std::string bitName = name + "(" + std::to_string(wave->display.indexOfBit(bit, wave->width)) + ")";
+                const std::string bitPath = fullPath + "/" + bitName;
+                const Wave& bitTrace = bitWaves.insert_or_assign(bitPath, bitWave(*wave, bit)).first->second;
+                rows.push_back({ bitAncestor + (bit == 0 ? "└─ " : "├─ "), bitName, &bitTrace, bitPath, false });
+            }
         }
 
         // 4. Emit rows for subgraphs and recursively expand if node is in expandedPaths
@@ -89,7 +110,7 @@ namespace Pulse::Debugger
 
             if (isExpanded)
             {
-                collectSubRows(*graph, ancestor + (isLast ? "   " : "│  "), fullPath, expandedPaths, rows);
+                collectSubRows(*graph, ancestor + (isLast ? "   " : "│  "), fullPath, expandedPaths, rows, bitWaves);
             }
         }
     }
@@ -103,7 +124,8 @@ namespace Pulse::Debugger
         const WaveformData& waveform,
         const std::unordered_set<std::string>& expandedPaths,
         std::vector<Row>& rows,
-        std::string rootName
+        const std::string& rootName,
+        std::map<std::string, Wave>& bitWaves
     )
     {
         const bool isExpanded = expandedPaths.find(rootName) != expandedPaths.end();
@@ -112,7 +134,7 @@ namespace Pulse::Debugger
 
         if (isExpanded)
         {
-            collectSubRows(waveform, "", rootName, expandedPaths, rows);
+            collectSubRows(waveform, "", rootName, expandedPaths, rows, bitWaves);
         }
     }
 
@@ -236,7 +258,13 @@ namespace Pulse::Debugger
         }
 
         char key{};
-        if (::read(STDIN_FILENO, &key, 1) != 1)
+        const ssize_t count = ::read(STDIN_FILENO, &key, 1);
+        if (count == 0 || (count < 0 && errno != EINTR && errno != EAGAIN))
+        {
+            // End of input or a broken terminal: nothing more can be read, so leave instead of spinning.
+            return Key::quit;
+        }
+        if (count != 1)
         {
             return Key::none;
         }
@@ -251,6 +279,16 @@ namespace Pulse::Debugger
         if (key != '\x1b')
         {
             return Key::none;
+        }
+
+        // An arrow key sends ESC [ X at once; a lone ESC is the Esc key, so it quits without waiting for another key.
+        fd_set pending;
+        FD_ZERO(&pending);
+        FD_SET(STDIN_FILENO, &pending);
+        timeval wait{ 0, 50000 };
+        if (select(STDIN_FILENO + 1, &pending, nullptr, nullptr, &wait) <= 0)
+        {
+            return Key::quit;
         }
 
         char sequence[2]{};
@@ -284,7 +322,8 @@ namespace Pulse::Debugger
         // Top-level component is expanded by default on launch
         std::unordered_set<std::string> expandedPaths = { rootName };
         std::vector<Row> rows;
-        collectRows(waveform, expandedPaths, rows, rootName);
+        std::map<std::string, Wave> bitWaves;
+        collectRows(waveform, expandedPaths, rows, rootName, bitWaves);
 
         // Non-interactive fallback: render a single frame and write to standard output
         if (!interactive())
@@ -439,7 +478,7 @@ namespace Pulse::Debugger
 
                         // Re-collect rows with new expansion state
                         rows.clear();
-                        collectRows(waveform, expandedPaths, rows, rootName);
+                        collectRows(waveform, expandedPaths, rows, rootName, bitWaves);
 
                         // Clamp selection and adjust viewport
                         selectedRow = std::min(selectedRow, rows.empty() ? 0 : rows.size() - 1);

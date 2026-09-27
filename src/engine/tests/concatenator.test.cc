@@ -1,5 +1,5 @@
 // concatenator.test.cc
-// Comprehensive tests for Pulse::Concatenator component.
+// Comprehensive tests for Pulse::Engine::Concatenator component.
 
 #include <gtest/gtest.h>
 #include "concatenator.h"
@@ -98,4 +98,11 @@ TEST(ConcatenatorTest, ConstructionFailsOnWidthMismatch)
 {
     Wire low(4), high(4), out(7); // sum is 8, out is 7
     EXPECT_THROW({ Concatenator m(&low, &high, &out); }, bit_width_mismatch);
+}
+
+TEST(ConcatenatorTest, UnknownAndHighImpedanceBitsKeepTheirValue)
+{
+    Wire low(2, LogicVector(0b11, 0b10)), high(2, LogicVector(0b01, 0b11)), out(4);   // low "Z1", high "XZ"
+    Concatenator concatenator(&low, &high, &out);
+    EXPECT_EQ(out.peek().str(4), "XZZ1");
 }

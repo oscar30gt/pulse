@@ -39,19 +39,21 @@ Then, run the tests and the test VHDL project to ensure everything is working as
 
 ## Project Structure
 
-Inside the `src` directory, you'll find 3 main subdirectories:
+Inside the `src` directory, you'll find 3 main subdirectories, wired together in `src/main.cc`:
 - `debugger/`: Contains waveform-related code (recorder, TUI, etc.)
 - `engine/`: Contains the core components used to run the simulation (wires, gates, subgraphs, etc.)
-- `parser/`: Contains the whole compilation pipeline to convert VHDL code into a simulation graph.
+- `compiler/`: Contains the whole compilation pipeline to convert VHDL code into a simulation graph.
 
-Each of these directories implements its functionality in its own namespace.
+Each of these directories implements its functionality in its own namespace. A fourth one, `shared/`, holds the few header-only utilities they all use (`types.h`, `checked_math.h`).
 
 Inside of each folder, every feature or module (e.g., `x`) is divided into three distinct layers:
 * `include/x.h`: The public interface and data structures.
-* `src/x.cc`: The internal logic and implementation details.
+* `x.cc`, at the root of the directory: The internal logic and implementation details (a large module may split it into several files).
 * `tests/x.test.cc`: The unit tests for the module. Tests are written using gtest.
 
 > Additional internal interfaces may be created inside a `lib/` subdirectory.
+
+The `compiler/` directory applies the same layout once per pipeline stage: `compiler/<feature>/{include,lib,tests,*.cc}` for `diagnostics` (the error types and their GCC-style formatting), `tokenizer`, `parser`, `ast`, `analyzer`, `linker` and `elaborator`. The `tokenizer`, `parser`, `ast` and `analyzer` features name implementation and test files by grammar area or responsibility without the feature prefix (e.g. `parser/expressions.cc`, `analyzer/choices.cc`); a feature's main file keeps the feature name (`analyzer/analyzer.cc`, `linker/linker.cc`), and so do internal headers whose bare name would be ambiguous on the shared include path (`parser_impl.h`, `analyzer_internal.h`). Every token and AST node carries the index of its source file, so an error from any stage names its file. Each design file is analyzed on its own into a `DesignLibrary` (the `work` library, where an architecture finds its entity even when it lives in another file), and the linker then binds every component instance to the entity of the same name. The elaborator finally starts at the top entity and lowers every architecture, once per set of generic values, to a `Blueprint` of logic components; constructs it cannot lower yet are rejected with an "is not supported yet" error, and every rejection a design can reach has its own test. The parser is one `Parser` class (`parser/lib/parser_impl.h`) over a `TokenStream`, split into files by grammar area (`expressions.cc`, `types.cc`, `declarations.cc`, ...); it is blind (syntax only), every rule is a small method that reads as a list of calls to smaller ones, and it throws at the first error. To support a new construct, declare its AST node in `ast/include/` and implement its `clone` and `print` in `ast/clone_*.cc` and `ast/printer_*.cc` (a node that forms chains, like an operator, also needs `spineChild()` and a destructor that calls `unlinkSpine`, so the chain is freed iteratively), parse it in the matching parser file, then give the analyzer a handler and register it in the dispatch table of its kind: design units, type definitions, declarations and concurrent statements in `analyzer/analyzer.cc`, expressions in `analyzer/expr.cc` and sequential statements in `analyzer/sequential.cc`. The analyzer analyzes every node the parser can build, so a construct is never parsed and then ignored. Finally, lower it in the elaborator or reject it there with an "is not supported yet" error and a test. Tests go next to the code (`<feature>/tests/`): every rule needs one test that accepts and one that rejects, and every rejection asserts a fragment of its message; headers are included by bare name (`#include "ast.h"`) because CMake puts every feature's `include/` and `lib/` on the include path. Test helpers shared by several features, and the tests that cross stages, live in `compiler/tests/`.
 
 > For single-header modules (either private or public) whose implementation is included at the end of the header file, implementation can be placed inside a `impl/` subdirectory. For example, `src/engine/include/blueprint.h` has its implementation in `src/engine/impl/blueprint_impl.h`.
 
@@ -76,10 +78,10 @@ We welcome contributions across all layers of the simulation engine. Here are th
 VHDL is a huge language with many complex constructs. We aim to support as much of the syntax and semantics as possible, including advanced sequential statements, package declarations, and complex module hierarchies.
 
 #### Where to Look
-You can find parsing-related code inside `/src/parser/`.
+You can find parsing-related code inside `/src/compiler/`.
 
 #### How to Contribute
-The compilation pipeline consists of several stages: lexing, parsing, semantic analysis, and linking. Every of these stages should be able to handle new VHDL constructs. Finally, you will need to find the best way the new constructs can be represented in the simulation graph when building the design blueprint.
+The compilation pipeline consists of several stages: lexing, parsing, semantic analysis, linking and elaboration. Every of these stages should be able to handle new VHDL constructs. Finally, you will need to find the best way the new constructs can be represented in the simulation graph, in the elaborator (`src/compiler/elaborator/`), which builds the design blueprints.
 
 ### 2. Simulation Engine Optimization
 

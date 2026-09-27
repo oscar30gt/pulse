@@ -1,5 +1,5 @@
 // shifter.test.cc
-// Comprehensive unit tests for Pulse::Shifter component.
+// Comprehensive unit tests for Pulse::Engine::Shifter component.
 
 #include <gtest/gtest.h>
 #include "shifter.h"

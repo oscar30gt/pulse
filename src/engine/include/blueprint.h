@@ -13,6 +13,7 @@
 #include "shifter.h"
 #include "comparator.h"
 #include "processBox.h"
+#include "symbolTable.h"
 
 namespace Pulse::Engine
 {
@@ -42,7 +43,8 @@ namespace Pulse::Engine
         Constant,
         Join,
         Process,
-        Subgraph
+        Subgraph,
+        EventProbe
     };
 
     // --------------------------------------------------------------------------------------------
@@ -50,7 +52,9 @@ namespace Pulse::Engine
     /// Definition of a signal within a component
     struct WireInstance
     {
-        bitWidth_t width;
+        bitWidth_t width = BITWIDTH_DEFAULT;
+        /// State of the wire until a source is connected to it or it is driven (see Wire).
+        LogicVector defaultValue = LogicVector::HighZ();
     };
 
     // --------------------------------------------------------------------------------------------
@@ -91,7 +95,7 @@ namespace Pulse::Engine
         { }
     };
 
-    /// Binary gate instance: NOT, AND, OR, XOR, NAND, NOR, XNOR
+    /// Binary gate instance: AND, OR, XOR, NAND, NOR, XNOR (NOT is NotGateInstance)
     struct BinaryGateInstance : ComponentInstance
     {
         std::string in0, in1, out;
@@ -197,12 +201,20 @@ namespace Pulse::Engine
         { }
     };
 
+    /// Exposes the 'event flag of a wire as a 1-bit signal.
+    struct EventProbeInstance : ComponentInstance
+    {
+        std::string in, out;
+
+        EventProbeInstance(std::string in, std::string out)
+            : ComponentInstance(InstanceType::EventProbe), in(std::move(in)), out(std::move(out))
+        { }
+    };
+
     /// VHDL process instance. A process is an abstraction of a sequential block of code that can be executed in a simulation.
-    /// @note No port mapping is required for a process. It must be instantiated inside a subgraph that contains signals
-    /// with the same names as the process's input and output ports.
-    /// This is because a process is just an abstraction that is single-instantiated in a subgraph. Multiple gates can be instantiated
-    /// inside a subgraph, but a process is a single block of code that just abstracts the logic of a sequential block of code.
-    /// This is a design choice and could be changed in the future.
+    /// @note No port mapping is required for a process: it reads and writes the wires of its subgraph by name, so it belongs to
+    /// the one subgraph that declares it, which must contain signals with the names the process uses. A blueprint may hold
+    /// any number of processes. This is a design choice and could be changed in the future.
     struct ProcessInstance : ComponentInstance
     {
         /// Sensitivity list of the process (signals that trigger the process)
@@ -211,10 +223,13 @@ namespace Pulse::Engine
         
         std::vector<std::string> inPorts;
         std::vector<std::string> outPorts;
-        std::vector<std::unique_ptr<ProcessInstruction>> instructions;
+        /// Shared by every process box built from this instance, so a blueprint can be instantiated several times.
+        ProcessProgram instructions;
+        /// Run as a CombinationalProcessBox (a process with a sensitivity list) even when the list is empty.
+        bool combinational = false;
 
-        ProcessInstance(std::vector<std::string> inPorts, std::vector<std::string> outPorts, std::vector<std::unique_ptr<ProcessInstruction>> instructions, std::vector<std::string> sensList = {})
-            : ComponentInstance(InstanceType::Process), inPorts(std::move(inPorts)), outPorts(std::move(outPorts)), instructions(std::move(instructions)), sensList(std::move(sensList))
+        ProcessInstance(std::vector<std::string> inPorts, std::vector<std::string> outPorts, ProcessProgram instructions, std::vector<std::string> sensList = {})
+            : ComponentInstance(InstanceType::Process), sensList(std::move(sensList)), inPorts(std::move(inPorts)), outPorts(std::move(outPorts)), instructions(std::move(instructions))
         { }
     };
 
@@ -237,16 +252,23 @@ namespace Pulse::Engine
     {
         std::vector<std::string> inPorts;
         std::vector<std::string> outPorts;
+        /// Width and default value of each port, by name. A subgraph instantiated inside another one uses the wires of its
+        /// parent; this is what a root subgraph (the top of a design) builds its own port wires from.
+        std::unordered_map<std::string, WireInstance> portWires;
         std::unordered_map<std::string, WireInstance> wires;
         std::unordered_map<std::string, std::unique_ptr<ComponentInstance>> components;
+        /// How each port and signal is displayed; paired with every subgraph built from this blueprint.
+        SymbolTable symbols;
 
         /// Adds an input/output port to the blueprint.
-        void addPort(std::string name, bool isInput);
+        /// @param wire Width and default value of the port, used when the blueprint is the root of a design.
+        void addPort(std::string name, bool isInput, WireInstance wire = {});
 
         /// Adds an internal wire/signal instance to the blueprint.
-        void addSignal(std::string name, bitWidth_t width);
+        /// @param defaultValue State of the wire until a source is connected to it or it is driven.
+        void addSignal(std::string name, bitWidth_t width, LogicVector defaultValue = LogicVector::HighZ());
 
-        /// Instantiates and registers a component of type T into the blueprint.
+        /// Registers a component instance (a gate, an adder, a process, a nested subgraph ...) into the blueprint.
         /// Blueprint will take ownership of the added instance.
         void addComponent(std::string name, std::unique_ptr<ComponentInstance> instance);
 
