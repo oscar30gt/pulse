@@ -12,26 +12,6 @@ namespace Pulse::Debugger
     // UTF-8 & String Formatting Helpers
     // --------------------------------------------------------------------------------------------
 
-    std::string formatBusValue(const Engine::LogicVector& value, bitWidth_t width)
-    {
-        const uint8_t bits = std::min<uint8_t>(width, 64);
-        for (uint8_t bit = 0; bit < bits; ++bit)
-        {
-            if (value.bit(bit) != '0' && value.bit(bit) != '1')
-            {
-                return "error";
-            }
-        }
-
-        std::ostringstream out;
-        const uint64_t widthMask = bits == 64 ? ~uint64_t{ 0 } : ((uint64_t{ 1 } << bits) - 1);
-        out << "0x"
-            << std::uppercase << std::hex
-            << std::setw(static_cast<int>(std::max<size_t>(1, (bits + 3) / 4)))
-            << std::setfill('0') << (value.value & widthMask);
-        return out.str();
-    }
-
     size_t utf8Width(const std::string& text)
     {
         size_t width = 0;
@@ -88,20 +68,14 @@ namespace Pulse::Debugger
             case SignalType::Output:
                 return "[OUT]";
             case SignalType::Internal:
-                return "[INT]";
+                return "";
         }
         return {};
     }
 
     std::string cursorValue(const Wave& wave, simTime_t time)
     {
-        const Engine::LogicVector value = wave.valueAt(time);
-        if (wave.width == 1)
-        {
-            return std::string(1, value.bit(0));
-        }
-
-        return formatBusValue(value, wave.width);
+        return formatValue(wave, wave.valueAt(time));
     }
 
     // --------------------------------------------------------------------------------------------
@@ -113,8 +87,8 @@ namespace Pulse::Debugger
         std::ostringstream out;
         const char* defaultBg = focused ? Style::focusBg : "";
 
-        // Single-bit signals: use level glyphs and transition slopes
-        if (wave.width == 1)
+        // Bits and booleans: use level glyphs and transition slopes
+        if (wave.isLevel())
         {
             char previous = wave.valueAt(start).bit(0);
             for (simTime_t time = start; time < end; ++time)
@@ -173,7 +147,7 @@ namespace Pulse::Debugger
             return out.str();
         }
 
-        // Multi-bit buses: divide timestamps into runs of identical values and render hex labels
+        // Buses, numbers and enumerations: divide timestamps into runs of identical values and render their labels
         for (simTime_t time = start; time < end;)
         {
             const Engine::LogicVector value = wave.valueAt(time);
@@ -189,7 +163,7 @@ namespace Pulse::Debugger
 
             if (room > 0)
             {
-                std::string label = formatBusValue(value, wave.width);
+                std::string label = formatValue(wave, value);
                 if (label.size() > room)
                 {
                     label.resize(room);
@@ -204,7 +178,7 @@ namespace Pulse::Debugger
             {
                 const bool cursorCell = i == cursorOffset;
                 const bool borderCell = i == 0;
-                const bool errorCell = !cursorCell && formatBusValue(value, wave.width) == "error";
+                const bool errorCell = !cursorCell && !value.range(wave.width).isDefinite();
                 const char* color = cursorCell
                     ? Style::cursorBg
                     : (errorCell ? Style::error : (borderCell ? Style::busBorder : Style::busValue));
@@ -263,15 +237,10 @@ namespace Pulse::Debugger
         const size_t panelWidth = std::clamp(size.columns / 3, size_t{ 46 }, size_t{ 60 });
         size_t valueWidth = 3; // Default width.
 
-        // Dynamic value width calculation based on the widest bus value in the visible rows (up to 18 characters).
+        // Dynamic value width calculation based on the widest value in the rows (up to 18 characters).
         for (const Row& row : rows) if (row.wave)
         {
-            valueWidth = std::max(
-                valueWidth,
-                row.wave->width == 1
-                    ? size_t{ 1 }
-                    : std::min<size_t>(18, (row.wave->width + 3) / 4 + 2)
-            );
+            valueWidth = std::max(valueWidth, std::min<size_t>(18, formatWidth(*row.wave)));
         }
 
         const size_t typeWidth = 6;

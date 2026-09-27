@@ -1,5 +1,6 @@
 #include "subgraph.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 #include "blueprint.h"
@@ -16,190 +17,218 @@
 
 namespace Pulse::Engine
 {
+    Subgraph::RootPorts Subgraph::makeRootPorts(const Blueprint& bp)
+    {
+        RootPorts ports;
+
+        const auto create = [&](const std::string& name, PortInitializer& list)
+        {
+            auto info = bp.portWires.find(name);
+            const WireInstance wire = info != bp.portWires.end() ? info->second : WireInstance{};
+            ports.owned.push_back(std::make_unique<Wire>(wire.width, wire.defaultValue));
+            list.emplace_back(name, ports.owned.back().get());
+        };
+
+        for (const auto& name : bp.inPorts) create(name, ports.inPorts);
+        for (const auto& name : bp.outPorts) create(name, ports.outPorts);
+        return ports;
+    }
+
+    Subgraph::Subgraph(const Blueprint& bp)
+        : Subgraph(bp, makeRootPorts(bp))
+    { }
+
+    Subgraph::Subgraph(const Blueprint& bp, RootPorts ports)
+        : Component(ports.inPorts, ports.outPorts),
+        m_ownedPorts(std::move(ports.owned)),
+        m_blueprint(&bp)
+    {
+        std::vector<const Blueprint*> visitedBlueprints{ &bp };
+        build(bp, visitedBlueprints);
+    }
+
     Subgraph::Subgraph(const Blueprint& bp, const PortInitializer& inPorts, const PortInitializer& outPorts)
-        : Component(inPorts, outPorts)
+        : Component(inPorts, outPorts),
+        m_blueprint(&bp)
     {
-        std::vector<std::string> visitedSubgraphs;
-        build(bp, visitedSubgraphs);
+        std::vector<const Blueprint*> visitedBlueprints{ &bp };
+        build(bp, visitedBlueprints);
     }
 
-    Subgraph::Subgraph(const Blueprint& bp, const PortInitializer& inPorts, const PortInitializer& outPorts, std::vector<std::string>& visitedSubgraphs)
-        : Component(inPorts, outPorts)
+    Subgraph::Subgraph(const Blueprint& bp, const PortInitializer& inPorts, const PortInitializer& outPorts, std::vector<const Blueprint*>& visitedBlueprints)
+        : Component(inPorts, outPorts),
+        m_blueprint(&bp)
     {
-        build(bp, visitedSubgraphs);
+        build(bp, visitedBlueprints);
     }
 
-    void Subgraph::build(const Blueprint& bp, std::vector<std::string>& visitedSubgraphs)
+    void Subgraph::build(const Blueprint& bp, std::vector<const Blueprint*>& visitedBlueprints)
     {
-        // Wires must be created before components, as components need 
+        // Wires must be created before components, as components need
         // to connect to the wires during their construction.
         for (auto& [name, wire] : bp.wires)
         {
-            wires.insert({ name, std::make_unique<Wire>(wire.width) });
+            wires.insert({ name, std::make_unique<Wire>(wire.width, wire.defaultValue) });
         }
 
-        // Now, create the components based on the blueprint. 
-        // Each component will connect to the appropriate wires, 
+        // Now, create the components based on the blueprint.
+        // Each component will connect to the appropriate wires,
         // which can be either internal wires or the subgraph's ports.
         for (auto& [name, component] : bp.components)
         {
+            const std::string user = "component '" + name + "'";
+
             // Instantiate the component based on its type. Subgraph will take ownership of the created component.
             switch (component->type)
             {
                 // Join is a special case where we don't create a new component, but rather connect two existing wires.
                 case InstanceType::Join:
                 {
-                    auto* join = static_cast<JoinInstance*>(component.get());
-                    auto* emitter = findWire(join->emitter);
-                    auto* receiver = findWire(join->receiver);
+                    auto* join = static_cast<const JoinInstance*>(component.get());
+                    auto* emitter = requireWire(join->emitter, user);
+                    auto* receiver = requireWire(join->receiver, user);
                     emitter->addTarget(receiver);
                 }
                 break;
 
                 case InstanceType::Constant:
                 {
-                    auto* constant = static_cast<ConstantInstance*>(component.get());
-                    auto* out = findWire(constant->out);
+                    auto* constant = static_cast<const ConstantInstance*>(component.get());
+                    auto* out = requireWire(constant->out, user);
                     components.insert({ name, std::make_unique<Constant>(out, constant->value) });
                 }
                 break;
 
                 case InstanceType::BinaryGate:
                 {
-                    auto* gate = static_cast<BinaryGateInstance*>(component.get());
-                    auto* in0 = findWire(gate->in0);
-                    auto* in1 = findWire(gate->in1);
-                    auto* out = findWire(gate->out);
+                    auto* gate = static_cast<const BinaryGateInstance*>(component.get());
+                    auto* in0 = requireWire(gate->in0, user);
+                    auto* in1 = requireWire(gate->in1, user);
+                    auto* out = requireWire(gate->out, user);
                     components.insert({ name, std::make_unique<BinaryGate>(in0, in1, out, gate->op) });
                 }
                 break;
 
                 case InstanceType::NotGate:
                 {
-                    auto* notGate = static_cast<NotGateInstance*>(component.get());
-                    auto* in = findWire(notGate->in);
-                    auto* out = findWire(notGate->out);
+                    auto* notGate = static_cast<const NotGateInstance*>(component.get());
+                    auto* in = requireWire(notGate->in, user);
+                    auto* out = requireWire(notGate->out, user);
                     components.insert({ name, std::make_unique<NOTGate>(in, out) });
                 }
                 break;
 
                 case InstanceType::Shifter:
                 {
-                    auto* shifter = static_cast<ShifterInstance*>(component.get());
-                    auto* in = findWire(shifter->in);
-                    auto* shamt = findWire(shifter->shamt);
-                    auto* out = findWire(shifter->out);
+                    auto* shifter = static_cast<const ShifterInstance*>(component.get());
+                    auto* in = requireWire(shifter->in, user);
+                    auto* shamt = requireWire(shifter->shamt, user);
+                    auto* out = requireWire(shifter->out, user);
                     components.insert({ name, std::make_unique<Shifter>(in, shamt, out, shifter->op) });
                 }
                 break;
 
                 case InstanceType::Comparator:
                 {
-                    auto* comparator = static_cast<ComparatorInstance*>(component.get());
-                    auto* in0 = findWire(comparator->in0);
-                    auto* in1 = findWire(comparator->in1);
-                    auto* out = findWire(comparator->out);
+                    auto* comparator = static_cast<const ComparatorInstance*>(component.get());
+                    auto* in0 = requireWire(comparator->in0, user);
+                    auto* in1 = requireWire(comparator->in1, user);
+                    auto* out = requireWire(comparator->out, user);
                     components.insert({ name, std::make_unique<Comparator>(in0, in1, out, comparator->op, comparator->mode) });
                 }
                 break;
 
                 case InstanceType::Splitter:
                 {
-                    auto* splitter = static_cast<SplitterInstance*>(component.get());
-                    auto* in = findWire(splitter->in);
-                    auto* out = findWire(splitter->out);
+                    auto* splitter = static_cast<const SplitterInstance*>(component.get());
+                    auto* in = requireWire(splitter->in, user);
+                    auto* out = requireWire(splitter->out, user);
                     components.insert({ name, std::make_unique<Splitter>(in, out, std::pair(splitter->high, splitter->low)) });
                 }
                 break;
 
                 case InstanceType::Concatenator:
                 {
-                    auto* concatenator = static_cast<ConcatenatorInstance*>(component.get());
-                    auto* low = findWire(concatenator->low);
-                    auto* high = findWire(concatenator->high);
-                    auto* out = findWire(concatenator->out);
+                    auto* concatenator = static_cast<const ConcatenatorInstance*>(component.get());
+                    auto* low = requireWire(concatenator->low, user);
+                    auto* high = requireWire(concatenator->high, user);
+                    auto* out = requireWire(concatenator->out, user);
                     components.insert({ name, std::make_unique<Concatenator>(low, high, out) });
                 }
                 break;
 
                 case InstanceType::Adder:
                 {
-                    auto* adder = static_cast<AdderInstance*>(component.get());
-                    auto* in0 = findWire(adder->in0);
-                    auto* in1 = findWire(adder->in1);
-                    auto* out = findWire(adder->out);
+                    auto* adder = static_cast<const AdderInstance*>(component.get());
+                    auto* in0 = requireWire(adder->in0, user);
+                    auto* in1 = requireWire(adder->in1, user);
+                    auto* out = requireWire(adder->out, user);
                     components.insert({ name, std::make_unique<Adder>(in0, in1, out) });
                 }
                 break;
 
                 case InstanceType::Subtractor:
                 {
-                    auto* subtractor = static_cast<SubtractorInstance*>(component.get());
-                    auto* in0 = findWire(subtractor->in0);
-                    auto* in1 = findWire(subtractor->in1);
-                    auto* out = findWire(subtractor->out);
+                    auto* subtractor = static_cast<const SubtractorInstance*>(component.get());
+                    auto* in0 = requireWire(subtractor->in0, user);
+                    auto* in1 = requireWire(subtractor->in1, user);
+                    auto* out = requireWire(subtractor->out, user);
                     components.insert({ name, std::make_unique<Subtractor>(in0, in1, out) });
                 }
                 break;
 
                 case InstanceType::Multiplicator:
                 {
-                    auto* multiplicator = static_cast<MultiplicatorInstance*>(component.get());
-                    auto* in0 = findWire(multiplicator->in0);
-                    auto* in1 = findWire(multiplicator->in1);
-                    auto* out = findWire(multiplicator->out);
+                    auto* multiplicator = static_cast<const MultiplicatorInstance*>(component.get());
+                    auto* in0 = requireWire(multiplicator->in0, user);
+                    auto* in1 = requireWire(multiplicator->in1, user);
+                    auto* out = requireWire(multiplicator->out, user);
                     components.insert({ name, std::make_unique<Multiplicator>(in0, in1, out) });
                 }
                 break;
 
                 case InstanceType::ControlledBuffer:
                 {
-                    auto* buffer = static_cast<ControlledBufferInstance*>(component.get());
-                    auto* in = findWire(buffer->in);
-                    auto* enable = findWire(buffer->enable);
-                    auto* out = findWire(buffer->out);
+                    auto* buffer = static_cast<const ControlledBufferInstance*>(component.get());
+                    auto* in = requireWire(buffer->in, user);
+                    auto* enable = requireWire(buffer->enable, user);
+                    auto* out = requireWire(buffer->out, user);
                     components.insert({ name, std::make_unique<ControlledBuffer>(in, enable, out) });
+                }
+                break;
+
+                case InstanceType::EventProbe:
+                {
+                    auto* probe = static_cast<const EventProbeInstance*>(component.get());
+                    auto* in = requireWire(probe->in, user);
+                    auto* out = requireWire(probe->out, user);
+                    m_probes.push_back(std::make_unique<EventProbe>(in, out));
                 }
                 break;
 
                 case InstanceType::Process:
                 {
-                    auto* process = static_cast<ProcessInstance*>(component.get());
+                    auto* process = static_cast<const ProcessInstance*>(component.get());
 
                     // Map the process's ports to the parent subgraph's wires
                     PortInitializer inPorts, outPorts;
 
                     for (const auto& portName : process->inPorts)
-                    {
-                        Wire* parentWire = findWire(portName);
-                        if (!parentWire)
-                            throw std::runtime_error("Process construction failed: Input port '" + portName + "' not found in parent subgraph.");
-                        inPorts.emplace_back(portName, parentWire);
-                    }
+                        inPorts.emplace_back(portName, requireWire(portName, "input port of process '" + name + "'"));
 
                     for (const auto& portName : process->outPorts)
-                    {
-                        Wire* parentWire = findWire(portName);
-                        if (!parentWire)
-                            throw std::runtime_error("Process construction failed: Output port '" + portName + "' not found in parent subgraph.");
-                        outPorts.emplace_back(portName, parentWire);
-                    }
+                        outPorts.emplace_back(portName, requireWire(portName, "output port of process '" + name + "'"));
 
-                    if (process->sensList.empty())
+                    if (process->sensList.empty() && !process->combinational)
                     {
-                        components.insert({ name, std::make_unique<SequentialProcessBox>(inPorts, outPorts, std::move(process->instructions)) });
+                        components.insert({ name, std::make_unique<SequentialProcessBox>(inPorts, outPorts, process->instructions) });
                     }
                     else
                     {
                         std::vector<Wire*> sensList;
                         for (const auto& sensName : process->sensList)
-                        {
-                            Wire* sensWire = findWire(sensName);
-                            if (!sensWire)
-                                throw std::runtime_error("Process construction failed: Sensitivity list wire '" + sensName + "' not found in parent subgraph.");
-                            sensList.push_back(sensWire);
-                        }
-                        components.insert({ name, std::make_unique<CombinationalProcessBox>(inPorts, outPorts, std::move(process->instructions), sensList) });
+                            sensList.push_back(requireWire(sensName, "sensitivity list of process '" + name + "'"));
+                        components.insert({ name, std::make_unique<CombinationalProcessBox>(inPorts, outPorts, process->instructions, sensList) });
                     }
                 }
                 break;
@@ -207,41 +236,43 @@ namespace Pulse::Engine
                 // Subgraphs are nested components, so we need to recursively create them.
                 case InstanceType::Subgraph:
                 {
-                    if (std::find(visitedSubgraphs.begin(), visitedSubgraphs.end(), name) != visitedSubgraphs.end())
-                    {
-                        throw std::runtime_error("Subgraph construction failed: Recursive subgraph detected at: " + name);
-                    }
+                    auto* subgraph = static_cast<const SubgraphInstance*>(component.get());
+                    const Blueprint* childBlueprint = subgraph->bp;
+                    if (!childBlueprint)
+                        throw std::runtime_error("Subgraph construction failed: subgraph '" + name + "' has no blueprint.");
 
-                    auto* subgraph = static_cast<SubgraphInstance*>(component.get());
-                    auto* bp = subgraph->bp;
+                    if (std::find(visitedBlueprints.begin(), visitedBlueprints.end(), childBlueprint) != visitedBlueprints.end())
+                        throw std::runtime_error("Subgraph construction failed: Recursive subgraph detected at: " + name);
+
                     auto& portMap = subgraph->portMap;
 
                     // Map the subgraph's ports to the parent subgraph's wires
                     PortInitializer inPorts, outPorts;
 
-                    for (const auto& portName : subgraph->bp->inPorts)
+                    for (const auto& portName : childBlueprint->inPorts)
                     {
                         auto it = portMap.find(portName);
                         if (it == portMap.end())
                             continue; // No signal is connected to this port, skip it.
 
-                        Wire* parentWire = findWire(it->second);
-                        inPorts.emplace_back(portName, parentWire);
+                        inPorts.emplace_back(portName, requireWire(it->second, "port '" + portName + "' of subgraph '" + name + "'"));
                     }
 
-                    for (const auto& portName : subgraph->bp->outPorts)
+                    for (const auto& portName : childBlueprint->outPorts)
                     {
                         auto it = portMap.find(portName);
                         if (it == portMap.end())
                             continue; // No signal is connected to this port, skip it.
 
-                        Wire* parentWire = findWire(it->second);
-                        outPorts.emplace_back(portName, parentWire);
+                        outPorts.emplace_back(portName, requireWire(it->second, "port '" + portName + "' of subgraph '" + name + "'"));
                     }
 
-                    visitedSubgraphs.push_back(name);
-                    components.insert({ name, std::make_unique<Subgraph>(*bp, inPorts, outPorts, visitedSubgraphs) });
-                    visitedSubgraphs.pop_back();
+                    visitedBlueprints.push_back(childBlueprint);
+                    auto child = std::make_unique<Subgraph>(*childBlueprint, inPorts, outPorts, visitedBlueprints);
+                    visitedBlueprints.pop_back();
+
+                    m_children.emplace_back(name, child.get());
+                    components.insert({ name, std::move(child) });
                 }
                 break;
 
@@ -271,15 +302,52 @@ namespace Pulse::Engine
         return nullptr;
     }
 
+    Wire* Subgraph::requireWire(const std::string& name, const std::string& user)
+    {
+        Wire* wire = findWire(name);
+        if (!wire)
+            throw std::runtime_error("Subgraph construction failed: wire '" + name + "' used by " + user + " does not exist.");
+        return wire;
+    }
+
+    void Subgraph::rollEvents()
+    {
+        for (auto& wire : m_ownedPorts)
+            wire->update();
+
+        for (auto& [name, wire] : wires)
+            wire->update();
+
+        for (auto& probe : m_probes)
+            probe->update();
+
+        for (auto& [name, child] : m_children)
+            child->rollEvents();
+    }
+
+    void Subgraph::tick()
+    {
+        rollEvents();
+        update();
+        commit();
+    }
+
     void Subgraph::update()
     {
         for (auto& [name, component] : components)
             component->update();
     }
 
+    void Subgraph::commit()
+    {
+        for (auto& [name, component] : components)
+            component->commit();
+    }
+
     SubgraphSnapshot Subgraph::takeSnapshot() const
     {
         SubgraphSnapshot snapshot;
+        snapshot.symbols = &m_blueprint->symbols;
 
         // Capture the state of input ports
         for (const auto& [name, signal] : m_inSignals)
@@ -287,7 +355,7 @@ namespace Pulse::Engine
             if (name[0] == '$') continue;
             snapshot.inputs[name] = { signal->width(), signal->peek() };
         }
-        
+
         // Capture the state of output ports
         for (const auto& [name, signal] : m_outSignals)
         {
@@ -303,13 +371,8 @@ namespace Pulse::Engine
         }
 
         // Capture the state of internal components (subgraphs)
-        for (const auto& [name, component] : components)
-        {
-            if (auto subgraph = dynamic_cast<Subgraph*>(component.get()))
-            {
-                snapshot.subgraphs[name] = subgraph->takeSnapshot();
-            }
-        }
+        for (const auto& [name, child] : m_children)
+            snapshot.subgraphs[name] = child->takeSnapshot();
 
         return snapshot;
     }

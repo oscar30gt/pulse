@@ -26,9 +26,10 @@ namespace Pulse::Engine
 
     bool Concatenator::recalculate(ttl_t ttl)
     {
-        LogicVector lessSignificant = m_low.pull();
-        LogicVector moreSignificant = m_high.pull();
-        LogicVector result = lessSignificant | moreSignificant.lsl(m_low.width());
+        // The bits are placed side by side as they are (a logical OR would turn a 'Z' into an 'X').
+        const LogicVector lessSignificant = m_low.pull().range(m_low.width());
+        const LogicVector moreSignificant = m_high.pull().lsl(m_low.width());
+        const LogicVector result(lessSignificant.value | moreSignificant.value, lessSignificant.mask | moreSignificant.mask);
         return m_out.drive(result, ttl);
     }
 }

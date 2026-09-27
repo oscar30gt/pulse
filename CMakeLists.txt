@@ -18,7 +18,7 @@ endforeach()
 file(GLOB_RECURSE PULSE_SOURCES CONFIGURE_DEPENDS
     "src/shared/*.cc"
     "src/engine/*.cc"
-    "src/parser/*.cc"
+    "src/compiler/*.cc"
     "src/debugger/*.cc"
 )
 # Exclude test files from core library
@@ -28,22 +28,29 @@ add_library(pulse_app STATIC
     ${PULSE_SOURCES}
 )
 
-target_include_directories(pulse_app 
-  PUBLIC
-    src/shared/include
-    src/engine/include
-    src/parser/include
-    src/debugger/include
-    src/shared/impl
-    src/engine/impl
-    src/parser/impl
-    src/debugger/impl
-  PRIVATE
-    src/shared/lib
-    src/engine/lib
-    src/parser/lib
-    src/debugger/lib
-)
+# Header directories are discovered by name instead of being listed one by one: any folder called
+# include/ or impl/ is public, any folder called lib/ is private to the library. This covers both the
+# module layout (src/<module>/include) and the compiler's deeper feature layout
+# (src/compiler/<feature>/{include,lib}), so a new module or compiler feature only has to exist on
+# disk — re-run `cmake -B build` to pick it up. Includes therefore stay bare (#include "ast.h") no
+# matter which module or feature owns the header.
+set(PULSE_HEADER_DIR_GLOBS "")
+foreach(DEPTH "src/*" "src/*/*" "src/*/*/*")
+    list(APPEND PULSE_HEADER_DIR_GLOBS "${DEPTH}/include" "${DEPTH}/impl" "${DEPTH}/lib")
+endforeach()
+file(GLOB PULSE_HEADER_DIRS LIST_DIRECTORIES true CONFIGURE_DEPENDS ${PULSE_HEADER_DIR_GLOBS})
+
+foreach(HEADER_DIR ${PULSE_HEADER_DIRS})
+    if(NOT IS_DIRECTORY "${HEADER_DIR}")
+        continue()
+    endif()
+    get_filename_component(HEADER_DIR_NAME "${HEADER_DIR}" NAME)
+    if(HEADER_DIR_NAME STREQUAL "lib")
+        target_include_directories(pulse_app PRIVATE "${HEADER_DIR}")
+    else()
+        target_include_directories(pulse_app PUBLIC "${HEADER_DIR}")
+    endif()
+endforeach()
 
 # -----------------------------------------------------------------------------
 # 2. Main Application Executable (pulse.exe)
@@ -73,15 +80,17 @@ if(BUILD_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 
-    # Automatically find all test files matching *test*.cc or *.test.cpp in any tests/ directory
-    file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
-        "src/**/tests/*.cc"
-    )
+    # Every .cc file inside a tests/ directory of any module or compiler feature is a test source
+    file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "src/*.cc")
+    list(FILTER TEST_SOURCES INCLUDE REGEX ".*/tests/[^/]*[.]cc$")
 
     if(TEST_SOURCES)
         add_executable(pulse_tests
             ${TEST_SOURCES}
         )
+
+        # Test utilities shared by all compiler features (src/compiler/tests/test_helpers.h)
+        target_include_directories(pulse_tests PRIVATE src/compiler/tests)
 
         target_link_libraries(pulse_tests PRIVATE
             pulse_app

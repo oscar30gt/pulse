@@ -1,1 +1,8 @@
 build/
+*.o
+*.exe
+*.out
+*.obj
+*.log
+
+.DS_Store

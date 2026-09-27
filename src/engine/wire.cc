@@ -3,7 +3,9 @@
 
 namespace Pulse::Engine
 {
-    Wire::Wire(bitWidth_t bitWidth) : ISignalBase(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth), m_state(LogicVector::HighZ()) { }
+    Wire::Wire(bitWidth_t bitWidth, LogicVector defaultValue)
+        : ISignalBase(bitWidth), ISignalReceiver(bitWidth), ISignalEmitter(bitWidth), m_state(defaultValue.range(bitWidth))
+    { }
 
     Wire::~Wire() { }
 
@@ -12,11 +14,11 @@ namespace Pulse::Engine
         return m_state;
     }
 
-    bool Wire::onNotify(ttl_t ttl)
+    bool Wire::setState(LogicVector newState, ttl_t ttl)
     {
-        LogicVector newState = resolve(); // Update the signal state based on connected sources
         if (newState == m_state) return true;
         m_state = newState;
+        m_changed = true;
 
         // Notify all target ports connected to this signal
         bool allOk = true;
@@ -26,5 +28,27 @@ namespace Pulse::Engine
         }
 
         return allOk;
+    }
+
+    bool Wire::onNotify(ttl_t ttl)
+    {
+        return setState(resolve(), ttl); // Update the signal state based on connected sources
+    }
+
+    bool Wire::drive(LogicVector value, ttl_t ttl)
+    {
+        if (!m_sources.empty()) return true; // The sources own the state of the wire
+        return setState(value.range(m_bitWidth), ttl);
+    }
+
+    void Wire::update()
+    {
+        m_event = m_changed;
+        m_changed = false;
+    }
+
+    bool Wire::event() const
+    {
+        return m_event;
     }
 }

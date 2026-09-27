@@ -1,5 +1,5 @@
-// signalDrain_test.cpp
-// Tests for Pulse::SignalDrain using GoogleTest.
+// signalDrain.test.cc
+// Tests for Pulse::Engine::SignalDrain using GoogleTest.
 
 #include <gtest/gtest.h>
 #include "signalDrain.h"
