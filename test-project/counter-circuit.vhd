@@ -14,10 +14,13 @@ ARCHITECTURE behavioral OF top IS
     END COMPONENT;
 
     COMPONENT counter
+        GENERIC (
+            WIDTH : INTEGER := 32
+        );
         PORT (
             clk : IN STD_LOGIC;
             reset : IN STD_LOGIC;
-            count : OUT UNSIGNED(31 DOWNTO 0)
+            count : OUT UNSIGNED(WIDTH - 1 DOWNTO 0)
         );
     END COMPONENT;
 
@@ -34,6 +37,9 @@ BEGIN
     );
 
     counter_inst : counter
+    GENERIC MAP(
+        WIDTH => 32
+    )
     PORT MAP(
         clk => clk,
         reset => reset,

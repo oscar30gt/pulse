@@ -3,16 +3,19 @@ USE ieee.std_logic_1164.ALL;
 USE ieee.numeric_std.ALL;
 
 ENTITY counter IS
+    GENERIC (
+        WIDTH : INTEGER := 32
+    );
     PORT (
         clk : IN STD_LOGIC;
         reset : IN STD_LOGIC;
-        count : OUT UNSIGNED(31 DOWNTO 0)
+        count : OUT UNSIGNED(WIDTH - 1 DOWNTO 0)
     );
 END ENTITY counter;
 
 ARCHITECTURE behavioral OF counter IS
 
-    SIGNAL count_internal : UNSIGNED(31 DOWNTO 0);
+    SIGNAL count_internal : UNSIGNED(WIDTH - 1 DOWNTO 0);
 
 BEGIN
 
