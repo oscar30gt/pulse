@@ -77,7 +77,7 @@ namespace Pulse::Parser
         lowerSequence(process.body);
 
         const bool combinational = process.sensitivityAll || !process.sensitivityList.empty();
-        std::vector<std::string> sensitivity = process.sensitivityAll ? context.signalsRead : sensitivityOf(process.sensitivityList);
+        std::vector<std::string> triggers = triggersOf(process.sensitivityAll ? context.signalsRead : sensitivityOf(process.sensitivityList));
 
         m_typeScopes.pop_back();
         m_process = nullptr;
@@ -89,7 +89,7 @@ namespace Pulse::Parser
         std::vector<std::string> outPorts = context.builder.writes();
 
         auto instance = std::make_unique<ProcessInstance>(std::move(inPorts), std::move(outPorts), ProcessProgram(context.builder.finish()),
-                                                          std::move(sensitivity));
+                                                          std::move(triggers));
         instance->combinational = combinational;
         m_bp.addComponent(context.name, std::move(instance));
     }
@@ -114,9 +114,18 @@ namespace Pulse::Parser
                 inPorts.push_back(wire);
 
         auto instance = std::make_unique<ProcessInstance>(std::move(inPorts), context.builder.writes(), ProcessProgram(context.builder.finish()),
-                                                          context.signalsRead);
+                                                          triggersOf(context.signalsRead));
         instance->combinational = true;
         m_bp.addComponent(context.name, std::move(instance));
+    }
+
+    std::vector<std::string> UnitElaborator::triggersOf(const std::vector<std::string>& wires)
+    {
+        // A process runs on the events of its signals: the outputs of their event probes, shared with 'event.
+        std::vector<std::string> triggers;
+        for (const std::string& wire : wires)
+            triggers.push_back(eventOf(wire));
+        return triggers;
     }
 
     std::vector<std::string> UnitElaborator::sensitivityOf(const std::vector<ExpressionPtr>& names)
@@ -478,7 +487,7 @@ namespace Pulse::Parser
             if (statement.onSignals.empty())
                 sensitivity = read;
         }
-        builder.waitOn(sensitivity, condition, timeout);
+        builder.waitOn(triggersOf(sensitivity), condition, timeout);
     }
 
 } // namespace Pulse::Parser

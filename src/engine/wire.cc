@@ -18,7 +18,6 @@ namespace Pulse::Engine
     {
         if (newState == m_state) return true;
         m_state = newState;
-        m_changed = true;
 
         // Notify all target ports connected to this signal
         bool allOk = true;
@@ -39,16 +38,5 @@ namespace Pulse::Engine
     {
         if (!m_sources.empty()) return true; // The sources own the state of the wire
         return setState(value.range(m_bitWidth), ttl);
-    }
-
-    void Wire::update()
-    {
-        m_event = m_changed;
-        m_changed = false;
-    }
-
-    bool Wire::event() const
-    {
-        return m_event;
     }
 }

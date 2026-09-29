@@ -86,15 +86,19 @@ namespace
 TEST(SubgraphTest, SignalAssignmentsAreCommittedAfterEveryProcessRan)
 {
     // p1: q1 <= d;  p2: q2 <= q1;  both run in the first tick. p2 must read q1 before p1's assignment, whatever order
-    // the processes run in, so q2 takes the old q1.
+    // the processes run in, so q2 takes the old q1. Each process runs on the events of its signal (an event probe).
     Blueprint bp;
     bp.addSignal("d", 1, bit(false));
     bp.addSignal("q1", 1, bit(true));
     bp.addSignal("q2", 1, bit(false));
+    bp.addSignal("d.event", 1, bit(false));
+    bp.addSignal("q1.event", 1, bit(false));
+    bp.addComponent("probe_d", std::make_unique<EventProbeInstance>("d", "d.event"));
+    bp.addComponent("probe_q1", std::make_unique<EventProbeInstance>("q1", "q1.event"));
     bp.addComponent("p1", std::make_unique<ProcessInstance>(std::vector<std::string>{ "d" }, std::vector<std::string>{ "q1" },
-                                                            deferredCopy("q1", "d"), std::vector<std::string>{ "d" }));
+                                                            deferredCopy("q1", "d"), std::vector<std::string>{ "d.event" }));
     bp.addComponent("p2", std::make_unique<ProcessInstance>(std::vector<std::string>{ "q1" }, std::vector<std::string>{ "q2" },
-                                                            deferredCopy("q2", "q1"), std::vector<std::string>{ "q1" }));
+                                                            deferredCopy("q2", "q1"), std::vector<std::string>{ "q1.event" }));
 
     Subgraph graph(bp);
     graph.tick();
@@ -161,8 +165,10 @@ TEST(SubgraphTest, ABlueprintCanBeInstantiatedTwice)
     Blueprint leaf;
     leaf.addPort("a", true);
     leaf.addPort("y", false);
+    leaf.addSignal("a.event", 1, bit(false));
+    leaf.addComponent("probe", std::make_unique<EventProbeInstance>("a", "a.event"));
     leaf.addComponent("p", std::make_unique<ProcessInstance>(std::vector<std::string>{ "a" }, std::vector<std::string>{ "y" },
-                                                             deferredCopy("y", "a"), std::vector<std::string>{ "a" }));
+                                                             deferredCopy("y", "a"), std::vector<std::string>{ "a.event" }));
 
     Blueprint top;
     top.addSignal("a1", 1, bit(true));

@@ -11,17 +11,11 @@ namespace Pulse::Engine
     ///
     /// A wire takes its state from the sources connected to it. A wire without sources can instead be driven directly
     /// (drive()), which is how processes assign their signals: the value then stays on the wire until it is driven again.
-    /// Every change of state is remembered for the 'event flag, which update() publishes once per simulation tick.
+    /// A wire knows nothing about time: an EventProbe watches it when its 'event is needed.
     class Wire : public ISignalReceiver, public ISignalEmitter
     {
         /// Current state of the signal.
         LogicVector m_state;
-
-        /// The state changed since the last update().
-        bool m_changed = false;
-
-        /// The state changed during the tick before the last update() (VHDL 'event).
-        bool m_event = false;
 
         virtual bool onNotify(ttl_t ttl) override;
 
@@ -46,14 +40,6 @@ namespace Pulse::Engine
         /// @param ttl Optional time-to-live (TTL) value for signal propagation.
         /// @returns false if TTL expired somewhere in the propagation, true otherwise (also when the value is ignored).
         bool drive(LogicVector value, ttl_t ttl = TTL_DEFAULT);
-
-        /// Advances the wire one simulation tick: the 'event flag becomes whether the state changed since the previous
-        /// update(). The value itself is not propagated.
-        void update();
-
-        /// VHDL 'event: whether the state changed during the previous tick (see update()).
-        [[nodiscard]]
-        bool event() const;
     };
 }
 

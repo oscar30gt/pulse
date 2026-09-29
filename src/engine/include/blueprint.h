@@ -217,9 +217,9 @@ namespace Pulse::Engine
     /// any number of processes. This is a design choice and could be changed in the future.
     struct ProcessInstance : ComponentInstance
     {
-        /// Sensitivity list of the process (signals that trigger the process)
+        /// 1-bit wires that run the process when one of them is '1': the EventProbe outputs of its sensitivity list.
         /// Empty for processes whose execution is managed via "wait" statements.
-        std::vector<std::string> sensList;
+        std::vector<std::string> triggers;
         
         std::vector<std::string> inPorts;
         std::vector<std::string> outPorts;
@@ -228,8 +228,8 @@ namespace Pulse::Engine
         /// Run as a CombinationalProcessBox (a process with a sensitivity list) even when the list is empty.
         bool combinational = false;
 
-        ProcessInstance(std::vector<std::string> inPorts, std::vector<std::string> outPorts, ProcessProgram instructions, std::vector<std::string> sensList = {})
-            : ComponentInstance(InstanceType::Process), sensList(std::move(sensList)), inPorts(std::move(inPorts)), outPorts(std::move(outPorts)), instructions(std::move(instructions))
+        ProcessInstance(std::vector<std::string> inPorts, std::vector<std::string> outPorts, ProcessProgram instructions, std::vector<std::string> triggers = {})
+            : ComponentInstance(InstanceType::Process), triggers(std::move(triggers)), inPorts(std::move(inPorts)), outPorts(std::move(outPorts)), instructions(std::move(instructions))
         { }
     };
 

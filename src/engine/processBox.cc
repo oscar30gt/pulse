@@ -81,8 +81,8 @@ namespace Pulse::Engine
                     const auto& wait = static_cast<const ProcessInstructionWaitOn&>(instruction);
                     if (!wait.conditionPort.empty())
                         resolved.first = wireOf(wait.conditionPort);
-                    for (const std::string& port : wait.sensitivity)
-                        resolved.sensitivity.push_back(wireOf(port));
+                    for (const std::string& port : wait.triggers)
+                        resolved.triggers.push_back(wireOf(port));
                     break;
                 }
                 default:
@@ -151,8 +151,8 @@ namespace Pulse::Engine
         if (wait.hasTimeout && --m_waitCounter == 0)
             return true;
 
-        const bool event = std::any_of(resolved.sensitivity.begin(), resolved.sensitivity.end(), [](const Wire* wire) { return wire->event(); });
-        return event && (!resolved.first || conditionMet(resolved.first));
+        const bool triggered = std::any_of(resolved.triggers.begin(), resolved.triggers.end(), &ProcessBox::conditionMet);
+        return triggered && (!resolved.first || conditionMet(resolved.first));
     }
 
     void SequentialProcessBox::update()
@@ -246,12 +246,12 @@ namespace Pulse::Engine
         const PortInitializer& inPorts,
         const PortInitializer& outPorts,
         ProcessProgram instructions,
-        const std::vector<Wire*>& sensList
+        const std::vector<Wire*>& triggers
     ) : ProcessBox(inPorts, outPorts, std::move(instructions)),
         m_initialized(false)
     {
-        for (auto* wire : sensList) if (wire)
-            m_sensitivityList.push_back(wire);
+        for (auto* wire : triggers) if (wire)
+            m_triggers.push_back(wire);
     }
 
     CombinationalProcessBox::~CombinationalProcessBox() = default;
@@ -259,7 +259,7 @@ namespace Pulse::Engine
     void CombinationalProcessBox::update()
     {
         const bool triggered = !m_initialized
-            || std::any_of(m_sensitivityList.begin(), m_sensitivityList.end(), [](const Wire* wire) { return wire->event(); });
+            || std::any_of(m_triggers.begin(), m_triggers.end(), &ProcessBox::conditionMet);
 
         m_initialized = true;
         if (triggered)

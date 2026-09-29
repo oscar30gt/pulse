@@ -75,12 +75,13 @@ namespace Pulse::Engine
         ProcessInstructionWaitForever() : ProcessInstruction(ProcessInstructionKind::WaitForever) { }
     };
 
-    /// VHDL `wait on <sensitivity> until <condition> for <timeout>`, any part being optional.
-    /// The process resumes on the first tick where a sensitivity wire has an event and the condition (if any) is a
-    /// definite '1', or once the timeout (if any) has elapsed. Can only be used with SequentialProcessBox.
+    /// VHDL `wait on <signals> until <condition> for <timeout>`, any part being optional.
+    /// The process resumes on the first tick where a trigger is a definite '1' and the condition (if any) is a definite
+    /// '1', or once the timeout (if any) has elapsed. The triggers are 1-bit wires, normally the outputs of the EventProbes
+    /// of the signals waited on. Can only be used with SequentialProcessBox.
     struct ProcessInstructionWaitOn : public ProcessInstruction
     {
-        std::vector<std::string> sensitivity;   /// Ports whose events may resume the process
+        std::vector<std::string> triggers;      /// Ports of the 1-bit wires that may resume the process
         std::string conditionPort;              /// Condition checked on an event; empty when there is none
         simTime_t timeout = 0;                  /// Maximum wait in femtoseconds, when hasTimeout
         bool hasTimeout = false;
@@ -122,7 +123,7 @@ namespace Pulse::Engine
         {
             Wire* first = nullptr;              ///< Assignment target, branch condition, wait condition
             Wire* second = nullptr;             ///< Assignment source
-            std::vector<Wire*> sensitivity;     ///< Wait sensitivity
+            std::vector<Wire*> triggers;        ///< Wait triggers
         };
 
         /// Set of instructions to be executed.
@@ -189,10 +190,11 @@ namespace Pulse::Engine
     };
 
     /// A process with a sensitivity list: it runs once on its first update (VHDL initialization) and then, from the
-    /// start, on every update where a wire of its sensitivity list has an event.
+    /// start, on every update where one of its triggers is a definite '1'. The triggers are 1-bit wires, normally the
+    /// outputs of the EventProbes of the signals in the sensitivity list.
     class CombinationalProcessBox : public ProcessBox
     {
-        std::vector<Wire*> m_sensitivityList;
+        std::vector<Wire*> m_triggers;
         bool m_initialized;
 
         /// Executes the process instructions from the start.
@@ -203,7 +205,7 @@ namespace Pulse::Engine
             const PortInitializer& inPorts,
             const PortInitializer& outPorts,
             ProcessProgram instructions,
-            const std::vector<Wire*>& sensList = std::vector<Wire*>()
+            const std::vector<Wire*>& triggers = std::vector<Wire*>()
         );
         virtual ~CombinationalProcessBox() override;
 

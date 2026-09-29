@@ -28,19 +28,19 @@ namespace Pulse::Engine
 
     /// A dynamically generated subgraph component defined by a blueprint object.
     ///
-    /// A design is simulated one tick at a time through the root subgraph's tick(), in three steps over the whole
-    /// hierarchy: every wire publishes its 'event flag (and event probes read it), then every component is updated
-    /// (processes run), then the processes commit their signal assignments. Each tick is thus one VHDL-like cycle whose
-    /// result does not depend on the order in which the components are stored.
+    /// A design is simulated one tick at a time through the root subgraph's tick(), in steps over the whole hierarchy:
+    /// every event probe latches its input (wires know nothing about time), then every probe publishes its 'event, then
+    /// every component is updated (processes run), then the processes commit their signal assignments. Each tick is thus
+    /// one VHDL-like cycle whose result does not depend on the order in which the components are stored.
     class Subgraph : public Component
     {
         /// Values of the root's port wires (a subgraph inside another one uses its parent's wires).
         std::vector<std::unique_ptr<Wire>> m_ownedPorts;
         std::unordered_map<std::string, std::unique_ptr<Wire>> wires;
         std::unordered_map<std::string, std::unique_ptr<Component>> components;
-        /// Event probes, updated right after the wires (they are not in `components`).
+        /// Event probes, latched and published before the components are updated (they are not in `components`).
         std::vector<std::unique_ptr<EventProbe>> m_probes;
-        /// Nested subgraphs by instance name (also in `components`), whose wires roll their events with ours.
+        /// Nested subgraphs by instance name (also in `components`), whose probes latch and publish with ours.
         std::vector<std::pair<std::string, Subgraph*>> m_children;
         /// The blueprint this subgraph was built from; it must outlive the subgraph.
         const Blueprint* m_blueprint;
@@ -70,8 +70,11 @@ namespace Pulse::Engine
         /// @note This function is called internally by the constructor and should not be called after construction.
         void build(const Blueprint& bp, std::vector<const Blueprint*>& visitedBlueprints);
 
-        /// Step 1 of a tick: every wire of the hierarchy updates its 'event flag, then the event probes read it.
-        void rollEvents();
+        /// Step 1 of a tick: every event probe of the hierarchy compares its input with the previous tick. Only reads wires.
+        void latchEvents();
+
+        /// Step 2 of a tick: every event probe of the hierarchy drives its output.
+        void publishEvents();
 
     public:
         /// A root subgraph: the top of a design. It owns the wires of its ports, built from the blueprint's port info.

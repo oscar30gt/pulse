@@ -398,6 +398,8 @@ namespace Pulse::Parser
         std::string shadowOf(const ObjectWire& signal);
         /// The whole signals a list of names designates (a sensitivity list or a `wait on`).
         std::vector<std::string> sensitivityOf(const std::vector<ExpressionPtr>& names);
+        /// The trigger wires of a process waiting on these signals: the outputs of their event probes.
+        std::vector<std::string> triggersOf(const std::vector<std::string>& wires);
 
         // ---- Instances (instances.cc) -------------------------------------------------------------
         void elaborateInstance(const ComponentInstantiation& instance);

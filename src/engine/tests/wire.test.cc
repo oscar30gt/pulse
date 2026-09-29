@@ -115,43 +115,10 @@ TEST(WireTest, DriveIsIgnoredWhenTheWireHasSources) {
 
 TEST(WireTest, DrivenValueStaysUntilDrivenAgain) {
     Wire wire(1, LogicVector::FromBool(false));
+    SignalDrain drain(1);
+    drain.addSource(&wire);
+
     wire.drive(LogicVector::FromBool(true));
-    wire.update();
-    wire.update();
     EXPECT_EQ(wire.peek(), LogicVector::FromBool(true));
-}
-
-// ---- Event flag -----------------------------------------------------------------------------------
-
-TEST(WireTest, EventIsPublishedByTheNextUpdate) {
-    Wire wire(1, LogicVector::FromBool(false));
-    EXPECT_FALSE(wire.event());
-
-    wire.drive(LogicVector::FromBool(true));
-    EXPECT_FALSE(wire.event()); // the change belongs to the current tick
-
-    wire.update();
-    EXPECT_TRUE(wire.event()); // the next tick sees it as an event
-
-    wire.update();
-    EXPECT_FALSE(wire.event()); // no change during the previous tick
-}
-
-TEST(WireTest, DrivingTheSameValueIsNoEvent) {
-    Wire wire(1, LogicVector::FromBool(true));
-    wire.drive(LogicVector::FromBool(true));
-    wire.update();
-    EXPECT_FALSE(wire.event());
-}
-
-TEST(WireTest, ChangesFromSourcesAreEventsToo) {
-    SignalSource src(1);
-    src.drive(LogicVector::FromBool(false));
-    Wire wire(1);
-    wire.addSource(&src);
-    wire.update();
-
-    src.drive(LogicVector::FromBool(true));
-    wire.update();
-    EXPECT_TRUE(wire.event());
+    EXPECT_EQ(drain.pull(), LogicVector::FromBool(true));
 }

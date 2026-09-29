@@ -215,7 +215,7 @@ flowchart LR
 
 - **Parsing Pipeline:** Responsible for parsing, analyzing and linking the VHDL source code. The elaborator then starts at the top entity and builds an object called a **"blueprint"** for every entity of the design (one per set of generic values). The blueprint describes the physical circuit (graph made of gates, comparators, wires...) that implements the VHDL design.
 
-- **Engine Core:** Instantiates a functional version of the design from the blueprints and simulates it one tick (one femtosecond, and one VHDL delta cycle) at a time: every wire publishes its `'event`, every component runs, and the processes commit their signal assignments.
+- **Engine Core:** Instantiates a functional version of the design from the blueprints and simulates it one tick (one femtosecond, and one VHDL delta cycle) at a time: every event probe (the component behind `'event`, and behind the sensitivity lists of processes) compares its signal with the previous tick, every component runs, and the processes commit their signal assignments. Wires themselves know nothing about time.
 
 - **Debugging & Visualization:** A simulated circuit outputs a **waveform**, which represents how signals change over time. That waveform is displayed in an interactive terminal-based UI where values can be inspected at different time steps. Each blueprint carries a symbol table, so every signal is shown as its VHDL type says: logic vectors in hexadecimal (and expandable into their bits), integers in decimal, enumerations by literal and booleans as true/false.
 

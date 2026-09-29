@@ -67,14 +67,15 @@ TEST(CombinationalProcessBoxTest, AssignmentDrivesOutputFromInput)
     std::vector<std::unique_ptr<ProcessInstruction>> instructions;
     instructions.push_back(std::move(assign));
 
-    CombinationalProcessBox box({ {"a", &inA} }, { {"y", &outY} }, std::move(instructions), { &inA });
+    Wire trigger(1, LogicVector::FromBool(false));   // what an event probe on `a` would drive
+    CombinationalProcessBox box({ {"a", &inA} }, { {"y", &outY} }, std::move(instructions), { &trigger });
 
     src.drive(LogicVector::FromBool(1));
     box.update(); // first update: every process runs once
     EXPECT_EQ(outY.peek().bit(0), '1');
 
     src.drive(LogicVector::FromBool(0));
-    inA.update(); // next tick: the change becomes an event of the sensitivity list
+    trigger.drive(LogicVector::FromBool(true)); // next tick: the change is an event of the sensitivity list
     box.update();
     EXPECT_EQ(outY.peek().bit(0), '0');
 }
@@ -263,7 +264,8 @@ TEST(CombinationalProcessBoxTest, ConditionalAssignmentBothPaths)
     instructions.push_back(std::move(branch));
     instructions.push_back(std::move(assign));
 
-    CombinationalProcessBox box({ {"a", &inA}, {"cond", &inCond} }, { {"y", &outY} }, std::move(instructions), { &inA, &inCond });
+    Wire trigger(1, LogicVector::FromBool(false));
+    CombinationalProcessBox box({ {"a", &inA}, {"cond", &inCond} }, { {"y", &outY} }, std::move(instructions), { &trigger });
 
     // Path 1: cond=1, a=1 → assignment runs → y=1
     srcA.drive(LogicVector::FromBool(1));
@@ -274,8 +276,7 @@ TEST(CombinationalProcessBoxTest, ConditionalAssignmentBothPaths)
     // Path 2: cond=0, a=0 → assignment skipped → y stays 1
     srcA.drive(LogicVector::FromBool(0));
     srcCond.drive(LogicVector::FromBool(0));
-    inA.update();
-    inCond.update();
+    trigger.drive(LogicVector::FromBool(true));
     box.update();
     EXPECT_EQ((bool)outY.peek(), true); // output unchanged since assignment was skipped
 }
@@ -411,15 +412,16 @@ TEST(CombinationalProcessBoxTest, InstructionPointerResetsOnEachSensChange)
     std::vector<std::unique_ptr<ProcessInstruction>> instructions;
     instructions.push_back(std::move(assign));
 
-    CombinationalProcessBox box({ {"a", &inA} }, { {"y", &outY} }, std::move(instructions), { &inA });
+    Wire trigger(1, LogicVector::FromBool(false));
+    CombinationalProcessBox box({ {"a", &inA} }, { {"y", &outY} }, std::move(instructions), { &trigger });
 
     src.drive(LogicVector::FromBool(1));
     box.update();
     EXPECT_EQ((bool)outY.peek(), true);
 
     src.drive(LogicVector::FromBool(0));
-    inA.update();
-    box.update(); // sens list changed → runs from start again
+    trigger.drive(LogicVector::FromBool(true));
+    box.update(); // triggered → runs from start again
     EXPECT_EQ((bool)outY.peek(), false);
 }
 
@@ -483,11 +485,11 @@ namespace
         return instruction;
     }
 
-    std::unique_ptr<ProcessInstructionWaitOn> waitOn(std::vector<std::string> sensitivity, std::string condition = "",
+    std::unique_ptr<ProcessInstructionWaitOn> waitOn(std::vector<std::string> triggers, std::string condition = "",
                                                      std::optional<simTime_t> timeout = std::nullopt)
     {
         auto wait = std::make_unique<ProcessInstructionWaitOn>();
-        wait->sensitivity = std::move(sensitivity);
+        wait->triggers = std::move(triggers);
         wait->conditionPort = std::move(condition);
         wait->hasTimeout = timeout.has_value();
         wait->timeout = timeout.value_or(0);
@@ -580,19 +582,23 @@ TEST(CombinationalProcessBoxTest, RunsOnceOnItsFirstUpdate)
     EXPECT_EQ(y.peek(), LogicVector::FromBool(true));
 }
 
-TEST(CombinationalProcessBoxTest, DoesNotRunWithoutAnEvent)
+TEST(CombinationalProcessBoxTest, RunsOnlyWhenATriggerIsOne)
 {
-    Wire a(1, LogicVector::FromBool(true)), y(1);
+    Wire a(1, LogicVector::FromBool(true)), y(1), t1(1, LogicVector::FromBool(false)), t2(1, LogicVector::FromBool(false));
     std::vector<std::unique_ptr<ProcessInstruction>> instructions;
     instructions.push_back(assignment("y", "a", false));
-    CombinationalProcessBox box({ {"a", &a} }, { {"y", &y} }, std::move(instructions), { &a });
+    CombinationalProcessBox box({ {"a", &a} }, { {"y", &y} }, std::move(instructions), { &t1, &t2 });
     box.update();
 
     a.drive(LogicVector::FromBool(false));
-    box.update(); // the change is not an event until the wire updates
+    box.update(); // no trigger: the change of `a` alone does not run the process
     EXPECT_EQ(y.peek(), LogicVector::FromBool(true));
 
-    a.update();
+    t2.drive(LogicVector::Unknown());
+    box.update(); // an unknown trigger does not run it either
+    EXPECT_EQ(y.peek(), LogicVector::FromBool(true));
+
+    t2.drive(LogicVector::FromBool(true));
     box.update();
     EXPECT_EQ(y.peek(), LogicVector::FromBool(false));
 }
@@ -606,7 +612,6 @@ TEST(CombinationalProcessBoxTest, EmptySensitivityListRunsOnlyOnce)
     box.update();
 
     a.drive(LogicVector::FromBool(false));
-    a.update();
     box.update();
     EXPECT_EQ(y.peek(), LogicVector::FromBool(true));
 }
@@ -639,58 +644,54 @@ TEST(CombinationalProcessBoxTest, UnknownOrHighImpedanceConditionIsNotMet)
 // WAIT ON / UNTIL / FOR
 // ===========================================================================
 
-TEST(SequentialProcessBoxTest, WaitOnResumesOnAnEvent)
+TEST(SequentialProcessBoxTest, WaitOnResumesOnATrigger)
 {
-    // wait on s; y := a
-    Wire s(1, LogicVector::FromBool(false)), a(1, LogicVector::FromBool(true)), y(1, LogicVector::FromBool(false));
+    // wait on s; y := a     (e is what the event probe of s drives)
+    Wire e(1, LogicVector::FromBool(false)), a(1, LogicVector::FromBool(true)), y(1, LogicVector::FromBool(false));
 
     std::vector<std::unique_ptr<ProcessInstruction>> instructions;
-    instructions.push_back(waitOn({ "s" }));
+    instructions.push_back(waitOn({ "e" }));
     instructions.push_back(assignment("y", "a", false));
-    SequentialProcessBox box({ {"s", &s}, {"a", &a} }, { {"y", &y} }, std::move(instructions));
+    SequentialProcessBox box({ {"e", &e}, {"a", &a} }, { {"y", &y} }, std::move(instructions));
 
     box.update(); // suspends at the wait
-    s.update();
     box.update(); // no event
     EXPECT_EQ(y.peek(), LogicVector::FromBool(false));
 
-    s.drive(LogicVector::FromBool(true));
-    s.update();
+    e.drive(LogicVector::FromBool(true));
     box.update(); // event on s: resumes, assigns, then waits again
     EXPECT_EQ(y.peek(), LogicVector::FromBool(true));
 }
 
 TEST(SequentialProcessBoxTest, WaitUntilNeedsTheConditionOnAnEvent)
 {
-    // wait on s until c; y := a
-    Wire s(1, LogicVector::FromBool(false)), c(1, LogicVector::FromBool(false)), a(1, LogicVector::FromBool(true)),
+    // wait on s until c; y := a     (e is what the event probe of s drives)
+    Wire e(1, LogicVector::FromBool(false)), c(1, LogicVector::FromBool(false)), a(1, LogicVector::FromBool(true)),
          y(1, LogicVector::FromBool(false));
 
     std::vector<std::unique_ptr<ProcessInstruction>> instructions;
-    instructions.push_back(waitOn({ "s" }, "c"));
+    instructions.push_back(waitOn({ "e" }, "c"));
     instructions.push_back(assignment("y", "a", false));
-    SequentialProcessBox box({ {"s", &s}, {"c", &c}, {"a", &a} }, { {"y", &y} }, std::move(instructions));
+    SequentialProcessBox box({ {"e", &e}, {"c", &c}, {"a", &a} }, { {"y", &y} }, std::move(instructions));
     box.update();
 
-    s.drive(LogicVector::FromBool(true));
-    s.update();
+    e.drive(LogicVector::FromBool(true));
     box.update(); // event, but the condition is false
     EXPECT_EQ(y.peek(), LogicVector::FromBool(false));
 
+    e.drive(LogicVector::FromBool(false));
     c.drive(LogicVector::FromBool(true));
-    s.update();
     box.update(); // condition true, but no event on s
     EXPECT_EQ(y.peek(), LogicVector::FromBool(false));
 
-    s.drive(LogicVector::FromBool(false));
-    s.update();
+    e.drive(LogicVector::FromBool(true));
     box.update(); // event and condition
     EXPECT_EQ(y.peek(), LogicVector::FromBool(true));
 }
 
 TEST(SequentialProcessBoxTest, WaitOnForResumesAfterTheTimeout)
 {
-    // wait on s for 3; y := a
+    // wait on s for 3; y := a     (s is the trigger: the event probe output of the signal)
     Wire s(1, LogicVector::FromBool(false)), a(1, LogicVector::FromBool(true)), y(1, LogicVector::FromBool(false));
 
     std::vector<std::unique_ptr<ProcessInstruction>> instructions;

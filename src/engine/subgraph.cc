@@ -219,16 +219,16 @@ namespace Pulse::Engine
                     for (const auto& portName : process->outPorts)
                         outPorts.emplace_back(portName, requireWire(portName, "output port of process '" + name + "'"));
 
-                    if (process->sensList.empty() && !process->combinational)
+                    if (process->triggers.empty() && !process->combinational)
                     {
                         components.insert({ name, std::make_unique<SequentialProcessBox>(inPorts, outPorts, process->instructions) });
                     }
                     else
                     {
-                        std::vector<Wire*> sensList;
-                        for (const auto& sensName : process->sensList)
-                            sensList.push_back(requireWire(sensName, "sensitivity list of process '" + name + "'"));
-                        components.insert({ name, std::make_unique<CombinationalProcessBox>(inPorts, outPorts, process->instructions, sensList) });
+                        std::vector<Wire*> triggers;
+                        for (const auto& trigger : process->triggers)
+                            triggers.push_back(requireWire(trigger, "triggers of process '" + name + "'"));
+                        components.insert({ name, std::make_unique<CombinationalProcessBox>(inPorts, outPorts, process->instructions, triggers) });
                     }
                 }
                 break;
@@ -310,24 +310,28 @@ namespace Pulse::Engine
         return wire;
     }
 
-    void Subgraph::rollEvents()
+    void Subgraph::latchEvents()
     {
-        for (auto& wire : m_ownedPorts)
-            wire->update();
-
-        for (auto& [name, wire] : wires)
-            wire->update();
-
         for (auto& probe : m_probes)
-            probe->update();
+            probe->latch();
 
         for (auto& [name, child] : m_children)
-            child->rollEvents();
+            child->latchEvents();
+    }
+
+    void Subgraph::publishEvents()
+    {
+        for (auto& probe : m_probes)
+            probe->publish();
+
+        for (auto& [name, child] : m_children)
+            child->publishEvents();
     }
 
     void Subgraph::tick()
     {
-        rollEvents();
+        latchEvents();
+        publishEvents();
         update();
         commit();
     }

@@ -230,10 +230,10 @@ namespace Pulse::Engine
             {
                 auto proc = static_cast<const ProcessInstance*>(comp);
                 os << "[Process]";
-                os << "\n      sensitivity (" << proc->sensList.size() << "): ";
-                for (size_t i = 0; i < proc->sensList.size(); ++i)
+                os << "\n      triggers (" << proc->triggers.size() << "): ";
+                for (size_t i = 0; i < proc->triggers.size(); ++i)
                 {
-                    os << proc->sensList[i] << (i + 1 < proc->sensList.size() ? ", " : "");
+                    os << proc->triggers[i] << (i + 1 < proc->triggers.size() ? ", " : "");
                 }
                 os << "\n      inPorts (" << proc->inPorts.size() << "): ";
                 for (size_t i = 0; i < proc->inPorts.size(); ++i)
@@ -277,7 +277,7 @@ namespace Pulse::Engine
                         {
                             const auto& wait = static_cast<const ProcessInstructionWaitOn&>(inst);
                             os << "WAIT_ON:";
-                            for (const auto& port : wait.sensitivity)
+                            for (const auto& port : wait.triggers)
                                 os << " " << port;
                             if (!wait.conditionPort.empty())
                                 os << " until " << wait.conditionPort;

@@ -7,7 +7,7 @@ namespace Pulse::Engine
         m_in(in),
         m_out(1)
     {
-        m_out.drive(LogicVector::FromBool(in->event()));
+        m_out.drive(LogicVector::FromBool(false));
 
         try
         {
@@ -21,9 +21,16 @@ namespace Pulse::Engine
 
     EventProbe::~EventProbe() = default;
 
-    void EventProbe::update()
+    void EventProbe::latch()
     {
-        const LogicVector flag = LogicVector::FromBool(m_in->event());
+        const LogicVector current = m_in->peek();
+        m_event = m_previous.has_value() && *m_previous != current;
+        m_previous = current;
+    }
+
+    void EventProbe::publish()
+    {
+        const LogicVector flag = LogicVector::FromBool(m_event);
         if (flag != m_out.peek())
             m_out.drive(flag);
     }

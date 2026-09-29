@@ -74,14 +74,15 @@ namespace Pulse::Parser
             m_instructions.push_back(std::make_unique<Engine::ProcessInstructionWaitForever>());
         }
 
-        void waitOn(const std::vector<std::string>& sensitivity, const std::string& condition, std::optional<simTime_t> timeout)
+        /// `wait on ... until ... for ...`: `triggers` are 1-bit wires (event probe outputs) that resume the process.
+        void waitOn(const std::vector<std::string>& triggers, const std::string& condition, std::optional<simTime_t> timeout)
         {
             auto instruction = std::make_unique<Engine::ProcessInstructionWaitOn>();
-            instruction->sensitivity = sensitivity;
+            instruction->triggers = triggers;
             instruction->conditionPort = condition;
             instruction->hasTimeout = timeout.has_value();
             instruction->timeout = timeout.value_or(0);
-            for (const std::string& port : sensitivity) read(port);
+            for (const std::string& port : triggers) read(port);
             if (!condition.empty()) read(condition);
             m_instructions.push_back(std::move(instruction));
         }
