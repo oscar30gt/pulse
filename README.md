@@ -36,10 +36,34 @@ Once inside the project directory, run cmake to configure the build system and t
 
 ```bash
 cmake -B build
-cmake --build build
+cmake --build build --config Release
 ```
 
 > Resulting binaries will be located in `build/bin`.
+
+### Install
+
+Optionally, install Pulse to a prefix of your choice (or set `CMAKE_INSTALL_PREFIX` when configuring and leave `--prefix` out):
+
+```bash
+cmake --install build --prefix <dir>
+```
+
+This installs the `pulse` executable to `<dir>/bin`, the `pulse_app` static library to `<dir>/lib`, the public headers to `<dir>/include/pulse` and a CMake package to `<dir>/lib/cmake/Pulse`. With a multi-config generator such as Visual Studio, also pass `--config Release` (or whichever configuration you built). Other CMake projects can then use the simulation engine and compiler by adding `<dir>` to `CMAKE_PREFIX_PATH`:
+
+```cmake
+find_package(Pulse 2 REQUIRED)
+target_link_libraries(my_app PRIVATE Pulse::pulse_app)
+```
+
+To run `pulse` from anywhere, configure with `-DPULSE_ADD_TO_PATH=ON` before installing:
+
+```bash
+cmake -B build -DPULSE_ADD_TO_PATH=ON
+cmake --install build --prefix <dir>
+```
+
+On Windows, the install then adds `<dir>/bin` to your user PATH (if it is not there yet; open a new terminal afterwards). On Linux and macOS, it prints the `export PATH=...` line to add to your shell profile instead. The default prefix there, `/usr/local`, already has its `bin` on PATH. Nothing is changed when `DESTDIR` is set, and removing the installation does not remove the PATH entry.
 
 ## Usage
 
@@ -60,6 +84,8 @@ The following command line options are available, before or after the project fo
 | `--end <time>`      | Specify the simulation end time: an integer followed by `fs`, `ps`, `ns`, `us`, `ms` or `s`, femtoseconds when there is no unit (default: 1000fs) |
 | `--arch <arch>`     | Specify the architecture of the top-level entity (default: its most recently analyzed one) |
 | `-Ologic`           | Simulate `std_logic` as four-valued logic: `'0'`/`'L'` are 0, `'1'`/`'H'` are 1, `'Z'` is Z, and `'U'`/`'X'`/`'W'`/`'-'` are X. It is the only mode supported for now, so it is always on. |
+| `--out <file.vcd>`  | Write the simulated waveform to a VCD file, then show that file in the TUI |
+| `--in <file.vcd>`   | Show a VCD file in the TUI instead of simulating a project (no project folder or simulation option goes with it) |
 
 Every other entity uses its most recently analyzed architecture, the default binding of the LRM (7.3.3).
 
@@ -74,12 +100,22 @@ $ pulse ./examples/counter --top CounterTop --arch Behavioral --end 2000fs
 
 # Search for VHDL sources recursively
 $ pulse ./examples/my_project -R
+
+# Save the waveform as a VCD file (and view it), then view it again later without simulating
+$ pulse ./examples/counter --end 2ns --out counter.vcd
+$ pulse --in counter.vcd
 ```
 
 > [!NOTE]
 > These examples assume that the `pulse` binary is in your current path. Plus, no examples folder is provided in this repository. This is just a usage example.
 
-### Error Messages
+### Waveform Files (VCD)
+
+`--out` and `--in` exchange waveforms with other tools as [Value Change Dump](https://en.wikipedia.org/wiki/Value_change_dump) files (IEEE 1364), the format GHDL, Icarus Verilog, ModelSim and GTKWave read and write. The format is taken from the extension of the file, and `.vcd` is the only one for now.
+
+- `--out` writes the hierarchy of the design as scopes (the top entity, then one scope per component instance), with the time in femtoseconds. Pulse adds a comment after each variable with its port direction and how it is displayed (booleans, integers, enumeration literals); other tools ignore it, and Pulse reads the file back exactly as it was simulated.
+- `--in` reads a VCD file from Pulse or from another simulator, in any `$timescale`. Values take the four logic values of `-Ologic` (`u`, `w` and `-` are X, `l` and `h` are 0 and 1). Variables Pulse cannot show (real and string values, vectors wider than 64 bits) are left out and listed as warnings when the TUI closes.
+
 
 Pulse stops at the first error in the design and reports it the way GCC and Clang do: the file, line and column, the stage of the compiler that found it (`lexical`, `syntax`, `semantic`, `link` or `elaboration`), and the source line with a caret under the column. The output is colored when it goes to a terminal; set `NO_COLOR` to turn colors off.
 

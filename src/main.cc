@@ -6,6 +6,7 @@
 /// It transforms VHDL source code into a logic components simulation model that can be simulated and debugged.
 ///
 /// Usage: ./pulse <project_path> [options]
+///        ./pulse --in <waveform.vcd>
 ///
 
 // Platform headers first: the project headers define helpers (ssize_t on MSVC) that must not leak into them.
@@ -42,9 +43,10 @@
 #include "subgraph.h"
 #include "tokenizer.h"
 #include "tui.h"
+#include "vcd.h"
 #include "waveform.h"
 
-#define PULSE_VERSION "2.0.0"
+// PULSE_VERSION is defined by CMake from the project version (CMakeLists.txt).
 
 using namespace Pulse;
 using namespace Pulse::Parser;
@@ -63,6 +65,8 @@ struct Options
     std::string architecture;           ///< The architecture of the top entity (--arch) [lowercased]; empty: its latest one
     simTime_t endTime = 1000;           ///< The end time of the simulation in femtoseconds (--end)
     LogicMode logic = LogicMode::Logic; ///< -Ologic: std_logic as 01XZ logic. The only mode for now, so it is always on.
+    std::string outputFile;             ///< Write the simulated waveform to this file (--out); the viewer then shows the file
+    std::string inputFile;              ///< Show this waveform file instead of simulating a project (--in)
 };
 
 /// Tokenizes and parses one VHDL file.
@@ -102,12 +106,35 @@ void printDiagnostic(const compiler_error& error, const std::vector<std::filesys
 /// Prints `pulse: error: <message>`, the way command-line errors are reported, and exits with status 1.
 [[noreturn]] void failWith(const std::string& message);
 
+/// Prints `pulse: warning: <message>` to the standard error.
+void warnWith(const std::string& message);
+
+/// Compiles and simulates the project of the options, and returns its waveform.
+/// @throws compiler_error for the first error of the design.
+WaveformData simulateProject(const Options& options, const std::vector<std::filesystem::path>& sources);
+
+/// Writes a waveform to a file, in the format of its extension (.vcd). Exits with an error when it cannot be written.
+void writeWaveformFile(const std::string& path, const WaveformData& waveform, const std::string& rootName, simTime_t endTime);
+
+/// Reads a waveform file, in the format of its extension (.vcd). Exits with an error when it cannot be read.
+VcdTrace readWaveformFile(const std::string& path);
+
+/// Shows a waveform read from a file in the viewer, then reports the variables of the file it could not show.
+void showWaveformFile(const VcdTrace& trace);
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char* argv[])
 {
     const Options options = parseArgs(argc, argv);
+
+    // --in: show a waveform file; nothing is compiled.
+    if (!options.inputFile.empty())
+    {
+        showWaveformFile(readWaveformFile(options.inputFile));
+        return 0;
+    }
 
     std::vector<std::filesystem::path> sources;
     try
@@ -126,41 +153,17 @@ int main(int argc, char* argv[])
 
     try
     {
-        // Every file is parsed on its own; its index in `sources` travels with every location of its tree.
-        std::vector<ASTRoot> files;
-        for (size_t index = 0; index < sources.size(); ++index)
-            files.push_back(fileParsingPipeline(sources[index], index));
+        const WaveformData waveform = simulateProject(options, sources);
 
-        // Every file is analyzed into the work library after the files that declare the entities it needs.
-        DesignLibrary work;
-        for (size_t index : analysisOrder(files))
-            work.analyze(files[index]);
-
-        // Linking binds every component instance to its entity and merges the files into one design.
-        Linker linker(work);
-        for (auto& file : files)
-            linker.addAST(std::move(file));
-        const ASTRoot linkedDesign = linker.link();
-
-        // Elaboration lowers the design, from its top entity, to blueprints of logic components.
-        ElaborationOptions elaboration;
-        elaboration.topEntity = options.topEntity;
-        elaboration.topArchitecture = options.architecture;
-        elaboration.logic = options.logic;
-        const ElaboratedDesign design = elaborate(work, linkedDesign, elaboration);
-
-        // The top-level subgraph is simulated one tick (one femtosecond) at a time.
-        Subgraph graph(*design.top);
-        graph.tick();
-        WaveformRecorder recorder(graph.takeSnapshot());
-        for (simTime_t time = 1; time <= options.endTime; ++time)
+        // Once simulated, allow user to visualize the waveform of the simulation. With --out, the viewer shows the file
+        // that was written, read back.
+        if (!options.outputFile.empty())
         {
-            graph.tick();
-            recorder.record(graph.takeSnapshot(), time);
+            writeWaveformFile(options.outputFile, waveform, options.topEntity, options.endTime);
+            showWaveformFile(readWaveformFile(options.outputFile));
         }
-
-        // Once simulated, allow user to visualize the waveform of the simulation.
-        showWaveform(recorder.waveform(), 0, options.endTime + 1, options.topEntity);
+        else
+            showWaveform(waveform, 0, options.endTime + 1, options.topEntity);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -183,6 +186,78 @@ int main(int argc, char* argv[])
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+WaveformData simulateProject(const Options& options, const std::vector<std::filesystem::path>& sources)
+{
+    // Every file is parsed on its own; its index in `sources` travels with every location of its tree.
+    std::vector<ASTRoot> files;
+    for (size_t index = 0; index < sources.size(); ++index)
+        files.push_back(fileParsingPipeline(sources[index], index));
+
+    // Every file is analyzed into the work library after the files that declare the entities it needs.
+    DesignLibrary work;
+    for (size_t index : analysisOrder(files))
+        work.analyze(files[index]);
+
+    // Linking binds every component instance to its entity and merges the files into one design.
+    Linker linker(work);
+    for (auto& file : files)
+        linker.addAST(std::move(file));
+    const ASTRoot linkedDesign = linker.link();
+
+    // Elaboration lowers the design, from its top entity, to blueprints of logic components.
+    ElaborationOptions elaboration;
+    elaboration.topEntity = options.topEntity;
+    elaboration.topArchitecture = options.architecture;
+    elaboration.logic = options.logic;
+    const ElaboratedDesign design = elaborate(work, linkedDesign, elaboration);
+
+    // The top-level subgraph is simulated one tick (one femtosecond) at a time.
+    Subgraph graph(*design.top);
+    graph.tick();
+    WaveformRecorder recorder(graph.takeSnapshot());
+    for (simTime_t time = 1; time <= options.endTime; ++time)
+    {
+        graph.tick();
+        recorder.record(graph.takeSnapshot(), time);
+    }
+    return recorder.waveform();
+}
+
+void writeWaveformFile(const std::string& path, const WaveformData& waveform, const std::string& rootName, simTime_t endTime)
+{
+    std::ofstream file(path, std::ios::binary);
+    if (!file.is_open())
+        failWith("cannot write the waveform file '" + path + "'");
+
+    writeVcd(file, waveform, rootName, endTime);
+    file.close();
+    if (!file)
+        failWith("cannot write the waveform file '" + path + "'");
+}
+
+VcdTrace readWaveformFile(const std::string& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open())
+        failWith("cannot open the waveform file '" + path + "'");
+
+    try
+    {
+        return readVcd(file);
+    }
+    catch (const vcd_error& e)
+    {
+        failWith(path + ":" + std::to_string(e.line()) + ": " + e.what());
+    }
+}
+
+void showWaveformFile(const VcdTrace& trace)
+{
+    showWaveform(trace.waveform, 0, trace.endTime + 1, trace.rootName);
+    for (const std::string& reason : trace.skipped)
+        warnWith("not shown: " + reason);
+}
 
 ASTRoot fileParsingPipeline(const std::filesystem::path& filename, size_t file)
 {
@@ -243,9 +318,16 @@ void failWith(const std::string& message)
     std::exit(1);
 }
 
+void warnWith(const std::string& message)
+{
+    const bool color = colorsOnStandardError();
+    std::cerr << (color ? "\033[1mpulse:\033[0m \033[1;35mwarning:\033[0m " : "pulse: warning: ") << message << '\n';
+}
+
 void printHelp()
 {
     std::cout << "Usage: pulse <project_path> [options]\n";
+    std::cout << "       pulse --in <file.vcd>\n";
     std::cout << "Options:\n";
     std::cout << "  -h, --help          Show this help message and exit.\n";
     std::cout << "  -v, --version       Show the program version and exit.\n\n";
@@ -256,7 +338,11 @@ void printHelp()
     std::cout << "                      (defaults to 1000fs; a number without a unit is in fs)\n";
     std::cout << "  --arch <name>       Specify the architecture of the top-level entity. (defaults to its most recently analyzed one)\n";
     std::cout << "  -Ologic             Simulate std_logic as 01XZ logic: '0'/'L' -> 0, '1'/'H' -> 1, 'Z' -> Z, 'U'/'X'/'W'/'-' -> X.\n";
-    std::cout << "                      (the only mode supported for now, so it is always on)\n";
+    std::cout << "                      (the only mode supported for now, so it is always on)\n\n";
+
+    std::cout << "  --out <file.vcd>    Write the simulated waveform to a VCD (Value Change Dump) file, then show that file.\n";
+    std::cout << "  --in <file.vcd>     Show a VCD file in the waveform viewer instead of simulating a project.\n";
+    std::cout << "                      (from Pulse or another simulator; no project path or simulation option goes with it)\n";
 }
 
 void printVersion()
@@ -291,6 +377,15 @@ Options parseArgs(int argc, char* argv[])
 
     Options options;
     bool hasProjectPath = false;
+    std::string simulationOption;   // The first option that only means something when a project is simulated
+
+    // The value of --out and --in: a file whose extension names a format Pulse knows.
+    const auto waveformFile = [](const std::string& option, const std::string& path)
+    {
+        if (!isVcdPath(path))
+            failWith("unknown waveform format of '" + path + "' (" + option + "): the supported format is VCD (.vcd)");
+        return path;
+    };
 
     for (int i = 1; i < argc; ++i)
     {
@@ -304,6 +399,10 @@ Options parseArgs(int argc, char* argv[])
             return argv[++i];
         };
 
+        if ((arg == "-R" || arg == "--recursive" || arg == "-Ologic" || arg == "--top" || arg == "--arch" || arg == "--end"
+             || arg == "--out") && simulationOption.empty())
+            simulationOption = arg;
+
         if (arg == "-R" || arg == "--recursive")
             options.recursive = true;
         else if (arg == "-Ologic")
@@ -314,6 +413,10 @@ Options parseArgs(int argc, char* argv[])
             options.architecture = lowercase(value());
         else if (arg == "--end")
             options.endTime = parseEndTime(value());
+        else if (arg == "--out")
+            options.outputFile = waveformFile(arg, value());
+        else if (arg == "--in")
+            options.inputFile = waveformFile(arg, value());
         else if (!arg.empty() && arg.front() == '-')
             failWith("unknown option '" + arg + "'; use '--help' for more information");
         else if (hasProjectPath)
@@ -323,6 +426,15 @@ Options parseArgs(int argc, char* argv[])
             options.projectPath = arg;
             hasProjectPath = true;
         }
+    }
+
+    if (!options.inputFile.empty())
+    {
+        if (hasProjectPath)
+            failWith("'--in' shows a waveform file: no project path can be given with it");
+        if (!simulationOption.empty())
+            failWith("'" + simulationOption + "' simulates a project: it cannot be combined with '--in'");
+        return options;
     }
 
     if (!hasProjectPath)

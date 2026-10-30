@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+**Command line and debugger**
+- New `--out <file.vcd>` option: writes the simulated waveform to a VCD (Value Change Dump) file, then shows that file in the TUI. Other simulators and viewers (GTKWave, browser viewers) can read it.
+- New `--in <file.vcd>` option: shows a VCD file, written by Pulse or by another simulator, in the TUI without simulating a project.
+
+**Build**
+- `cmake --install build --prefix <dir>` now installs the `pulse` executable, the `pulse_app` library, the public headers (`include/pulse`) and a `find_package(Pulse)` CMake package. Configuring with `-DPULSE_ADD_TO_PATH=ON` also adds the installed `bin` directory to the user PATH on Windows.
+
 ## 2.0.0
 Sept 27, 2026
 
